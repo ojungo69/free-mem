@@ -133,6 +133,13 @@ export type PackTraceCandidate = {
 	role_reason: string;
 };
 
+export type PackOmissionAggregate = {
+	reason: "omitted_ineligible";
+	count: number;
+	by_source: Record<string, number>;
+	by_sensitivity: Record<SensitivityV1, number>;
+};
+
 export type PackTrace = {
 	version: 1;
 	inputs: {
@@ -150,6 +157,8 @@ export type PackTrace = {
 	retrieval: {
 		candidate_count: number;
 		candidates: PackTraceCandidate[];
+		omissions: PackOmissionAggregate[];
+		degradations: string[];
 	};
 	assembly: {
 		deduped_ids: number[];
@@ -255,10 +264,41 @@ export type RawEventJobClaim = {
 };
 
 export type RawEventMemoryCompletion = {
-	memoryId: number;
-	citedSourceEventIds: string[];
-	disposition: "inserted" | "deduplicated";
+	memoryId: number | null;
+	disposition: "inserted" | "deduplicated" | "suppressed";
 };
+
+export type SourceCitationV1 = {
+	source: number;
+	start: number | null;
+	end: number | null;
+};
+
+export type SourceSpanV1 = {
+	eventId: string;
+	startByte: number;
+	endByte: number;
+};
+
+export type ProjectedSourceV1 = {
+	ordinal: number;
+	eventId: string;
+	sensitivity: SensitivityV1;
+	repositoryIdentity: string | null;
+	redactedPayload: string;
+	payloadDigest: string;
+	payloadDigestVersion: "event-payload-digest-v1";
+};
+
+export type ProjectedSourceSetV1 = Readonly<{
+	version: 1;
+	jobId: number;
+	claimGeneration: number;
+	attemptFingerprint: string;
+	destinationBoundaryFingerprint: string;
+	repositoryIdentity: string | null;
+	sources: readonly Readonly<ProjectedSourceV1>[];
+}>;
 
 export type RawEventPrivacyProjection = {
 	eligibleSourceEventIds: string[];
@@ -648,6 +688,8 @@ export interface PackResponse {
 		work_estimate_items: number;
 		savings_reliable: boolean;
 		sources: { fts: number; semantic: number; fuzzy: number };
+		omissions: PackOmissionAggregate[];
+		degradations: string[];
 	};
 }
 

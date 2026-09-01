@@ -5,6 +5,8 @@
  * codemem/xml_parser.py.
  */
 
+import type { SourceCitationV1 } from "./types.js";
+
 // ---------------------------------------------------------------------------
 // Tool events (input to observer)
 // ---------------------------------------------------------------------------
@@ -32,6 +34,7 @@ export interface ObserverContext {
 	includeSummary: boolean;
 	diffSummary: string;
 	recentFiles: string;
+	projectedSources?: Array<{ ordinal: number; redactedPayload: string }>;
 }
 
 // ---------------------------------------------------------------------------
@@ -47,6 +50,7 @@ export interface ParsedObservation {
 	concepts: string[];
 	filesRead: string[];
 	filesModified: string[];
+	citations?: SourceCitationV1[];
 }
 
 export interface ParsedSummary {
@@ -58,6 +62,7 @@ export interface ParsedSummary {
 	notes: string;
 	filesRead: string[];
 	filesModified: string[];
+	citations?: SourceCitationV1[];
 }
 
 export interface ParsedOutput {

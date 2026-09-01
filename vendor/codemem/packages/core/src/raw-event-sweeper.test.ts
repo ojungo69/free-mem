@@ -2,7 +2,7 @@ import { mkdtempSync, rmSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
-import { defaultResourceProfile } from "./capability-manifest.js";
+import { compileDefaultCapabilityManifest, defaultResourceProfile } from "./capability-manifest.js";
 import { connect } from "./db.js";
 import type { IngestOptions } from "./ingest-pipeline.js";
 import { RawEventSweeper } from "./raw-event-sweeper.js";
@@ -14,9 +14,26 @@ function sleep(ms: number) {
 }
 
 describe("RawEventSweeper auto flush", () => {
-	const configurationFingerprint = `sha256:${"a".repeat(64)}`;
-	const providerFingerprint = `sha256:${"b".repeat(64)}`;
+	const manifest = compileDefaultCapabilityManifest({
+		version: 1,
+		role: "summary",
+		state: "enabled",
+		wireProtocol: "openai_chat_completions_v1",
+		modelId: "raw-event-sweeper-test",
+		modelRevision: "1",
+		endpointUrl: "http://127.0.0.1:1234/v1/chat/completions",
+		credentialRef: { kind: "none" },
+	});
+	const configurationFingerprint = manifest.configurationFingerprint;
+	const providerFingerprint = manifest.summaryProvider.providerFingerprint;
 	const repositoryIdentity = `repo-v1:sha256:${"c".repeat(64)}`;
+	const frozenProviderOpts = {
+		configurationFingerprint,
+		providerFingerprint,
+		capabilityManifest: manifest,
+		providerTlsPeerVerified: false,
+		resourceProfile: manifest.resourceProfile,
+	};
 	let tmpDir: string;
 	let dbPath: string;
 	let store: MemoryStore;
@@ -48,7 +65,7 @@ describe("RawEventSweeper auto flush", () => {
 	});
 
 	function recordRawEvent(input: Parameters<MemoryStore["recordRawEvent"]>[0]) {
-		return store.recordRawEvent({ ...input, repositoryIdentity });
+		return store.recordRawEvent({ sensitivity: "eligible", ...input, repositoryIdentity });
 	}
 
 	function seedSession(sessionId: string) {
@@ -160,13 +177,13 @@ describe("RawEventSweeper auto flush", () => {
 	}
 
 	const ingestOpts: IngestOptions = {
-		configurationFingerprint,
-		providerFingerprint,
+		...frozenProviderOpts,
 		observer: {
 			observe: async () => ({
 				raw: `<summary>
   <request>Auto flush request</request>
   <completed>Flushed debounced raw events</completed>
+	<citations><cite source="0"/></citations>
 </summary>`,
 				parsed: null,
 				provider: "test",
@@ -187,8 +204,7 @@ describe("RawEventSweeper auto flush", () => {
 		seedSession("sess-auth");
 		let calls = 0;
 		const sweeper = new RawEventSweeper(store, {
-			configurationFingerprint,
-			providerFingerprint,
+			...frozenProviderOpts,
 			observer: {
 				observe: async () => {
 					calls += 1;
@@ -218,14 +234,13 @@ describe("RawEventSweeper auto flush", () => {
 		seedSession("sess-stop");
 		let resolved = false;
 		const sweeper = new RawEventSweeper(store, {
-			configurationFingerprint,
-			providerFingerprint,
+			...frozenProviderOpts,
 			observer: {
 				observe: async () => {
 					await sleep(80);
 					resolved = true;
 					return {
-						raw: `<summary><request>stop</request><completed>done</completed></summary>`,
+						raw: `<summary><request>stop</request><completed>done</completed><citations><cite source="0"/></citations></summary>`,
 						parsed: null,
 						provider: "test",
 						model: "test",
@@ -248,14 +263,103 @@ describe("RawEventSweeper auto flush", () => {
 		expect(store.rawEventFlushState("sess-stop")).toBe(1);
 	});
 
+	it("uses the frozen manifest warm, periodic, idle, and debounce timing", () => {
+		const sweeper = new RawEventSweeper(store, ingestOpts);
+		const timing = sweeper as unknown as {
+			intervalMs(): number;
+			idleMs(): number;
+			debounceMs(): number;
+		};
+
+		// Pin the frozen manifest values, then assert the sweeper reads exactly
+		// those fields (intervalMs is periodicSweepIntervalMs, not the warm
+		// lifetime it happens to equal).
+		expect(manifest.resourceProfile.workerWarmLifetimeMs).toBe(30_000);
+		expect(manifest.resourceProfile.periodicSweepIntervalMs).toBe(30_000);
+		expect(manifest.resourceProfile.idleFlushMs).toBe(120_000);
+		expect(manifest.resourceProfile.eventDebounceMs).toBe(1_000);
+		expect(timing.intervalMs()).toBe(manifest.resourceProfile.periodicSweepIntervalMs);
+		expect(timing.idleMs()).toBe(manifest.resourceProfile.idleFlushMs);
+		expect(timing.debounceMs()).toBe(manifest.resourceProfile.eventDebounceMs);
+	});
+
+	it("waits in-flight work, leaves no orphan timer, and explicitly restarts", async () => {
+		seedSession("sess-stop-fence");
+		let releaseObserver = () => {};
+		const observerGate = new Promise<void>((resolve) => {
+			releaseObserver = resolve;
+		});
+		let observerEntered = () => {};
+		const entered = new Promise<void>((resolve) => {
+			observerEntered = resolve;
+		});
+		let calls = 0;
+		const sweeper = new RawEventSweeper(store, {
+			...frozenProviderOpts,
+			observer: {
+				observe: async () => {
+					calls += 1;
+					observerEntered();
+					await observerGate;
+					return {
+						raw: `<summary><request>stop fence</request><completed>done</completed><citations><cite source="0"/></citations></summary>`,
+						parsed: null,
+						provider: "test",
+						model: "test",
+					};
+				},
+				getStatus: () => ({
+					provider: "test",
+					model: "test",
+					runtime: "api_http",
+					auth: { source: "none", type: "none", hasToken: false },
+				}),
+			} as never,
+		});
+		vi.useFakeTimers();
+		let stopping: Promise<void> | undefined;
+		try {
+			sweeper.start();
+			sweeper.nudge("sess-stop-fence");
+			await vi.advanceTimersByTimeAsync(manifest.resourceProfile.eventDebounceMs);
+			await entered;
+			sweeper.nudge("sess-stop-fence");
+			let stopped = false;
+			stopping = sweeper.stop().then(() => {
+				stopped = true;
+			});
+			await Promise.resolve();
+			expect(stopped).toBe(false);
+
+			releaseObserver();
+			await stopping;
+			expect(calls).toBe(1);
+			expect(vi.getTimerCount()).toBe(0);
+			await vi.advanceTimersByTimeAsync(manifest.resourceProfile.eventDebounceMs);
+			expect(calls).toBe(1);
+
+			seedSession("sess-restarted");
+			sweeper.start();
+			sweeper.nudge("sess-restarted");
+			await vi.advanceTimersByTimeAsync(manifest.resourceProfile.eventDebounceMs);
+			await sweeper.stop();
+			expect(calls).toBe(2);
+			expect(vi.getTimerCount()).toBe(0);
+		} finally {
+			releaseObserver();
+			await stopping;
+			await sweeper.stop();
+			vi.useRealTimers();
+		}
+	});
+
 	it("requeues activity that arrives during an active auto flush", async () => {
 		process.env.CODEMEM_RAW_EVENTS_AUTO_FLUSH = "1";
 		process.env.CODEMEM_RAW_EVENTS_DEBOUNCE_MS = "0";
 		seedSession("sess-rerun");
 		let firstCall = true;
 		const sweeper = new RawEventSweeper(store, {
-			configurationFingerprint,
-			providerFingerprint,
+			...frozenProviderOpts,
 			observer: {
 				observe: async () => {
 					if (firstCall) {
@@ -282,7 +386,7 @@ describe("RawEventSweeper auto flush", () => {
 						await sleep(60);
 					}
 					return {
-						raw: `<summary><request>rerun</request><completed>done</completed></summary>`,
+						raw: `<summary><request>rerun</request><completed>done</completed><citations><cite source="0"/></citations></summary>`,
 						parsed: null,
 						provider: "test",
 						model: "test",
@@ -401,8 +505,7 @@ describe("RawEventSweeper auto flush", () => {
 		seedSession("sess-low-signal");
 
 		const sweeper = new RawEventSweeper(store, {
-			configurationFingerprint,
-			providerFingerprint,
+			...frozenProviderOpts,
 			observer: {
 				observe: async () => ({
 					raw: '<skip_summary reason="low-signal"/>',
@@ -432,8 +535,7 @@ describe("RawEventSweeper auto flush", () => {
 		seedSession("sess-failed-diagnostics");
 
 		const sweeper = new RawEventSweeper(store, {
-			configurationFingerprint,
-			providerFingerprint,
+			...frozenProviderOpts,
 			observer: {
 				observe: async () => ({
 					raw: null,
@@ -463,10 +565,10 @@ describe("RawEventSweeper auto flush", () => {
 			observer_provider: "openai",
 			observer_model: "gpt-5.4-mini",
 			observer_runtime: "api_http",
-			observer_auth_source: "env",
-			observer_auth_type: "api_direct",
+			observer_auth_source: null,
+			observer_auth_type: null,
 			observer_error_code: "empty_response",
-			observer_error_message: "OpenAI returned 200 but response contained no extractable text.",
+			observer_error_message: null,
 			error_message: "OpenAI returned no usable output for raw-event processing.",
 		});
 	});
@@ -478,8 +580,7 @@ describe("RawEventSweeper auto flush", () => {
 
 		let observerCalls = 0;
 		const sweeper = new RawEventSweeper(store, {
-			configurationFingerprint,
-			providerFingerprint,
+			...frozenProviderOpts,
 			observer: {
 				observe: async () => {
 					observerCalls += 1;
@@ -673,13 +774,12 @@ describe("RawEventSweeper auto flush", () => {
 
 		let observerCalls = 0;
 		const sweeper = new RawEventSweeper(store, {
-			configurationFingerprint,
-			providerFingerprint,
+			...frozenProviderOpts,
 			observer: {
 				observe: async () => {
 					observerCalls += 1;
 					return {
-						raw: `<summary><request>Investigate a real issue</request><completed>Captured adapter wrapped session.</completed></summary>`,
+						raw: `<summary><request>Investigate a real issue</request><completed>Captured adapter wrapped session.</completed><citations><cite source="0"/></citations></summary>`,
 						parsed: null,
 						provider: "test",
 						model: "test",

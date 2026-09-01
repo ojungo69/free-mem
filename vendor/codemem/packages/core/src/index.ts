@@ -110,35 +110,6 @@ export {
 	hasPendingDedupKeyBackfill,
 	runDedupKeyBackfillPass,
 } from "./dedup-key-backfill.js";
-export type {
-	DistillApplyResult,
-	DistillDraftPrompt,
-	DistillDraftResult,
-	DistillRuleDrafter,
-} from "./distill-draft.js";
-export {
-	applyDistillRule,
-	buildDistillDraftPrompt,
-	DISTILL_BLOCK_BEGIN,
-	DISTILL_BLOCK_END,
-	DISTILL_LESSONS_HEADING,
-	draftDistillRule,
-	renderUnifiedDiff,
-	sanitizeRuleLine,
-} from "./distill-draft.js";
-export type {
-	DistillCandidateJudgement,
-	DistillJudgePrompt,
-	DistillJudgeVerdict,
-	JudgedDistillCandidate,
-} from "./distill-judge.js";
-export {
-	buildDistillJudgePrompt,
-	judgeDistillCandidate,
-	judgeDistillCandidates,
-	judgeDistillReport,
-	parseJudgeVerdict,
-} from "./distill-judge.js";
 export type { EmbeddingClient } from "./embeddings.js";
 export {
 	_resetEmbeddingClient,
@@ -404,15 +375,6 @@ export {
 export * from "./operational-status.js";
 export * from "./outcome-evidence.js";
 export type { PackArtifacts } from "./pack.js";
-export {
-	buildMemoryPack,
-	buildMemoryPackAsync,
-	buildMemoryPackTrace,
-	buildMemoryPackTraceAsync,
-	buildMemoryPackWithTrace,
-	buildMemoryPackWithTraceAsync,
-	estimateTokens,
-} from "./pack.js";
 export {
 	projectBasename,
 	projectClause,

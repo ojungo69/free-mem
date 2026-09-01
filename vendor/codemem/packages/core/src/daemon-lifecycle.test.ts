@@ -19,6 +19,7 @@ import { afterEach, describe, expect, it, vi } from "vitest";
 import { DaemonJobService } from "./daemon-jobs.js";
 import { probeDaemonWriterAvailable } from "./daemon-lifecycle.js";
 import * as core from "./index.js";
+import { RawEventSweeper } from "./raw-event-sweeper.js";
 import {
 	acquireCapabilityLifecycleLock,
 	activateCapabilityManifest,
@@ -72,6 +73,19 @@ function localManifest(modelId = "t008-local-model") {
 		endpointUrl: "http://127.0.0.1:1234/v1/chat/completions",
 		credentialRef: { kind: "none" },
 	});
+}
+
+function handshake(overrides: Partial<core.RpcRequest> = {}): core.RpcRequest {
+	return {
+		id: "t040-lifecycle",
+		method: "GET /v1/health",
+		adapter_version: "1",
+		native_cli_version: "1",
+		normalized_schema_version: core.NORMALIZED_SCHEMA_VERSION,
+		local_api_version: core.LOCAL_API_VERSION,
+		capability_hash: core.RPC_CAPABILITY_HASH,
+		...overrides,
+	};
 }
 
 function publishActivationReceipt(
@@ -444,7 +458,11 @@ describe("T008 capability startup boundary", () => {
 		try {
 			const handle = await core.startDaemon({ dataDir });
 			running.push(handle);
-			expect(handle.capability).toMatchObject({ activationReceipt: "rejected" });
+			expect(handle.capability).toMatchObject({
+				activationReceipt: "rejected",
+				providerEnabled: false,
+				sweeperEnabled: false,
+			});
 			expect(log).toHaveBeenCalledWith("[codemem] capability activation receipt was rejected.");
 		} finally {
 			log.mockRestore();
@@ -478,9 +496,10 @@ describe("T008 capability startup boundary", () => {
 		expect(first.capability).toMatchObject({
 			activationReceipt: "validated",
 			schemaReadiness: "ready",
-			runtimeReason: "pending_privacy_boundary",
-			providerEnabled: false,
-			sweeperEnabled: false,
+			runtimeReason: "ready",
+			packReadiness: "ready",
+			providerEnabled: true,
+			sweeperEnabled: true,
 		});
 		await first.stop();
 		running.pop();
@@ -492,12 +511,97 @@ describe("T008 capability startup boundary", () => {
 		expect(replay.capability).toMatchObject({
 			activationReceipt: "validated",
 			schemaReadiness: "ready",
-			providerEnabled: false,
-			sweeperEnabled: false,
+			runtimeReason: "ready",
+			providerEnabled: true,
+			sweeperEnabled: true,
 		});
 		await replay.stop();
 		running.pop();
 		expect(resumeProducerCount(layout)).toBe(1);
+	});
+
+	it("activates the frozen Observer, AI maintenance gate, and sweeper after validation", async () => {
+		const dataDir = join(tempDir("codemem-daemon-privacy-ready-"), "data");
+		const layout = core.resolveStorageLayout(dataDir);
+		const manifest = localManifest("t040-ready-model");
+		core.ensureStorageLayout(layout);
+		writeCapabilityManifestGeneration(layout, manifest);
+		const lifecycle = acquireCapabilityLifecycleLock(layout, 0);
+		try {
+			activateCapabilityManifest(layout, manifest.configurationFingerprint, lifecycle);
+		} finally {
+			lifecycle.close();
+		}
+		publishActivationReceipt(layout, manifest, 2);
+
+		const handle = await core.startDaemon({ dataDir });
+		running.push(handle);
+		expect(handle.capability).toMatchObject({
+			configurationFingerprint: manifest.configurationFingerprint,
+			runtimeReason: "ready",
+			providerHealth: "available",
+			providerEnabled: true,
+			sweeperEnabled: true,
+		});
+		const observer = await core.callDaemonRpc(
+			handle.socketPath,
+			handshake({
+				id: "t040-observer-status",
+				method: "GET /v1/view",
+				body: { collection: "observer-status" },
+			}),
+		);
+		expect(observer).toMatchObject({
+			result: {
+				status: 200,
+				body: { active: { provider: "openai", model: "t040-ready-model" } },
+			},
+		});
+		const structured = await core.callDaemonRpc(
+			handle.socketPath,
+			handshake({
+				id: "t040-structured-maintenance",
+				method: "POST /v1/jobs",
+				body: { kind: "structured.backfill", args: { limit: 1 } },
+			}),
+		);
+		expect(structured).toMatchObject({ result: { state: "queued" } });
+	});
+
+	it("starts and stops exactly one manifest sweeper across an explicit restart", async () => {
+		const dataDir = join(tempDir("codemem-daemon-sweeper-restart-"), "data");
+		const layout = core.resolveStorageLayout(dataDir);
+		const manifest = localManifest("t040-restart-model");
+		core.ensureStorageLayout(layout);
+		writeCapabilityManifestGeneration(layout, manifest);
+		const lifecycle = acquireCapabilityLifecycleLock(layout, 0);
+		try {
+			activateCapabilityManifest(layout, manifest.configurationFingerprint, lifecycle);
+		} finally {
+			lifecycle.close();
+		}
+		publishActivationReceipt(layout, manifest, 2);
+		const start = vi.spyOn(RawEventSweeper.prototype, "start");
+		const stop = vi.spyOn(RawEventSweeper.prototype, "stop");
+
+		try {
+			const first = await core.startDaemon({ dataDir });
+			running.push(first);
+			expect(start).toHaveBeenCalledTimes(1);
+			await first.stop();
+			running.pop();
+			expect(stop).toHaveBeenCalledTimes(1);
+
+			const restarted = await core.startDaemon({ dataDir });
+			running.push(restarted);
+			expect(start).toHaveBeenCalledTimes(2);
+			await restarted.stop();
+			running.pop();
+			expect(stop).toHaveBeenCalledTimes(2);
+		} finally {
+			start.mockRestore();
+			stop.mockRestore();
+		}
 	});
 
 	it("releases the spool lock before daemon TLS preflight finishes", async () => {

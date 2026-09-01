@@ -7,6 +7,25 @@ import {
 } from "./memory.js";
 
 describe("memory command aliases", () => {
+	it("T031 does not expose a local-trust authority on read commands", () => {
+		const readCommands = [
+			showMemoryCommand,
+			memoryCommand.commands.find((command) => command.name() === "inject"),
+		];
+		for (const command of readCommands) {
+			if (!command) throw new Error("memory read command missing");
+			expect(command.options.map((option) => option.long)).not.toEqual(
+				expect.arrayContaining([
+					"--execution-location",
+					"--local-trust",
+					"--model-local",
+					"--provider-peer-trust",
+					"--repository-identity",
+				]),
+			);
+		}
+	});
+
 	it("keeps memory subcommands available under the memory group", () => {
 		expect(memoryCommand.commands.map((command) => command.name())).toEqual([
 			"show",

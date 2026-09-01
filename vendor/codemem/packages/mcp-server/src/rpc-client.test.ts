@@ -19,8 +19,8 @@ import {
 	startDaemon,
 } from "@codemem/core";
 import { afterEach, describe, expect, it, vi } from "vitest";
+import { openTestMemoryStore } from "../../core/src/test-utils.js";
 import { ReadOnlyActor } from "../../core/src/writer-actor.js";
-import { rpcContent } from "./content.js";
 import { createMcpRpcClient, mcpRequestId } from "./rpc-client.js";
 
 const projectConfigRace = vi.hoisted(() => ({
@@ -104,6 +104,163 @@ function rememberBody(requestId: string) {
 }
 
 describe("MCP daemon RPC client", () => {
+	it("T031 keeps every MCP read surface remote even from a same-repository cwd", async () => {
+		const fixture = projectFixture();
+		let daemon = await startDaemon({ dataDir: fixture.dataDir });
+		try {
+			await daemon.stop();
+			const store = openTestMemoryStore(realpathSync(daemon.layout.currentPointerPath));
+			const repositoryIdentity = `repo-v1:sha256:${"a".repeat(64)}`;
+			const project = "forged-local-project";
+			let eligibleId: number;
+			let privateId: number;
+			try {
+				const sessionId = store.startSession({ cwd: fixture.root, project });
+				eligibleId = store.remember(
+					sessionId,
+					"discovery",
+					"MCP_BOUNDARY_ELIGIBLE",
+					"mcpboundary eligible body",
+				);
+				privateId = store.remember(
+					sessionId,
+					"discovery",
+					"MCP_BOUNDARY_PRIVATE",
+					"mcpboundary restricted body",
+				);
+				store.db
+					.prepare("UPDATE memory_items SET sensitivity = ?, repository_identity = ? WHERE id = ?")
+					.run("eligible", repositoryIdentity, eligibleId);
+				store.db
+					.prepare("UPDATE memory_items SET sensitivity = ?, repository_identity = ? WHERE id = ?")
+					.run("private", repositoryIdentity, privateId);
+			} finally {
+				store.close();
+			}
+
+			daemon = await startDaemon({ dataDir: fixture.dataDir });
+			const client = createMcpRpcClient({ dataDir: fixture.dataDir, cwd: () => fixture.root });
+			const forgedAuthority = {
+				project,
+				cwd: fixture.root,
+				targetModel: "local-model",
+				executionLocation: "local",
+				repositoryIdentity,
+				providerPeerTrust: "verified",
+			};
+			const reads = [
+				[
+					"get-private",
+					() =>
+						client.request("GET /v1/memories/:id", {
+							id: privateId,
+							requestId: "t031-get",
+							...forgedAuthority,
+						}),
+					false,
+				],
+				[
+					"get-eligible",
+					() =>
+						client.request("GET /v1/memories/:id", {
+							id: eligibleId,
+							requestId: "t031-get-eligible",
+							...forgedAuthority,
+						}),
+					true,
+				],
+				[
+					"search",
+					() =>
+						client.request("POST /v1/search", {
+							requestId: "t031-search",
+							mode: "search",
+							query: "mcpboundary",
+							filters: { project },
+							...forgedAuthority,
+						}),
+					true,
+				],
+				[
+					"index",
+					() =>
+						client.request("POST /v1/search", {
+							requestId: "t031-index",
+							mode: "search_index",
+							query: "mcpboundary",
+							filters: { project },
+							...forgedAuthority,
+						}),
+					true,
+				],
+				[
+					"recent",
+					() =>
+						client.request("POST /v1/search", {
+							requestId: "t031-recent",
+							mode: "recent",
+							filters: { project },
+							...forgedAuthority,
+						}),
+					true,
+				],
+				[
+					"timeline",
+					() =>
+						client.request("POST /v1/search", {
+							requestId: "t031-timeline",
+							mode: "timeline",
+							memoryId: eligibleId,
+							depthBefore: 10,
+							depthAfter: 10,
+							filters: { project },
+							...forgedAuthority,
+						}),
+					true,
+				],
+				[
+					"explain",
+					() =>
+						client.request("POST /v1/search", {
+							requestId: "t031-explain",
+							mode: "explain",
+							ids: [eligibleId, privateId],
+							filters: { project },
+							...forgedAuthority,
+						}),
+					true,
+				],
+				[
+					"pack",
+					() =>
+						client.request("POST /v1/context/pack", {
+							requestId: "t031-pack",
+							context: "mcpboundary",
+							filters: { project },
+							...forgedAuthority,
+						}),
+					true,
+				],
+			] as const;
+			const leaks: string[] = [];
+			const missingEligible: string[] = [];
+			for (const [surface, read, expectsEligible] of reads) {
+				const response = await read();
+				expect(response.ok, surface).toBe(true);
+				const serialized = JSON.stringify(response);
+				if (serialized.includes("MCP_BOUNDARY_PRIVATE")) leaks.push(surface);
+				if (expectsEligible && !serialized.includes("MCP_BOUNDARY_ELIGIBLE")) {
+					missingEligible.push(surface);
+				}
+			}
+			expect(leaks).toEqual([]);
+			expect(missingEligible).toEqual([]);
+		} finally {
+			await daemon.stop().catch(() => {});
+			rmSync(fixture.root, { recursive: true, force: true });
+		}
+	});
+
 	it("returns a typed error instead of opening a local database when the daemon is down", async () => {
 		const fixture = projectFixture();
 		try {
@@ -137,11 +294,10 @@ describe("MCP daemon RPC client", () => {
 				requestId: retrievalRequestId,
 			});
 			expect(JSON.stringify(fetched)).not.toContain("TOKEN_SUPERSECRET");
-			expect(fetched).toMatchObject({ ok: true, finalizeDelivery: expect.any(Function) });
+			expect(fetched).toMatchObject({ ok: true, result: { item: null } });
 			if (!fetched.ok) throw new Error("memory get failed");
 			expect(fetched.result).not.toHaveProperty("retrievalAttemptId");
-			await fetched.finalizeDelivery?.("handed_off");
-			expect(rpcContent(fetched)).toMatchObject({ content: [{ type: "text" }] });
+			expect(fetched.finalizeDelivery).toBeUndefined();
 			const deliveryReader = ReadOnlyActor.open(realpathSync(daemon.layout.currentPointerPath));
 			try {
 				expect(
@@ -149,7 +305,7 @@ describe("MCP daemon RPC client", () => {
 						.prepare("SELECT delivery_status FROM retrieval_attempts WHERE request_id = ?")
 						.pluck()
 						.get(retrievalRequestId),
-				).toBe("handed_off");
+				).toBe("not_attempted");
 			} finally {
 				deliveryReader.close();
 			}

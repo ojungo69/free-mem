@@ -163,15 +163,21 @@ allowed regardless of length. Adapter errors, unknown events, and substantive pr
 classified by this shortcut; they remain retryable until a later boundary handles or explicitly
 rejects them.
 
-**Memory completion** validates the live claim, exact projected source set/citations, output count,
-repository identity, sensitivity, lineage, dedup/supersession, and attempt provenance. One database
-transaction commits every memory/reference/index source record and completes the job. It advances
+**Memory completion** validates the live claim and its Store-private `ProjectedSourceSetV1`
+association, host-resolved ordinal citations, normalized Product Reset
+`{eventId,startByte,endByte}` anchors into canonical `redactedPayload`, output count, repository identity,
+sensitivity, lineage, dedup/supersession, and attempt provenance. Provider text never supplies an
+authoritative raw-event ID or repository. Completion re-loads the raw rows and re-evaluates the
+compiled destination boundary before one database transaction commits every memory/reference/index
+source record and completes the job. It advances
 the contiguous event frontier exactly once only when `frontier_already_advanced=false`; a recovered
 legacy `gave_up` range leaves it unchanged. Crash or validation failure commits none.
 For durable flush claims, session-end metadata is part of this same transaction; a failed attempt
 never runs the legacy transaction-external session cleanup.
-Derived dedup is valid only for an exact source/stream/ordered-citation identity returned by the
-Store-owned derivation context; a caller-supplied unbound dedup completion is rejected atomically.
+Derived dedup is valid only for an exact repository/normalized-span identity returned by the
+Store-owned derivation context; a caller-supplied projection or unbound dedup completion is rejected
+atomically. A crashed process loses the private projection association, so its provider response
+cannot commit and the recovered job must obtain a new claim.
 
 **Privacy skip** validates the live claim and exact all-ineligible projection. One database
 transaction stores a content-free diagnostic and completes the job. It advances the frontier exactly

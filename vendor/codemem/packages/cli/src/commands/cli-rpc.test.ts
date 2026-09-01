@@ -58,6 +58,50 @@ function fixture(prefix: string): { root: string; dataDir: string } {
 }
 
 describe("Phase 1 CLI RPC cutover", () => {
+	it("T031 exposes project filters but no caller-controlled trust authority", () => {
+		const authorityFlags = new Set([
+			"--execution-location",
+			"--local-trust",
+			"--model-local",
+			"--provider-peer-trust",
+			"--repository-identity",
+		]);
+		for (const command of [
+			searchCommand,
+			recentCommand,
+			packCommand,
+			...packCommand.commands,
+			showMemoryCommand,
+			memoryCommand.commands.find((candidate) => candidate.name() === "inject"),
+		]) {
+			if (!command) throw new Error("expected CLI read command");
+			const flags = command.options.map((option) => option.long);
+			expect(
+				flags.some((flag) => typeof flag === "string" && authorityFlags.has(flag)),
+				command.name(),
+			).toBe(false);
+		}
+		expect(searchCommand.options.map((option) => option.long)).toContain("--project");
+		expect(recentCommand.options.map((option) => option.long)).toContain("--project");
+		expect(packCommand.options.map((option) => option.long)).toContain("--project");
+	});
+
+	it("T032 keeps export destination authority internal", () => {
+		const flags = exportMemoriesCommand.options.map((option) => option.long);
+		expect(flags).toEqual(expect.arrayContaining(["--project", "--all-projects"]));
+		for (const forbidden of [
+			"--execution-location",
+			"--local-trust",
+			"--provider-peer-trust",
+			"--repository-identity",
+		]) {
+			expect(flags).not.toContain(forbidden);
+		}
+		expect(importMemoriesCommand.options.map((option) => option.long)).not.toContain(
+			"--repository-identity",
+		);
+	});
+
 	it("P1-T044-01-cli-rpc-map", async () => {
 		const { root, dataDir } = fixture("codemem-cli-rpc-map-");
 		process.env.CODEMEM_DATA_DIR = dataDir;
@@ -128,9 +172,15 @@ describe("Phase 1 CLI RPC cutover", () => {
 			expect(JSON.parse(output.at(-1) ?? "{}")).toMatchObject({ backupId, valid: true });
 
 			await exportMemoriesCommand.parseAsync([exportPath, "--all-projects"], { from: "user" });
-			expect(JSON.parse(readFileSync(exportPath, "utf8"))).toMatchObject({
+			const exported = JSON.parse(readFileSync(exportPath, "utf8")) as Record<string, unknown>;
+			expect(exported).toMatchObject({
+				version: "2.0",
 				memory_items: [expect.objectContaining({ id, title: "Use daemon RPC" })],
 			});
+			const exportedSession = (exported.sessions as Array<Record<string, unknown>>)[0];
+			for (const forbidden of ["cwd", "git_remote", "git_branch", "user", "metadata_json"]) {
+				expect(exportedSession).not.toHaveProperty(forbidden);
+			}
 			await exportMemoriesCommand.parseAsync(
 				[
 					filteredExportPath,

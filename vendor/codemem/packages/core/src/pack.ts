@@ -14,7 +14,8 @@
  * tracking, discovery-token work estimation.
  */
 
-import { type Database, fromJson } from "./db.js";
+import { type Database, fromJson, isEmbeddingDisabled } from "./db.js";
+import type { DestinationBoundaryV1 } from "./destination-boundary.js";
 import { buildFilterClausesWithContext } from "./filters.js";
 import { inferMemoryRole, readArtifactClass } from "./memory-quality.js";
 import { projectBasename } from "./project.js";
@@ -23,7 +24,14 @@ import { memoryLooksRecapLike, queryPrefersRecap } from "./recap-policy.js";
 import { findByFile } from "./ref-queries.js";
 import { MAX_RETRIEVAL_DIAGNOSTIC_EXPOSURES } from "./retrieval-ledger.js";
 import type { StoreHandle } from "./search.js";
-import { ownershipFilterContext, rerankResults, scoreResult, search, timeline } from "./search.js";
+import {
+	countIneligibleSearchCandidates,
+	ownershipFilterContext,
+	rerankResults,
+	scoreResult,
+	search,
+	timeline,
+} from "./search.js";
 import {
 	canonicalMemoryKind,
 	getSummaryMetadata,
@@ -35,6 +43,7 @@ import type {
 	MemoryItemResponse,
 	MemoryResult,
 	PackItem,
+	PackOmissionAggregate,
 	PackRenderOptions,
 	PackResponse,
 	PackTrace,
@@ -42,6 +51,7 @@ import type {
 	PackTraceDisposition,
 	PackTraceMode,
 	PackTraceSection,
+	SensitivityV1,
 	TimelineItemResponse,
 } from "./types.js";
 import { semanticSearch } from "./vectors.js";
@@ -74,6 +84,19 @@ const MAX_PACK_BASELINE_SCAN_ROWS = 250;
 const MAX_SEMANTIC_REVALIDATION_IDS = 200;
 const TRACE_CANDIDATE_LIMIT = Math.min(20, MAX_RETRIEVAL_DIAGNOSTIC_EXPOSURES);
 const TRACE_PREVIEW_LIMIT = 160;
+
+function emptyOmissionCounts(): Record<SensitivityV1, number> {
+	return { eligible: 0, local_only: 0, private: 0, secret: 0 };
+}
+
+function addOmissionCounts(
+	target: Record<SensitivityV1, number>,
+	source: Record<SensitivityV1, number>,
+): void {
+	for (const sensitivity of ["eligible", "local_only", "private", "secret"] as const) {
+		target[sensitivity] += source[sensitivity];
+	}
+}
 
 // ---------------------------------------------------------------------------
 // Helpers
@@ -892,20 +915,24 @@ function prioritizeRecallResults(
 function taskFallbackRecent(
 	store: StoreHandle,
 	limit: number,
-	filters?: MemoryFilters,
+	filters: MemoryFilters | undefined,
+	destinationBoundary?: DestinationBoundaryV1,
 ): MemoryResult[] {
 	const expandedLimit = Math.max(limit * 3, limit);
-	const recentRows = store.recent(expandedLimit, filters ?? null);
+	const recentRows = store.recent(expandedLimit, filters ?? null, 0, destinationBoundary);
 	return prioritizeTaskResults(recentRows.map(toMemoryResult), limit);
 }
 
 function recallFallbackRecent(
 	store: StoreHandle,
 	limit: number,
-	filters?: MemoryFilters,
+	filters: MemoryFilters | undefined,
+	destinationBoundary?: DestinationBoundaryV1,
 ): MemoryResult[] {
 	const expandedLimit = Math.max(limit * 4, limit);
-	const recentAll = store.recent(expandedLimit, filters ?? null).map(toMemoryResult);
+	const recentAll = store
+		.recent(expandedLimit, filters ?? null, 0, destinationBoundary)
+		.map(toMemoryResult);
 	const summaries = recentAll.filter(isSummaryLike).slice(0, limit);
 	if (summaries.length >= limit) return summaries.slice(0, limit);
 
@@ -951,9 +978,13 @@ function validatePackDeltaBaselineIds(
 	store: StoreHandle,
 	ids: number[],
 	filters: MemoryFilters | null,
+	destinationBoundary?: DestinationBoundaryV1,
 ): number[] | null {
 	if (ids.length === 0) return null;
-	const filterResult = buildFilterClausesWithContext(filters, ownershipFilterContext(store));
+	const filterResult = buildFilterClausesWithContext(
+		filters,
+		ownershipFilterContext(store, destinationBoundary),
+	);
 	const placeholders = ids.map(() => "?").join(", ");
 	const joinClause = filterResult.joinSessions
 		? "JOIN sessions ON sessions.id = memory_items.session_id"
@@ -980,10 +1011,14 @@ function isSummaryLike(item: Pick<MemoryResult, "kind" | "metadata">): boolean {
 	return isSummaryLikeMemory(item);
 }
 
-function findLatestSummaryLike(store: StoreHandle, filters?: MemoryFilters): MemoryResult | null {
+function findLatestSummaryLike(
+	store: StoreHandle,
+	filters: MemoryFilters | undefined,
+	destinationBoundary?: DestinationBoundaryV1,
+): MemoryResult | null {
 	const filterResult = buildFilterClausesWithContext(
 		filters ?? null,
-		ownershipFilterContext(store),
+		ownershipFilterContext(store, destinationBoundary),
 	);
 	const whereParts = [
 		"memory_items.active = 1",
@@ -1009,6 +1044,7 @@ function findLatestSummaryLike(store: StoreHandle, filters?: MemoryFilters): Mem
 function getPackDeltaBaseline(
 	store: StoreHandle,
 	filters: MemoryFilters | null,
+	destinationBoundary?: DestinationBoundaryV1,
 ): { previousPackIds: number[] | null; previousPackTokens: number | null } {
 	const project = filters?.project ?? null;
 	const projectBase = project ? projectBasename(project) : null;
@@ -1049,7 +1085,7 @@ function getPackDeltaBaseline(
 
 			const { ids, valid } = coercePackItemIds(metadata.pack_item_ids);
 			if (!valid) continue;
-			const scopedIds = validatePackDeltaBaselineIds(store, ids, filters);
+			const scopedIds = validatePackDeltaBaselineIds(store, ids, filters, destinationBoundary);
 			if (scopedIds == null) continue;
 
 			const previousTokens =
@@ -1154,20 +1190,28 @@ function mergeResults(
 	semanticResults: MemoryResult[],
 	limit: number,
 	query: string,
-	filters?: MemoryFilters,
+	filters: MemoryFilters | undefined,
+	destinationBoundary?: DestinationBoundaryV1,
 ): {
 	merged: MemoryResult[];
 	candidates: MemoryResult[];
 	semanticCandidates: MemoryResult[];
 	ftsCount: number;
 	semanticCount: number;
+	omittedBySensitivity: Record<SensitivityV1, number>;
 } {
 	const seen = new Map<number, MemoryResult>();
 	for (const r of ftsResults) {
 		const existing = seen.get(r.id);
 		if (!existing || r.score > existing.score) seen.set(r.id, r);
 	}
-	const scopedSemanticResults = rehydrateScopedCandidateResults(store, semanticResults, filters);
+	const scopedSemantic = rehydrateScopedCandidateResults(
+		store,
+		semanticResults,
+		filters,
+		destinationBoundary,
+	);
+	const scopedSemanticResults = scopedSemantic.results;
 	let semanticCount = 0;
 	for (const r of scopedSemanticResults) {
 		if (!seen.has(r.id)) semanticCount++;
@@ -1182,34 +1226,75 @@ function mergeResults(
 		semanticCandidates: scopedSemanticResults,
 		ftsCount: ftsResults.length,
 		semanticCount,
+		omittedBySensitivity: scopedSemantic.omittedBySensitivity,
 	};
 }
 
 function rehydrateScopedCandidateResults(
 	store: StoreHandle,
 	candidates: MemoryResult[],
-	filters?: MemoryFilters,
-): MemoryResult[] {
-	if (candidates.length === 0) return [];
+	filters: MemoryFilters | undefined,
+	destinationBoundary?: DestinationBoundaryV1,
+): {
+	results: MemoryResult[];
+	omittedBySensitivity: Record<SensitivityV1, number>;
+} {
+	const omittedBySensitivity = emptyOmissionCounts();
+	if (candidates.length === 0) return { results: [], omittedBySensitivity };
 	const originalById = new Map<number, MemoryResult>();
 	for (const item of candidates) {
 		if (!Number.isSafeInteger(item.id) || item.id <= 0) continue;
 		if (!originalById.has(item.id)) originalById.set(item.id, item);
 	}
 	const ids = [...originalById.keys()];
-	if (ids.length === 0) return [];
+	if (ids.length === 0) return { results: [], omittedBySensitivity };
 
 	const filterResult = buildFilterClausesWithContext(
+		filters ?? null,
+		ownershipFilterContext(store, destinationBoundary),
+	);
+	const diagnosticFilterResult = buildFilterClausesWithContext(
 		filters ?? null,
 		ownershipFilterContext(store),
 	);
 	const joinClause = filterResult.joinSessions
 		? "JOIN sessions ON sessions.id = memory_items.session_id"
 		: "";
+	const diagnosticJoinClause = diagnosticFilterResult.joinSessions
+		? "JOIN sessions ON sessions.id = memory_items.session_id"
+		: "";
 	const scopedById = new Map<number, MemoryResult>();
+	const sensitivityById = new Map<number, SensitivityV1>();
 	for (let offset = 0; offset < ids.length; offset += MAX_SEMANTIC_REVALIDATION_IDS) {
 		const chunkIds = ids.slice(offset, offset + MAX_SEMANTIC_REVALIDATION_IDS);
 		const placeholders = chunkIds.map(() => "?").join(", ");
+		const diagnosticWhereClause = [
+			"memory_items.active = 1",
+			`memory_items.id IN (${placeholders})`,
+			...diagnosticFilterResult.clauses,
+		].join(" AND ");
+		const diagnosticRows = store.db
+			.prepare(
+				`SELECT memory_items.id, memory_items.sensitivity
+				 FROM memory_items
+				 ${diagnosticJoinClause}
+				 WHERE ${diagnosticWhereClause}`,
+			)
+			.all(...chunkIds, ...diagnosticFilterResult.params) as Array<{
+			id: number;
+			sensitivity: unknown;
+		}>;
+		for (const row of diagnosticRows) {
+			if (
+				row.sensitivity === "eligible" ||
+				row.sensitivity === "local_only" ||
+				row.sensitivity === "private" ||
+				row.sensitivity === "secret"
+			) {
+				sensitivityById.set(row.id, row.sensitivity);
+			}
+		}
+
 		const chunkWhereClause = [
 			"memory_items.active = 1",
 			`memory_items.id IN (${placeholders})`,
@@ -1247,7 +1332,13 @@ function rehydrateScopedCandidateResults(
 		}
 	}
 
-	return ids.map((id) => scopedById.get(id)).filter((item): item is MemoryResult => !!item);
+	for (const [id, sensitivity] of sensitivityById) {
+		if (!scopedById.has(id)) omittedBySensitivity[sensitivity] += 1;
+	}
+	return {
+		results: ids.map((id) => scopedById.get(id)).filter((item): item is MemoryResult => !!item),
+		omittedBySensitivity,
+	};
 }
 
 /**
@@ -1260,6 +1351,7 @@ function mergeFileRefCandidates(
 	results: MemoryResult[],
 	filters: MemoryFilters | undefined,
 	effectiveLimit: number,
+	destinationBoundary?: DestinationBoundaryV1,
 ): MemoryResult[] {
 	const workingSetPaths = filters?.working_set_paths;
 	if (!workingSetPaths || !Array.isArray(workingSetPaths) || workingSetPaths.length === 0) {
@@ -1271,11 +1363,16 @@ function mergeFileRefCandidates(
 	if (validPaths.length === 0) return results;
 	const existingIds = new Set(results.map((r) => r.id));
 	const refCandidateIds = validPaths.flatMap((path) =>
-		findByFile(store.db, path, {
-			limit: effectiveLimit,
-			project: filters?.project,
-			relation: "modified",
-		}).map((row) => row.id),
+		findByFile(
+			store.db,
+			path,
+			{
+				limit: effectiveLimit,
+				project: filters?.project,
+				relation: "modified",
+			},
+			destinationBoundary,
+		).map((row) => row.id),
 	);
 	const newIds = refCandidateIds.filter((id) => !existingIds.has(id));
 	if (newIds.length === 0) return results;
@@ -1297,7 +1394,8 @@ function mergeFileRefCandidates(
 			facts: null,
 		})),
 		filters,
-	);
+		destinationBoundary,
+	).results;
 	return [...results, ...refMemories];
 }
 
@@ -1306,8 +1404,8 @@ function buildPackArtifacts(
 	context: string,
 	limit = 10,
 	tokenBudget: number | null = null,
-	filters?: MemoryFilters,
-	semanticResults?: MemoryResult[],
+	filters: MemoryFilters | undefined,
+	semanticResults: MemoryResult[] | undefined,
 	options: {
 		recordUsage: boolean;
 		compact?: boolean;
@@ -1316,6 +1414,7 @@ function buildPackArtifacts(
 	} = {
 		recordUsage: true,
 	},
+	destinationBoundary?: DestinationBoundaryV1,
 ): PackArtifacts {
 	const effectiveLimit = Math.max(1, Math.trunc(limit));
 	const sanitized = sanitizeSearchQuery(context);
@@ -1323,6 +1422,18 @@ function buildPackArtifacts(
 	let fallbackUsed = false;
 	let ftsCount = 0;
 	let semanticCount = 0;
+	const omittedBySensitivity = emptyOmissionCounts();
+	const omittedBySource: Record<string, number> = {};
+	const recordOmissions = (source: string, counts: Record<SensitivityV1, number>): void => {
+		const count = Object.values(counts).reduce((total, value) => total + value, 0);
+		if (count === 0) return;
+		addOmissionCounts(omittedBySensitivity, counts);
+		omittedBySource[source] = (omittedBySource[source] ?? 0) + count;
+	};
+	const ftsOmission = destinationBoundary
+		? countIneligibleSearchCandidates(store, retrievalContext, filters, destinationBoundary)
+		: null;
+	if (ftsOmission) recordOmissions("fts", ftsOmission.by_sensitivity);
 	const candidatePool: Array<{ item: MemoryResult; query: string }> = [];
 	const candidateIds = new Set<number>();
 	const captureTraceCandidates = (
@@ -1347,7 +1458,7 @@ function buildPackArtifacts(
 	if (taskMode) {
 		const taskQuery = `${retrievalContext} ${TASK_HINT_QUERY}`.trim();
 		retrievalQuery = taskQuery;
-		let taskResults = search(store, taskQuery, effectiveLimit, filters);
+		let taskResults = search(store, taskQuery, effectiveLimit, filters, destinationBoundary);
 		ftsCount = taskResults.length;
 		if (semanticResults && semanticResults.length > 0) {
 			captureTraceCandidates(taskQuery, taskResults);
@@ -1358,16 +1469,24 @@ function buildPackArtifacts(
 				effectiveLimit,
 				taskQuery,
 				filters,
+				destinationBoundary,
 			);
 			taskResults = merge.merged;
 			semanticCount = merge.semanticCount;
+			recordOmissions("semantic", merge.omittedBySensitivity);
 			captureTraceCandidates(retrievalContext, merge.semanticCandidates);
 		}
-		taskResults = mergeFileRefCandidates(store, taskResults, filters, effectiveLimit);
+		taskResults = mergeFileRefCandidates(
+			store,
+			taskResults,
+			filters,
+			effectiveLimit,
+			destinationBoundary,
+		);
 		captureTraceCandidates(taskQuery, taskResults);
 		if (taskResults.length === 0) {
 			fallbackUsed = true;
-			results = taskFallbackRecent(store, effectiveLimit, filters);
+			results = taskFallbackRecent(store, effectiveLimit, filters, destinationBoundary);
 			captureTraceCandidates(taskQuery, results);
 		} else {
 			const actionableTaskResults = taskResults.filter((item) => !isSummaryLike(item));
@@ -1391,7 +1510,7 @@ function buildPackArtifacts(
 		const preferSummary = queryPrefersRecap(recallQuery);
 		const wantsTimeline = recallQueryWantsTimeline(recallQuery);
 		const topicalRecallQuery = [...queryContentTokens(recallQuery)].join(" ");
-		let recallResults = search(store, recallQuery, effectiveLimit, filters);
+		let recallResults = search(store, recallQuery, effectiveLimit, filters, destinationBoundary);
 		ftsCount = recallResults.length;
 		captureTraceCandidates(recallQuery, recallResults);
 		if (!preferSummary && topicalRecallQuery) {
@@ -1401,7 +1520,13 @@ function buildPackArtifacts(
 					(item) => isSummaryLike(item) || textOverlapScore(item, topicalRecallQuery) === 0,
 				);
 			if (needsTopicalRetry) {
-				const topicalResults = search(store, topicalRecallQuery, effectiveLimit, filters);
+				const topicalResults = search(
+					store,
+					topicalRecallQuery,
+					effectiveLimit,
+					filters,
+					destinationBoundary,
+				);
 				captureTraceCandidates(topicalRecallQuery, topicalResults);
 				if (topicalResults.length > 0) {
 					recallResults = topicalResults;
@@ -1411,7 +1536,13 @@ function buildPackArtifacts(
 			}
 		}
 		if (recallResults.length === 0) {
-			const hintResults = search(store, RECALL_HINT_QUERY, effectiveLimit, filters);
+			const hintResults = search(
+				store,
+				RECALL_HINT_QUERY,
+				effectiveLimit,
+				filters,
+				destinationBoundary,
+			);
 			captureTraceCandidates(RECALL_HINT_QUERY, hintResults);
 			recallResults = hintResults.filter(isSummaryLike);
 			ftsCount = recallResults.length;
@@ -1425,12 +1556,20 @@ function buildPackArtifacts(
 				effectiveLimit,
 				recallQuery,
 				filters,
+				destinationBoundary,
 			);
 			recallResults = merge.merged;
 			semanticCount = merge.semanticCount;
+			recordOmissions("semantic", merge.omittedBySensitivity);
 			captureTraceCandidates(retrievalContext, merge.semanticCandidates);
 		}
-		recallResults = mergeFileRefCandidates(store, recallResults, filters, effectiveLimit);
+		recallResults = mergeFileRefCandidates(
+			store,
+			recallResults,
+			filters,
+			effectiveLimit,
+			destinationBoundary,
+		);
 		captureTraceCandidates(retrievalQuery, recallResults);
 		results = prioritizeRecallResults(
 			recallResults,
@@ -1440,7 +1579,7 @@ function buildPackArtifacts(
 		);
 		if (results.length === 0) {
 			fallbackUsed = true;
-			results = recallFallbackRecent(store, effectiveLimit, filters);
+			results = recallFallbackRecent(store, effectiveLimit, filters, destinationBoundary);
 			captureTraceCandidates(retrievalQuery, results);
 		}
 		const anchor = preferSummary
@@ -1457,6 +1596,7 @@ function buildPackArtifacts(
 				depthBefore,
 				depthAfter,
 				filters ?? null,
+				destinationBoundary,
 			);
 			if (timelineRows.length > 0) {
 				const timelineResults = timelineRows.map(toMemoryResult);
@@ -1465,7 +1605,13 @@ function buildPackArtifacts(
 			}
 		}
 	} else {
-		const ftsResults = search(store, retrievalContext, effectiveLimit, filters);
+		const ftsResults = search(
+			store,
+			retrievalContext,
+			effectiveLimit,
+			filters,
+			destinationBoundary,
+		);
 		if (semanticResults && semanticResults.length > 0) {
 			const merge = mergeResults(
 				store,
@@ -1474,23 +1620,27 @@ function buildPackArtifacts(
 				effectiveLimit,
 				retrievalContext,
 				filters,
+				destinationBoundary,
 			);
 			results = prioritizeDefaultResults(merge.merged, effectiveLimit, retrievalContext);
 			ftsCount = merge.ftsCount;
 			semanticCount = merge.semanticCount;
+			recordOmissions("semantic", merge.omittedBySensitivity);
 			captureTraceCandidates(retrievalContext, merge.candidates);
 		} else {
 			results = prioritizeDefaultResults(ftsResults, effectiveLimit, retrievalContext);
 			ftsCount = results.length;
 			captureTraceCandidates(retrievalContext, ftsResults);
 		}
-		results = mergeFileRefCandidates(store, results, filters, effectiveLimit);
+		results = mergeFileRefCandidates(store, results, filters, effectiveLimit, destinationBoundary);
 		captureTraceCandidates(retrievalContext, results);
 		results = prioritizeDefaultResults(results, effectiveLimit, retrievalContext);
 
 		if (results.length === 0) {
 			fallbackUsed = true;
-			results = store.recent(effectiveLimit, filters ?? null).map(toMemoryResult);
+			results = store
+				.recent(effectiveLimit, filters ?? null, 0, destinationBoundary)
+				.map(toMemoryResult);
 			captureTraceCandidates(retrievalContext, results);
 		}
 	}
@@ -1506,7 +1656,7 @@ function buildPackArtifacts(
 	let summaryItems = directSummaryMatches.slice(0, 1);
 	const allowGlobalSummaryFallback = !recallMode || queryPrefersRecap(retrievalContext);
 	if (summaryItems.length === 0 && allowGlobalSummaryFallback) {
-		const s = findLatestSummaryLike(store, filters);
+		const s = findLatestSummaryLike(store, filters, destinationBoundary);
 		if (s) {
 			summaryItems = [
 				{
@@ -1553,6 +1703,8 @@ function buildPackArtifacts(
 			OBSERVATION_KINDS,
 			Math.max(effectiveLimit * 3, 10),
 			filters ?? null,
+			0,
+			destinationBoundary,
 		);
 		supplementalObservationCandidates = recentObs.map((row) => ({
 			id: row.id,
@@ -1804,7 +1956,11 @@ function buildPackArtifacts(
 		}
 	}
 
-	const { previousPackIds, previousPackTokens } = getPackDeltaBaseline(store, filters ?? null);
+	const { previousPackIds, previousPackTokens } = getPackDeltaBaseline(
+		store,
+		filters ?? null,
+		destinationBoundary,
+	);
 	const packDeltaAvailable = previousPackIds != null && previousPackTokens != null;
 	const previousSet = new Set(previousPackIds ?? []);
 	const currentSet = new Set(allItemIds);
@@ -1857,6 +2013,19 @@ function buildPackArtifacts(
 	const compressionRatio = workTokensUnique > 0 ? packTokens / workTokensUnique : null;
 	const overheadTokens = workTokensUnique > 0 ? packTokens - workTokensUnique : null;
 	const fallbackLabel: "recent" | null = fallbackUsed ? "recent" : null;
+	const omittedCount = Object.values(omittedBySensitivity).reduce((sum, count) => sum + count, 0);
+	const omissions: PackOmissionAggregate[] =
+		omittedCount > 0
+			? [
+					{
+						reason: "omitted_ineligible",
+						count: omittedCount,
+						by_source: omittedBySource,
+						by_sensitivity: omittedBySensitivity,
+					},
+				]
+			: [];
+	const degradations = isEmbeddingDisabled() ? ["semantic_disabled"] : [];
 	const metrics = {
 		total_items: allItems.length,
 		pack_tokens: packTokens,
@@ -1889,6 +2058,8 @@ function buildPackArtifacts(
 		savings_reliable:
 			avoidedKnownItems + avoidedUnknownItems > 0 ? avoidedKnownItems >= avoidedUnknownItems : true,
 		sources: { fts: ftsCount, semantic: semanticCount, fuzzy: 0 },
+		omissions,
+		degradations,
 	};
 
 	const response: PackResponse = {
@@ -1985,6 +2156,8 @@ function buildPackArtifacts(
 		retrieval: {
 			candidate_count: candidatePool.length,
 			candidates: traceCandidates,
+			omissions,
+			degradations,
 		},
 		assembly: {
 			deduped_ids: dedupedIds,
@@ -2024,13 +2197,23 @@ export function buildMemoryPack(
 	filters?: MemoryFilters,
 	semanticResults?: MemoryResult[],
 	renderOptions?: PackRenderOptions,
+	destinationBoundary?: DestinationBoundaryV1,
 ): PackResponse {
-	return buildPackArtifacts(store, context, limit, tokenBudget, filters, semanticResults, {
-		recordUsage: true,
-		compact: renderOptions?.compact,
-		compactDetailCount: renderOptions?.compactDetailCount,
-		compressionMode: renderOptions?.compressionMode,
-	}).response;
+	return buildPackArtifacts(
+		store,
+		context,
+		limit,
+		tokenBudget,
+		filters,
+		semanticResults,
+		{
+			recordUsage: true,
+			compact: renderOptions?.compact,
+			compactDetailCount: renderOptions?.compactDetailCount,
+			compressionMode: renderOptions?.compressionMode,
+		},
+		destinationBoundary,
+	).response;
 }
 
 export function buildMemoryPackWithTrace(
@@ -2041,13 +2224,23 @@ export function buildMemoryPackWithTrace(
 	filters?: MemoryFilters,
 	semanticResults?: MemoryResult[],
 	renderOptions?: PackRenderOptions,
+	destinationBoundary?: DestinationBoundaryV1,
 ): PackArtifacts {
-	return buildPackArtifacts(store, context, limit, tokenBudget, filters, semanticResults, {
-		recordUsage: true,
-		compact: renderOptions?.compact,
-		compactDetailCount: renderOptions?.compactDetailCount,
-		compressionMode: renderOptions?.compressionMode,
-	});
+	return buildPackArtifacts(
+		store,
+		context,
+		limit,
+		tokenBudget,
+		filters,
+		semanticResults,
+		{
+			recordUsage: true,
+			compact: renderOptions?.compact,
+			compactDetailCount: renderOptions?.compactDetailCount,
+			compressionMode: renderOptions?.compressionMode,
+		},
+		destinationBoundary,
+	);
 }
 
 export function buildMemoryPackTrace(
@@ -2058,13 +2251,23 @@ export function buildMemoryPackTrace(
 	filters?: MemoryFilters,
 	semanticResults?: MemoryResult[],
 	renderOptions?: PackRenderOptions,
+	destinationBoundary?: DestinationBoundaryV1,
 ): PackTrace {
-	return buildPackArtifacts(store, context, limit, tokenBudget, filters, semanticResults, {
-		recordUsage: false,
-		compact: renderOptions?.compact,
-		compactDetailCount: renderOptions?.compactDetailCount,
-		compressionMode: renderOptions?.compressionMode,
-	}).trace;
+	return buildPackArtifacts(
+		store,
+		context,
+		limit,
+		tokenBudget,
+		filters,
+		semanticResults,
+		{
+			recordUsage: false,
+			compact: renderOptions?.compact,
+			compactDetailCount: renderOptions?.compactDetailCount,
+			compressionMode: renderOptions?.compressionMode,
+		},
+		destinationBoundary,
+	).trace;
 }
 
 // ---------------------------------------------------------------------------
@@ -2087,8 +2290,9 @@ export async function buildMemoryPackAsync(
 	context: string,
 	limit = 10,
 	tokenBudget: number | null = null,
-	filters?: MemoryFilters,
-	renderOptions?: PackRenderOptions,
+	filters: MemoryFilters | undefined,
+	renderOptions: PackRenderOptions | undefined,
+	destinationBoundary?: DestinationBoundaryV1,
 ): Promise<PackResponse> {
 	// Run semantic search (returns [] when embeddings unavailable)
 	let semResults: MemoryResult[] = [];
@@ -2099,19 +2303,28 @@ export async function buildMemoryPackAsync(
 			semanticQuery,
 			limit,
 			filters ?? null,
-			ownershipFilterContext(store),
+			ownershipFilterContext(store, destinationBoundary),
 		);
 		semResults = semanticMemoryResults(raw);
 	} catch {
 		// Semantic search failure is non-fatal — fall through to FTS-only
 	}
 
-	return buildPackArtifacts(store, context, limit, tokenBudget, filters, semResults, {
-		recordUsage: true,
-		compact: renderOptions?.compact,
-		compactDetailCount: renderOptions?.compactDetailCount,
-		compressionMode: renderOptions?.compressionMode,
-	}).response;
+	return buildPackArtifacts(
+		store,
+		context,
+		limit,
+		tokenBudget,
+		filters,
+		semResults,
+		{
+			recordUsage: true,
+			compact: renderOptions?.compact,
+			compactDetailCount: renderOptions?.compactDetailCount,
+			compressionMode: renderOptions?.compressionMode,
+		},
+		destinationBoundary,
+	).response;
 }
 
 export async function buildMemoryPackWithTraceAsync(
@@ -2119,8 +2332,9 @@ export async function buildMemoryPackWithTraceAsync(
 	context: string,
 	limit = 10,
 	tokenBudget: number | null = null,
-	filters?: MemoryFilters,
-	renderOptions?: PackRenderOptions,
+	filters: MemoryFilters | undefined,
+	renderOptions: PackRenderOptions | undefined,
+	destinationBoundary?: DestinationBoundaryV1,
 ): Promise<PackArtifacts> {
 	let semResults: MemoryResult[] = [];
 	const semanticQuery = sanitizeSearchQuery(context).clean_query;
@@ -2130,19 +2344,28 @@ export async function buildMemoryPackWithTraceAsync(
 			semanticQuery,
 			limit,
 			filters ?? null,
-			ownershipFilterContext(store),
+			ownershipFilterContext(store, destinationBoundary),
 		);
 		semResults = semanticMemoryResults(raw);
 	} catch {
 		// Semantic search failure is non-fatal — fall through to FTS-only.
 	}
 
-	return buildPackArtifacts(store, context, limit, tokenBudget, filters, semResults, {
-		recordUsage: true,
-		compact: renderOptions?.compact,
-		compactDetailCount: renderOptions?.compactDetailCount,
-		compressionMode: renderOptions?.compressionMode,
-	});
+	return buildPackArtifacts(
+		store,
+		context,
+		limit,
+		tokenBudget,
+		filters,
+		semResults,
+		{
+			recordUsage: true,
+			compact: renderOptions?.compact,
+			compactDetailCount: renderOptions?.compactDetailCount,
+			compressionMode: renderOptions?.compressionMode,
+		},
+		destinationBoundary,
+	);
 }
 
 export async function buildMemoryPackTraceAsync(
@@ -2150,8 +2373,9 @@ export async function buildMemoryPackTraceAsync(
 	context: string,
 	limit = 10,
 	tokenBudget: number | null = null,
-	filters?: MemoryFilters,
-	renderOptions?: PackRenderOptions,
+	filters: MemoryFilters | undefined,
+	renderOptions: PackRenderOptions | undefined,
+	destinationBoundary?: DestinationBoundaryV1,
 ): Promise<PackTrace> {
 	let semResults: MemoryResult[] = [];
 	const semanticQuery = sanitizeSearchQuery(context).clean_query;
@@ -2161,17 +2385,26 @@ export async function buildMemoryPackTraceAsync(
 			semanticQuery,
 			limit,
 			filters ?? null,
-			ownershipFilterContext(store),
+			ownershipFilterContext(store, destinationBoundary),
 		);
 		semResults = semanticMemoryResults(raw);
 	} catch {
 		// Semantic search failure is non-fatal — fall through to FTS-only
 	}
 
-	return buildPackArtifacts(store, context, limit, tokenBudget, filters, semResults, {
-		recordUsage: false,
-		compact: renderOptions?.compact,
-		compactDetailCount: renderOptions?.compactDetailCount,
-		compressionMode: renderOptions?.compressionMode,
-	}).trace;
+	return buildPackArtifacts(
+		store,
+		context,
+		limit,
+		tokenBudget,
+		filters,
+		semResults,
+		{
+			recordUsage: false,
+			compact: renderOptions?.compact,
+			compactDetailCount: renderOptions?.compactDetailCount,
+			compressionMode: renderOptions?.compressionMode,
+		},
+		destinationBoundary,
+	).trace;
 }

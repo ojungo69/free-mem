@@ -2,6 +2,7 @@ import { mkdtempSync, rmSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { describe, expect, it } from "vitest";
+import { captureOnlyCapabilityProjection } from "./capability-manifest.js";
 import {
 	type DaemonRpcContext,
 	dispatchDaemonRpc,
@@ -42,9 +43,9 @@ function withContext(run: (ctx: DaemonRpcContext, seededIds: number[]) => Promis
 					.prepare(
 						`INSERT INTO memory_items(
 							session_id, kind, title, body_text, confidence, tags_text, active,
-							created_at, updated_at, metadata_json, rev, visibility, import_key
+							created_at, updated_at, metadata_json, rev, visibility, import_key, sensitivity
 						 ) VALUES (?, 'decision', ?, 'seeded for id validation', 0.9, '', 1,
-							'2026-03-01T10:00:00Z', '2026-03-01T10:00:00Z', '{}', 1, 'shared', ?)`,
+							'2026-03-01T10:00:00Z', '2026-03-01T10:00:00Z', '{}', 1, 'shared', ?, 'eligible')`,
 					)
 					.run(sessionId, `RPC id fixture ${slug}`, `rpc-id-${slug}`).lastInsertRowid,
 			),
@@ -55,6 +56,7 @@ function withContext(run: (ctx: DaemonRpcContext, seededIds: number[]) => Promis
 			onStop: () => {},
 			writer: db,
 			store,
+			capability: captureOnlyCapabilityProjection("ready"),
 			jobs: { isMaintenanceMode: () => false } as never,
 		} as DaemonRpcContext;
 		return run(ctx, seededIds).finally(cleanup);

@@ -1,6 +1,10 @@
 import { createHash } from "node:crypto";
 import { posix, win32 } from "node:path";
 import type { Database } from "./db.js";
+import {
+	type DestinationBoundaryV1,
+	memoryDestinationBoundarySql,
+} from "./destination-boundary.js";
 import { estimateTokens, type PackArtifacts } from "./pack.js";
 import { sanitizeSearchQuery } from "./query-sanitizer.js";
 import {
@@ -114,15 +118,23 @@ function retryTiming(
 			};
 }
 
-function snapshots(db: Database, ids: number[]): Map<number, MemorySnapshot> {
+function snapshots(
+	db: Database,
+	ids: number[],
+	destinationBoundary?: DestinationBoundaryV1,
+): Map<number, MemorySnapshot> {
 	if (ids.length === 0) return new Map();
 	const placeholders = ids.map(() => "?").join(", ");
+	const destination = destinationBoundary
+		? memoryDestinationBoundarySql(destinationBoundary, "memory_items")
+		: null;
 	const rows = db
 		.prepare(
 			`SELECT id, import_key, origin_device_id, rev, updated_at, scope_id, kind, active, deleted_at
-			 FROM memory_items WHERE id IN (${placeholders})`,
+			 FROM memory_items WHERE id IN (${placeholders})
+			 ${destination ? `AND ${destination.clause}` : ""}`,
 		)
-		.all(...ids) as MemorySnapshot[];
+		.all(...ids, ...(destination?.params ?? [])) as MemorySnapshot[];
 	return new Map(rows.map((row) => [row.id, row]));
 }
 
@@ -136,7 +148,11 @@ function reasonCodes(candidate: PackTraceCandidate): string[] {
 	return codes;
 }
 
-function exposures(db: Database, artifacts: PackArtifacts): RetrievalExposureInput[] {
+function exposures(
+	db: Database,
+	artifacts: PackArtifacts,
+	destinationBoundary?: DestinationBoundaryV1,
+): RetrievalExposureInput[] {
 	const candidates = [
 		...artifacts.trace.retrieval.candidates
 			.filter((candidate) => candidate.disposition === "selected")
@@ -148,6 +164,7 @@ function exposures(db: Database, artifacts: PackArtifacts): RetrievalExposureInp
 	const byId = snapshots(
 		db,
 		candidates.map((candidate) => candidate.id),
+		destinationBoundary,
 	);
 	return candidates.map((candidate) => {
 		const snapshot = byId.get(candidate.id);
@@ -190,6 +207,7 @@ function promptPackArtifactFields(
 	query: string,
 	filters: MemoryFilters | undefined,
 	artifacts: PackArtifacts,
+	destinationBoundary?: DestinationBoundaryV1,
 ) {
 	const sanitizedQuery = sanitizeSearchQuery(query).clean_query;
 	const queryIdentity = hashRetrievalQuery(sanitizedQuery);
@@ -218,7 +236,7 @@ function promptPackArtifactFields(
 		queryTokenEstimate: estimateTokens(sanitizedQuery),
 		filterSummary: filterSummary(filters),
 		traceVersion: artifacts.trace.version,
-		exposures: exposures(db, artifacts),
+		exposures: exposures(db, artifacts, destinationBoundary),
 	};
 }
 
@@ -238,9 +256,10 @@ export function promptPackArtifactFingerprint(
 	query: string,
 	filters: MemoryFilters | undefined,
 	artifacts: PackArtifacts,
+	destinationBoundary?: DestinationBoundaryV1,
 ): string {
 	const fingerprintArtifact = {
-		ledger: promptPackArtifactFields(db, query, filters, artifacts),
+		ledger: promptPackArtifactFields(db, query, filters, artifacts, destinationBoundary),
 		packTextHashSha256: createHash("sha256").update(artifacts.response.pack_text).digest("hex"),
 	};
 	return createHash("sha256").update(canonicalJson(fingerprintArtifact)).digest("hex");
@@ -252,9 +271,16 @@ export function recordPromptPackArtifacts(
 	query: string,
 	filters: MemoryFilters | undefined,
 	artifacts: PackArtifacts,
+	destinationBoundary?: DestinationBoundaryV1,
 ): RetrievalLedgerWriteOutcome {
 	try {
-		const artifactFields = promptPackArtifactFields(db, query, filters, artifacts);
+		const artifactFields = promptPackArtifactFields(
+			db,
+			query,
+			filters,
+			artifacts,
+			destinationBoundary,
+		);
 		const timing = retryTiming(db, metadata);
 		return tryRecordRetrievalAttempt(db, {
 			...metadata,

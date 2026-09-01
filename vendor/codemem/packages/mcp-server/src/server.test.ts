@@ -240,6 +240,68 @@ describe("Phase 1 MCP stdio RPC surface", () => {
 		}
 	});
 
+	it("T031 treats project and local-looking labels only as untrusted read narrowing", async () => {
+		const calls: Array<{ method: string; body: Record<string, unknown> }> = [];
+		const sentinel = "MCP_DAEMON_RESULT_SENTINEL";
+		const fake: McpRpcClient = {
+			async request(method, body) {
+				calls.push({ method, body });
+				const item = { id: 7, title: sentinel, body_text: "restricted daemon body" };
+				if (method === "GET /v1/memories/:id") return { ok: true, result: { item } };
+				if (method === "POST /v1/context/pack") {
+					return { ok: true, result: { pack: { title: sentinel, item_ids: [7] } } };
+				}
+				if (body.mode === "explain") {
+					return { ok: true, result: { items: { items: [item], errors: [] } } };
+				}
+				return { ok: true, result: { items: [item] } };
+			},
+			async requestWithSpool() {
+				throw new Error("unexpected mutation");
+			},
+			async remember() {
+				throw new Error("unexpected mutation");
+			},
+		};
+		const connection = await connect(fake);
+		const forged = {
+			project: "forged-project",
+			cwd: "/tmp/looks-local",
+			model: "local-model",
+			caller: "trusted-local-caller",
+			execution_location: "local",
+			repository_identity: `repo-v1:sha256:${"a".repeat(64)}`,
+			provider_peer_trust: "verified",
+		};
+		try {
+			const reads = [
+				["memory_get", { memory_id: 7, ...forged }],
+				["memory_search", { query: "query", ...forged }],
+				["memory_search_index", { query: "query", ...forged }],
+				["memory_recent", forged],
+				["memory_timeline", { memory_id: 7, ...forged }],
+				["memory_explain", { ids: [7], ...forged }],
+				["memory_pack", { context: "query", ...forged }],
+			] as const;
+			for (const [name, arguments_] of reads) {
+				const result = await connection.client.callTool({ name, arguments: arguments_ });
+				expect(JSON.stringify(result), name).toContain(sentinel);
+			}
+			expect(calls).toHaveLength(reads.length);
+			for (const { body } of calls) {
+				const serialized = JSON.stringify(body);
+				expect(serialized).not.toMatch(
+					/looks-local|local-model|trusted-local-caller|repository_identity|execution_location|provider_peer_trust/,
+				);
+				const narrowedProject =
+					body.project ?? (body.filters as Record<string, unknown> | undefined)?.project;
+				expect(narrowedProject).toBe("forged-project");
+			}
+		} finally {
+			await connection.close();
+		}
+	});
+
 	it("P1-T042-04-mcp-no-db-fallback", () => {
 		const files = globSync("**/*.ts", { cwd: import.meta.dirname }).filter(
 			(path) => !path.endsWith(".test.ts"),

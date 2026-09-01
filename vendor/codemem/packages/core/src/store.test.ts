@@ -6,6 +6,7 @@ import {
 	compileCapabilityManifest,
 	compileDefaultCapabilityManifest,
 } from "./capability-manifest.js";
+import { compileProviderDestinationBoundary } from "./destination-boundary.js";
 import { buildFilterClauses, buildFilterClausesWithContext } from "./filters.js";
 import { type MemoryStore, ProcessingResumeError } from "./store.js";
 import { insertTestSession, openTestMemoryStore } from "./test-utils.js";
@@ -1226,6 +1227,52 @@ describe("MemoryStore", () => {
 		});
 	});
 
+	describe("rememberTrusted", () => {
+		const repositoryIdentity = `repo-v1:sha256:${"a".repeat(64)}`;
+		const trustedWrite = (
+			title: string,
+			sensitivity: "eligible" | "local_only" | "private" | "secret",
+			identity: string | null,
+		) => {
+			const sessionId = insertTestSession(store.db);
+			const memoryId = store.rememberTrusted(
+				sessionId,
+				"discovery",
+				title,
+				"Body",
+				0.5,
+				undefined,
+				undefined,
+				{ sensitivity, repositoryIdentity: identity },
+			);
+			return store.db
+				.prepare("SELECT sensitivity, repository_identity FROM memory_items WHERE id = ?")
+				.get(memoryId);
+		};
+
+		it("defaults a restricted write without repository identity to secret", () => {
+			// Gate fires: restricted + no identity can never satisfy a boundary,
+			// so it must not be stored as a write-only local_only/private row.
+			expect(trustedWrite("No repo local", "local_only", null)).toEqual({
+				sensitivity: "secret",
+				repository_identity: null,
+			});
+			expect(trustedWrite("No repo private", "private", null)).toEqual({
+				sensitivity: "secret",
+				repository_identity: null,
+			});
+			// Gate passes: the pair invariant holds with an identity present.
+			expect(trustedWrite("Paired local", "local_only", repositoryIdentity)).toEqual({
+				sensitivity: "local_only",
+				repository_identity: repositoryIdentity,
+			});
+			expect(trustedWrite("Plain eligible", "eligible", null)).toEqual({
+				sensitivity: "eligible",
+				repository_identity: null,
+			});
+		});
+	});
+
 	describe("forget", () => {
 		it("soft-deletes an existing memory", () => {
 			const sessionId = insertTestSession(store.db);
@@ -1801,8 +1848,68 @@ describe("MemoryStore", () => {
 
 	describe("Slice 1 durable raw-event contracts", () => {
 		const repositoryIdentity = `repo-v1:sha256:${"a".repeat(64)}`;
-		const manifestFingerprint = `sha256:${"b".repeat(64)}`;
-		const providerFingerprint = `sha256:${"c".repeat(64)}`;
+		const testProviderManifest = (
+			modelId: string,
+			endpointUrl = "https://summary.stub.invalid/v1/chat/completions",
+		) =>
+			compileDefaultCapabilityManifest({
+				version: 1,
+				role: "summary",
+				state: "enabled",
+				wireProtocol: "openai_chat_completions_v1",
+				modelId,
+				modelRevision: "1",
+				endpointUrl,
+				credentialRef: { kind: "environment", name: "FREE_MEM_SUMMARY_API_KEY" },
+			});
+		const providerManifest = testProviderManifest("store-test-summary");
+		const localProviderManifest = testProviderManifest(
+			"store-test-local-summary",
+			"https://127.0.0.1:43123/v1/chat/completions",
+		);
+		const manifestFingerprint = providerManifest.configurationFingerprint;
+		const providerFingerprint = providerManifest.summaryProvider.providerFingerprint;
+		const providerBoundary = (durable: MemoryStore, jobId: number, manifest = providerManifest) =>
+			compileProviderDestinationBoundary(manifest, {
+				repositoryIdentity: durable.rawEventFlushJobRepositoryIdentity(jobId),
+				tlsPeerVerified: true,
+			});
+		const claimFlushJob = (
+			durable: MemoryStore,
+			jobId: number,
+			manifest = providerManifest,
+			maxMemoryItemsPerDerivation?: number,
+		) =>
+			durable.claimRawEventFlushJob({
+				jobId,
+				manifestFingerprint: manifest.configurationFingerprint,
+				providerFingerprint: manifest.summaryProvider.providerFingerprint,
+				manifest,
+				boundary: providerBoundary(durable, jobId, manifest),
+				...(maxMemoryItemsPerDerivation === undefined ? {} : { maxMemoryItemsPerDerivation }),
+			});
+		const reopenCompletedFlushJob = (
+			claim: NonNullable<ReturnType<MemoryStore["claimRawEventFlushJob"]>>,
+			manifest = providerManifest,
+		) => {
+			store.db
+				.prepare(
+					`UPDATE raw_event_flush_batches
+					 SET status = 'queued', completion_disposition = 'none', output_count = 0,
+						observed_output_count = 0, egress_diagnostic_json = NULL
+					 WHERE id = ? AND status = 'completed'`,
+				)
+				.run(claim.jobId);
+			store.db
+				.prepare(
+					`UPDATE raw_event_sessions SET last_flushed_event_seq = ?
+					 WHERE source = ? AND stream_id = ?`,
+				)
+				.run(claim.startEventSeq - 1, claim.source, claim.streamId);
+			const next = claimFlushJob(store, claim.jobId, manifest);
+			if (!next) throw new Error("expected reopened claim");
+			return next;
+		};
 
 		const capture = (
 			durable: MemoryStore,
@@ -1861,17 +1968,14 @@ describe("MemoryStore", () => {
 					sensitivity: input.sensitivity,
 				},
 			);
+			const manifest = input.sensitivity === "eligible" ? providerManifest : localProviderManifest;
 			const admission = store.admitRawEventFlushJob({
 				source: "codex",
 				streamId: input.streamId,
-				manifestFingerprint,
-				providerFingerprint,
+				manifestFingerprint: manifest.configurationFingerprint,
+				providerFingerprint: manifest.summaryProvider.providerFingerprint,
 			});
-			const claim = store.claimRawEventFlushJob({
-				jobId: admission.jobId as number,
-				manifestFingerprint,
-				providerFingerprint,
-			});
+			const claim = claimFlushJob(store, admission.jobId as number, manifest);
 			if (!claim) throw new Error("expected derivation claim");
 			const sessionId = store.getOrCreateSessionForOpencodeSession({
 				opencodeSessionId: input.streamId,
@@ -1879,23 +1983,15 @@ describe("MemoryStore", () => {
 			});
 			return store.completeRawEventFlushJobMemory(
 				{ claim, sourceEventIds: [input.eventId], observedOutputCount: 1, diagnostic: {} },
-				(newMemoryIdFloor, derivation) => {
-					const memoryId = derivation.remember({
-						citedSourceEventIds: [input.eventId],
+				(_newMemoryIdFloor, derivation) => [
+					derivation.remember({
+						sourceCitations: [{ source: 0, start: null, end: null }],
 						sessionId,
 						kind: "discovery",
 						title: input.title,
 						bodyText: input.body,
-					});
-					return [
-						{
-							memoryId,
-							citedSourceEventIds: [input.eventId],
-							disposition:
-								memoryId > newMemoryIdFloor ? ("inserted" as const) : ("deduplicated" as const),
-						},
-					];
-				},
+					}),
+				],
 			);
 		};
 
@@ -1988,11 +2084,7 @@ describe("MemoryStore", () => {
 					manifestFingerprint,
 					providerFingerprint,
 				});
-				const claim = store.claimRawEventFlushJob({
-					jobId: admission.jobId as number,
-					manifestFingerprint,
-					providerFingerprint,
-				});
+				const claim = claimFlushJob(store, admission.jobId as number);
 				if (!claim) throw new Error("expected claim");
 				const sessionId = store.getOrCreateSessionForOpencodeSession({
 					opencodeSessionId: streamId,
@@ -2000,12 +2092,14 @@ describe("MemoryStore", () => {
 				});
 				const completed = store.completeRawEventFlushJobMemory(
 					{ claim, sourceEventIds: [eventId], observedOutputCount: 1, diagnostic: {} },
-					() => [
-						{
-							memoryId: store.remember(sessionId, "discovery", label, label),
-							citedSourceEventIds: [eventId],
-							disposition: "inserted",
-						},
+					(_newMemoryIdFloor, derivation) => [
+						derivation.remember({
+							sourceCitations: [{ source: 0, start: null, end: null }],
+							sessionId,
+							kind: "discovery",
+							title: label,
+							bodyText: label,
+						}),
 					],
 				);
 				return { memoryId: completed.memoryIds[0] as number, payload };
@@ -2338,7 +2432,7 @@ describe("MemoryStore", () => {
 			]);
 		});
 
-		it("deduplicates repeated derivations only for the same citation identity", () => {
+		it("rejects duplicate anchors in one response atomically", () => {
 			const streamId = "derived-same-citation";
 			const eventId = "derived-same-citation-0";
 			capture(store, eventId, {}, { opencodeSessionId: streamId });
@@ -2348,42 +2442,33 @@ describe("MemoryStore", () => {
 				manifestFingerprint,
 				providerFingerprint,
 			});
-			const claim = store.claimRawEventFlushJob({
-				jobId: admission.jobId as number,
-				manifestFingerprint,
-				providerFingerprint,
-			});
+			const claim = claimFlushJob(store, admission.jobId as number);
 			if (!claim) throw new Error("expected same-citation claim");
 			const sessionId = store.getOrCreateSessionForOpencodeSession({
 				opencodeSessionId: streamId,
 				source: "codex",
 			});
-			let repeatedId = 0;
-			const completed = store.completeRawEventFlushJobMemory(
-				{ claim, sourceEventIds: [eventId], observedOutputCount: 1, diagnostic: {} },
-				(_newMemoryIdFloor, derivation) => {
-					const input = {
-						citedSourceEventIds: [eventId],
-						sessionId,
-						kind: "discovery",
-						title: "Same citation title",
-						bodyText: "Same citation body",
-					};
-					const memoryId = derivation.remember(input);
-					repeatedId = derivation.remember(input);
-					return [
-						{
-							memoryId,
-							citedSourceEventIds: [eventId],
-							disposition: "inserted" as const,
-						},
-					];
-				},
-			);
-			expect(repeatedId).toBe(completed.memoryIds[0]);
+			const before = store.db.prepare("SELECT COUNT(*) AS count FROM memory_items").get();
+			expect(() =>
+				store.completeRawEventFlushJobMemory(
+					{ claim, sourceEventIds: [eventId], observedOutputCount: 2, diagnostic: {} },
+					(_newMemoryIdFloor, derivation) => {
+						const input = {
+							sourceCitations: [{ source: 0, start: null, end: null }],
+							sessionId,
+							kind: "discovery",
+							title: "Same citation title",
+							bodyText: "Same citation body",
+						};
+						return [derivation.remember(input), derivation.remember(input)];
+					},
+				),
+			).toThrow(/duplicate|anchor/i);
+			expect(store.db.prepare("SELECT COUNT(*) AS count FROM memory_items").get()).toEqual(before);
+			expect(store.rawEventFlushState(streamId, "codex")).toBe(-1);
 		});
 
-		it("rolls back when trusted derivation and completion citations differ", () => {
+		it("rolls back caller-supplied completions that bypass the trusted derivation", () => {
 			const streamId = "derived-citation-binding";
 			capture(
 				store,
@@ -2409,11 +2494,7 @@ describe("MemoryStore", () => {
 				manifestFingerprint,
 				providerFingerprint,
 			});
-			const claim = store.claimRawEventFlushJob({
-				jobId: admission.jobId as number,
-				manifestFingerprint,
-				providerFingerprint,
-			});
+			const claim = claimFlushJob(store, admission.jobId as number);
 			if (!claim) throw new Error("expected citation-binding claim");
 			const sessionId = store.getOrCreateSessionForOpencodeSession({
 				opencodeSessionId: streamId,
@@ -2429,25 +2510,19 @@ describe("MemoryStore", () => {
 						observedOutputCount: 1,
 						diagnostic: {},
 					},
-					(newMemoryIdFloor, derivation) => {
-						const memoryId = derivation.remember({
-							citedSourceEventIds: ["derived-private-source"],
-							sessionId,
-							kind: "discovery",
-							title: "Bound citation title",
-							bodyText: "Bound citation body",
-						});
-						return [
-							{
-								memoryId,
-								citedSourceEventIds: ["derived-eligible-source"],
-								disposition:
-									memoryId > newMemoryIdFloor ? ("inserted" as const) : ("deduplicated" as const),
-							},
-						];
-					},
+					() => [
+						{
+							memoryId: store.remember(
+								sessionId,
+								"discovery",
+								"Unbound completion",
+								"Unbound completion",
+							),
+							disposition: "inserted" as const,
+						},
+					],
 				),
-			).toThrow(/citation binding/i);
+			).toThrow(/binding|completion|output count/i);
 			expect(store.db.prepare("SELECT COUNT(*) AS count FROM memory_items").get()).toEqual(before);
 			expect(store.rawEventFlushState(streamId, "codex")).toBe(-1);
 			expect(
@@ -2485,32 +2560,31 @@ describe("MemoryStore", () => {
 			});
 
 			for (const [sequence, [repository, sensitivity]] of cases.entries()) {
+				const manifest = sensitivity === "eligible" ? providerManifest : localProviderManifest;
 				const admission = store.admitRawEventFlushJob({
 					source: "codex",
 					streamId,
-					manifestFingerprint,
-					providerFingerprint,
+					manifestFingerprint: manifest.configurationFingerprint,
+					providerFingerprint: manifest.summaryProvider.providerFingerprint,
 				});
 				expect(admission).toMatchObject({
 					status: "admitted",
 					startEventSeq: sequence,
 					endEventSeq: sequence,
 				});
-				const claim = store.claimRawEventFlushJob({
-					jobId: admission.jobId as number,
-					manifestFingerprint,
-					providerFingerprint,
-				});
+				const claim = claimFlushJob(store, admission.jobId as number, manifest);
 				if (!claim) throw new Error("expected repository-scoped claim");
 				const eventId = eventIds[sequence] as string;
 				const completed = store.completeRawEventFlushJobMemory(
 					{ claim, sourceEventIds: [eventId], observedOutputCount: 1, diagnostic: {} },
-					() => [
-						{
-							memoryId: store.remember(sessionId, "discovery", repository, repository),
-							citedSourceEventIds: [eventId],
-							disposition: "inserted",
-						},
+					(_newMemoryIdFloor, derivation) => [
+						derivation.remember({
+							sourceCitations: [{ source: 0, start: null, end: null }],
+							sessionId,
+							kind: "discovery",
+							title: repository,
+							bodyText: repository,
+						}),
 					],
 				);
 				expect(
@@ -2598,8 +2672,7 @@ describe("MemoryStore", () => {
 					.get(),
 			).toEqual({ count: 25 });
 
-			const claim = (jobId: number) =>
-				durable.claimRawEventFlushJob({ jobId, manifestFingerprint, providerFingerprint });
+			const claim = (jobId: number) => claimFlushJob(durable, jobId);
 			let firstClaim = claim(admittedIds[0] as number);
 			const secondClaim = claim(admittedIds[1] as number);
 			expect(firstClaim).toMatchObject({ attemptCount: 1, claimGeneration: 1 });
@@ -2667,38 +2740,6 @@ describe("MemoryStore", () => {
 					diagnostic: {},
 				}),
 			).toThrow(/stale/i);
-			expect(() =>
-				durable.completeRawEventFlushJobPrivacySkip({
-					claim: resumed,
-					sourceEventIds: Array.from({ length: 100 }, (_, index) => `jobs-${index}`),
-					projection: {
-						eligibleSourceEventIds: [],
-						omittedSourceEventIds: Array.from({ length: 100 }, (_, index) => `jobs-${index}`),
-					},
-					diagnostic: {},
-				}),
-			).toThrow(/all-ineligible/i);
-			expect(store.rawEventFlushState("jobs", "codex")).toBe(-1);
-			store.db
-				.prepare(
-					`UPDATE raw_events
-					 SET sensitivity = 'secret', capture_state = 'quarantined',
-						safe_error_code = 'redaction_degraded', payload_json = '{}'
-					 WHERE stream_id = 'jobs'`,
-				)
-				.run();
-			expect(() =>
-				durable.completeRawEventFlushJobPrivacySkip({
-					claim: resumed,
-					sourceEventIds: Array.from({ length: 100 }, (_, index) => `jobs-${index}`),
-					projection: {
-						eligibleSourceEventIds: ["jobs-0"],
-						omittedSourceEventIds: Array.from({ length: 99 }, (_, index) => `jobs-${index + 1}`),
-					},
-					diagnostic: {},
-				}),
-			).toThrow(/all-ineligible/i);
-			expect(store.rawEventFlushState("jobs", "codex")).toBe(-1);
 			expect(
 				durable.completeRawEventFlushJobPrivacySkip({
 					claim: resumed,
@@ -2740,13 +2781,7 @@ describe("MemoryStore", () => {
 				.prepare("DELETE FROM raw_events WHERE stream_id = ? AND event_seq = 1")
 				.run(streamId);
 
-			expect(
-				store.claimRawEventFlushJob({
-					jobId: admission.jobId as number,
-					manifestFingerprint,
-					providerFingerprint,
-				}),
-			).toBeNull();
+			expect(claimFlushJob(store, admission.jobId as number)).toBeNull();
 			expect(
 				store.db
 					.prepare("SELECT status, attempt_count FROM raw_event_flush_batches WHERE id = ?")
@@ -2834,11 +2869,7 @@ describe("MemoryStore", () => {
 					providerFingerprint,
 				}),
 			).toMatchObject({ status: "existing", jobId: admitted.jobId });
-			const claim = store.claimRawEventFlushJob({
-				jobId: admitted.jobId,
-				manifestFingerprint,
-				providerFingerprint,
-			});
+			const claim = claimFlushJob(store, admitted.jobId);
 			if (!claim) throw new Error("expected legacy recovery claim");
 			expect(
 				store.confirmDoctorRetry({
@@ -2920,14 +2951,10 @@ describe("MemoryStore", () => {
 					providerFingerprint: base.summaryProvider.providerFingerprint,
 					maxMemoryItemsPerDerivation: 17,
 					manifest: base,
+					boundary: providerBoundary(store, baseAdmission.jobId as number, base),
 				}),
 			).toThrow(/maxMemoryItemsPerDerivation/i);
-			let baseClaim = store.claimRawEventFlushJob({
-				jobId: baseAdmission.jobId as number,
-				manifestFingerprint: base.configurationFingerprint,
-				providerFingerprint: base.summaryProvider.providerFingerprint,
-				manifest: base,
-			});
+			let baseClaim = claimFlushJob(store, baseAdmission.jobId as number, base);
 			if (!baseClaim) throw new Error("expected base claim");
 			for (let attempt = 1; attempt <= 3; attempt++) {
 				expect(
@@ -2940,12 +2967,7 @@ describe("MemoryStore", () => {
 				).toEqual({ status: attempt === 3 ? "retry_exhausted" : "failed" });
 				if (attempt < 3) {
 					expect(store.requeueFailedRawEventFlushJob(baseClaim.jobId)).toBe(true);
-					const next = store.claimRawEventFlushJob({
-						jobId: baseClaim.jobId,
-						manifestFingerprint: base.configurationFingerprint,
-						providerFingerprint: base.summaryProvider.providerFingerprint,
-						manifest: base,
-					});
+					const next = claimFlushJob(store, baseClaim.jobId, base);
 					if (!next) throw new Error("expected next base claim");
 					baseClaim = next;
 				}
@@ -2996,6 +3018,7 @@ describe("MemoryStore", () => {
 					providerFingerprint: successor.summaryProvider.providerFingerprint,
 					maxMemoryItemsPerDerivation: 17,
 					manifest: successor,
+					boundary: providerBoundary(store, successorAdmission.jobId as number, successor),
 				}),
 			).toThrow(/recovery successor/i);
 			expect(
@@ -3022,21 +3045,10 @@ describe("MemoryStore", () => {
 					manifestFingerprint: base.configurationFingerprint,
 				}),
 			).toMatchObject({ disposition: "unrelated_component", grantState: "pending" });
-			expect(() =>
-				store.claimRawEventFlushJob({
-					jobId: baseClaim.jobId,
-					manifestFingerprint: successor.configurationFingerprint,
-					providerFingerprint: successor.summaryProvider.providerFingerprint,
-					maxMemoryItemsPerDerivation: 17,
-					manifest: successor,
-				}),
-			).toThrow(/resume grant target/i);
-			const doctorClaim = store.claimRawEventFlushJob({
-				jobId: baseClaim.jobId,
-				manifestFingerprint: base.configurationFingerprint,
-				providerFingerprint: base.summaryProvider.providerFingerprint,
-				manifest: base,
-			});
+			expect(() => claimFlushJob(store, baseClaim.jobId, successor, 17)).toThrow(
+				/resume grant target/i,
+			);
+			const doctorClaim = claimFlushJob(store, baseClaim.jobId, base);
 			if (!doctorClaim) throw new Error("expected doctor claim");
 			expect(
 				store.failRawEventFlushJob({
@@ -3058,13 +3070,7 @@ describe("MemoryStore", () => {
 					manifestFingerprint: successor.configurationFingerprint,
 				}),
 			).toMatchObject({ disposition: "accepted", grantState: "pending" });
-			const successorClaim = store.claimRawEventFlushJob({
-				jobId: baseClaim.jobId,
-				manifestFingerprint: successor.configurationFingerprint,
-				providerFingerprint: successor.summaryProvider.providerFingerprint,
-				maxMemoryItemsPerDerivation: 17,
-				manifest: successor,
-			});
+			const successorClaim = claimFlushJob(store, baseClaim.jobId, successor, 17);
 			expect(successorClaim).toMatchObject({
 				maxMemoryItemsPerDerivation: 17,
 				usedResumeGrant: true,
@@ -3110,18 +3116,13 @@ describe("MemoryStore", () => {
 					manifestFingerprint: chainedSuccessor.configurationFingerprint,
 				}),
 			).toMatchObject({ disposition: "accepted", grantState: "pending" });
-			expect(() =>
-				store.claimRawEventFlushJob({
-					jobId: successorClaim.jobId,
-					manifestFingerprint: chainedSuccessor.configurationFingerprint,
-					providerFingerprint: chainedSuccessor.summaryProvider.providerFingerprint,
-					maxMemoryItemsPerDerivation: 17,
-					manifest: chainedSuccessor,
-				}),
-			).toThrow(/recovery successor/i);
+			expect(() => claimFlushJob(store, successorClaim.jobId, chainedSuccessor, 17)).toThrow(
+				/recovery successor/i,
+			);
 		});
 
 		it("validates cited sources and stamps per-memory provenance atomically", () => {
+			const citationManifest = localProviderManifest;
 			for (const [eventId, sensitivity] of [
 				["cited-0", "eligible"],
 				["cited-1", "private"],
@@ -3133,7 +3134,7 @@ describe("MemoryStore", () => {
 					eventType: "user_prompt",
 					payload: { eventId },
 					repositoryIdentity,
-					captureManifestFingerprint: manifestFingerprint,
+					captureManifestFingerprint: citationManifest.configurationFingerprint,
 					sensitivity,
 				});
 			}
@@ -3142,27 +3143,23 @@ describe("MemoryStore", () => {
 					source: "codex",
 					streamId: "cited",
 					manifestFingerprint: null as never,
-					providerFingerprint,
+					providerFingerprint: citationManifest.summaryProvider.providerFingerprint,
 				}),
 			).toThrow(/required/i);
 			const admission = store.admitRawEventFlushJob({
 				source: "codex",
 				streamId: "cited",
-				manifestFingerprint,
-				providerFingerprint,
+				manifestFingerprint: citationManifest.configurationFingerprint,
+				providerFingerprint: citationManifest.summaryProvider.providerFingerprint,
 			});
 			expect(() =>
 				store.claimRawEventFlushJob({
 					jobId: admission.jobId as number,
-					manifestFingerprint,
+					manifestFingerprint: citationManifest.configurationFingerprint,
 					providerFingerprint: null as never,
 				}),
 			).toThrow(/required/i);
-			const claim = store.claimRawEventFlushJob({
-				jobId: admission.jobId as number,
-				manifestFingerprint,
-				providerFingerprint,
-			});
+			const claim = claimFlushJob(store, admission.jobId as number, citationManifest);
 			if (!claim) throw new Error("expected cited claim");
 			const sessionId = insertTestSession(store.db);
 			const countMemories = () =>
@@ -3190,7 +3187,7 @@ describe("MemoryStore", () => {
 					},
 					() => [],
 				),
-			).toThrow(/binding/i);
+			).toThrow(/stale|binding/i);
 			expect(() =>
 				store.completeRawEventFlushJobMemory(
 					{
@@ -3201,7 +3198,7 @@ describe("MemoryStore", () => {
 					},
 					() => [],
 				),
-			).toThrow(/binding/i);
+			).toThrow(/stale|binding/i);
 			expect(() =>
 				store.completeRawEventFlushJobMemory(
 					{
@@ -3210,12 +3207,14 @@ describe("MemoryStore", () => {
 						observedOutputCount: 1,
 						diagnostic: {},
 					},
-					() => [
-						{
-							memoryId: store.remember(sessionId, "discovery", "invalid", "invalid"),
-							citedSourceEventIds: [],
-							disposition: "inserted",
-						},
+					(_newMemoryIdFloor, derivation) => [
+						derivation.remember({
+							sourceCitations: [],
+							sessionId,
+							kind: "discovery",
+							title: "invalid",
+							bodyText: "invalid",
+						}),
 					],
 				),
 			).toThrow(/citation/i);
@@ -3233,12 +3232,11 @@ describe("MemoryStore", () => {
 					() => [
 						{
 							memoryId: unrelatedMemoryId,
-							citedSourceEventIds: ["cited-0"],
 							disposition: "inserted",
 						},
 					],
 				),
-			).toThrow(/memory completion is invalid/i);
+			).toThrow(/memory completion|output count/i);
 			expect(
 				store.db
 					.prepare(
@@ -3261,12 +3259,11 @@ describe("MemoryStore", () => {
 					() => [
 						{
 							memoryId: unrelatedMemoryId,
-							citedSourceEventIds: ["cited-0"],
 							disposition: "unexpected",
 						} as never,
 					],
 				),
-			).toThrow(/memory completion is invalid/i);
+			).toThrow(/memory completion|output count/i);
 
 			const completed = store.completeRawEventFlushJobMemory(
 				{
@@ -3275,12 +3272,14 @@ describe("MemoryStore", () => {
 					observedOutputCount: 1,
 					diagnostic: {},
 				},
-				() => [
-					{
-						memoryId: store.remember(sessionId, "discovery", "valid", "valid"),
-						citedSourceEventIds: ["cited-1"],
-						disposition: "inserted",
-					},
+				(_newMemoryIdFloor, derivation) => [
+					derivation.remember({
+						sourceCitations: [{ source: 1, start: null, end: null }],
+						sessionId,
+						kind: "discovery",
+						title: "valid",
+						bodyText: "valid",
+					}),
 				],
 			);
 			expect(completed).toMatchObject({ frontierChanged: true, memoryIds: [expect.any(Number)] });
@@ -3296,8 +3295,8 @@ describe("MemoryStore", () => {
 				sensitivity: "private",
 				repository_identity: repositoryIdentity,
 				source_event_ids_json: '["cited-1"]',
-				manifest_fingerprint: manifestFingerprint,
-				provider_fingerprint: providerFingerprint,
+				manifest_fingerprint: citationManifest.configurationFingerprint,
+				provider_fingerprint: citationManifest.summaryProvider.providerFingerprint,
 				attempt_fingerprint: claim.attemptFingerprint,
 			});
 
@@ -3317,11 +3316,7 @@ describe("MemoryStore", () => {
 				manifestFingerprint,
 				providerFingerprint,
 			});
-			const dedupClaim = store.claimRawEventFlushJob({
-				jobId: dedupAdmission.jobId as number,
-				manifestFingerprint,
-				providerFingerprint,
-			});
+			const dedupClaim = claimFlushJob(store, dedupAdmission.jobId as number);
 			if (!dedupClaim) throw new Error("expected dedup claim");
 			expect(() =>
 				store.completeRawEventFlushJobMemory(
@@ -3334,12 +3329,11 @@ describe("MemoryStore", () => {
 					() => [
 						{
 							memoryId: store.remember(sessionId, "discovery", "valid", "valid"),
-							citedSourceEventIds: ["deduplicated-0"],
 							disposition: "deduplicated",
 						},
 					],
 				),
-			).toThrow(/citation binding/i);
+			).toThrow(/citation binding|output count/i);
 			expect(
 				store.db
 					.prepare(
@@ -3370,11 +3364,7 @@ describe("MemoryStore", () => {
 				manifestFingerprint,
 				providerFingerprint,
 			});
-			const mixedClaim = store.claimRawEventFlushJob({
-				jobId: mixedAdmission.jobId as number,
-				manifestFingerprint,
-				providerFingerprint,
-			});
+			const mixedClaim = claimFlushJob(store, mixedAdmission.jobId as number);
 			if (!mixedClaim) throw new Error("expected mixed claim");
 			store.db
 				.prepare("UPDATE raw_events SET repository_identity = ? WHERE event_id = 'mixed-1'")
@@ -3391,14 +3381,500 @@ describe("MemoryStore", () => {
 					() => [
 						{
 							memoryId: store.remember(sessionId, "discovery", "mixed", "mixed"),
-							citedSourceEventIds: ["mixed-0", "mixed-1"],
 							disposition: "inserted",
 						},
 					],
 				),
-			).toThrow(/one repository/i);
+			).toThrow(/one repository|source set/i);
 			expect(countMemories()).toBe(beforeMixed);
 			expect(store.rawEventFlushState("mixed-repositories", "codex")).toBe(-1);
+		});
+
+		it("binds a compiler-created boundary and projects only eligible sources in order", () => {
+			const streamId = "claim-bound-projection";
+			for (const [eventId, sensitivity] of [
+				["projected-eligible-0", "eligible"],
+				["projected-private-1", "private"],
+				["projected-eligible-2", "eligible"],
+				["projected-local-only-3", "local_only"],
+				["projected-secret-4", "secret"],
+			] as const) {
+				capture(store, eventId, { eventId }, { opencodeSessionId: streamId, sensitivity });
+			}
+			const admission = store.admitRawEventFlushJob({
+				source: "codex",
+				streamId,
+				manifestFingerprint,
+				providerFingerprint,
+			});
+			const jobId = admission.jobId as number;
+			const validBoundary = providerBoundary(store, jobId);
+			expect(() =>
+				store.claimRawEventFlushJob({
+					jobId,
+					manifestFingerprint,
+					providerFingerprint,
+					manifest: providerManifest,
+					boundary: { ...validBoundary },
+				}),
+			).toThrow(/compiler|boundary/i);
+			expect(
+				store.db
+					.prepare("SELECT status, attempt_count FROM raw_event_flush_batches WHERE id = ?")
+					.get(jobId),
+			).toEqual({ status: "queued", attempt_count: 0 });
+
+			const wrongManifest = testProviderManifest("wrong-boundary-provider");
+			expect(() =>
+				store.claimRawEventFlushJob({
+					jobId,
+					manifestFingerprint,
+					providerFingerprint,
+					manifest: providerManifest,
+					boundary: providerBoundary(store, jobId, wrongManifest),
+				}),
+			).toThrow(/boundary/i);
+
+			const claim = claimFlushJob(store, jobId);
+			if (!claim) throw new Error("expected projected claim");
+			expect(store.rawEventFlushClaimSourceEventIds(claim)).toEqual([
+				"projected-eligible-0",
+				"projected-private-1",
+				"projected-eligible-2",
+				"projected-local-only-3",
+				"projected-secret-4",
+			]);
+			expect(store.rawEventFlushClaimProjectedSourceSet(claim).sources).toMatchObject([
+				{ ordinal: 0, eventId: "projected-eligible-0", sensitivity: "eligible" },
+				{ ordinal: 1, eventId: "projected-eligible-2", sensitivity: "eligible" },
+			]);
+			expect(store.loadRawEventFlushJobEvents(claim).map((event) => event.event_id)).toEqual([
+				"projected-eligible-0",
+				"projected-eligible-2",
+			]);
+			expect(() => store.rawEventFlushClaimProjectedSourceSet({ ...claim })).toThrow(/stale/i);
+			expect(() =>
+				store.completeRawEventFlushJobMemory(
+					{
+						claim: { ...claim },
+						sourceEventIds: store.rawEventFlushClaimSourceEventIds(claim),
+						observedOutputCount: 0,
+						diagnostic: {},
+					},
+					() => [],
+				),
+			).toThrow(/stale/i);
+
+			const restrictedStream = "claim-bound-all-restricted";
+			for (const [eventId, sensitivity] of [
+				["restricted-private", "private"],
+				["restricted-local", "local_only"],
+				["restricted-secret", "secret"],
+			] as const) {
+				capture(store, eventId, { eventId }, { opencodeSessionId: restrictedStream, sensitivity });
+			}
+			const restrictedAdmission = store.admitRawEventFlushJob({
+				source: "codex",
+				streamId: restrictedStream,
+				manifestFingerprint,
+				providerFingerprint,
+			});
+			const restrictedClaim = claimFlushJob(store, restrictedAdmission.jobId as number);
+			if (!restrictedClaim) throw new Error("expected all-restricted claim");
+			const restrictedIds = store.rawEventFlushClaimSourceEventIds(restrictedClaim);
+			expect(store.rawEventFlushClaimProjectedSourceSet(restrictedClaim).sources).toEqual([]);
+			expect(
+				store.completeRawEventFlushJobPrivacySkip({
+					claim: restrictedClaim,
+					sourceEventIds: restrictedIds,
+					projection: { eligibleSourceEventIds: [], omittedSourceEventIds: restrictedIds },
+					diagnostic: { reason: "all_restricted" },
+				}),
+			).toEqual({ frontierChanged: true });
+		});
+
+		it("normalizes whole-event and UTF-8 citations while preserving ID order", () => {
+			const streamId = "claim-bound-span-normalization";
+			capture(store, "z-source", { text: "alpha" }, { opencodeSessionId: streamId });
+			capture(store, "a-source", { text: "猫" }, { opencodeSessionId: streamId });
+			const admission = store.admitRawEventFlushJob({
+				source: "codex",
+				streamId,
+				manifestFingerprint,
+				providerFingerprint,
+			});
+			const claim = claimFlushJob(store, admission.jobId as number);
+			if (!claim) throw new Error("expected span claim");
+			expect(store.rawEventFlushClaimProjectedSourceSet(claim).sources).toMatchObject([
+				{ ordinal: 0, eventId: "z-source", redactedPayload: '{"text":"alpha"}' },
+				{ ordinal: 1, eventId: "a-source", redactedPayload: '{"text":"猫"}' },
+			]);
+			const sessionId = insertTestSession(store.db);
+			const completed = store.completeRawEventFlushJobMemory(
+				{
+					claim,
+					sourceEventIds: ["z-source", "a-source"],
+					observedOutputCount: 1,
+					diagnostic: {},
+				},
+				(_newMemoryIdFloor, derivation) => [
+					derivation.remember({
+						sourceCitations: [
+							{ source: 0, start: null, end: null },
+							{ source: 1, start: 9, end: 12 },
+						],
+						sessionId,
+						kind: "discovery",
+						title: "Ordered UTF-8 anchors",
+						bodyText: "Body",
+					}),
+				],
+			);
+			expect(
+				store.db
+					.prepare("SELECT source_event_ids_json, source_spans_json FROM memory_items WHERE id = ?")
+					.get(completed.memoryIds[0]),
+			).toEqual({
+				source_event_ids_json: '["z-source","a-source"]',
+				source_spans_json:
+					'[{"eventId":"a-source","startByte":9,"endByte":12},{"eventId":"z-source","startByte":0,"endByte":16}]',
+			});
+		});
+
+		it("rejects invalid citations and source drift with zero commit", () => {
+			const streamId = "claim-bound-invalid-spans";
+			capture(store, "utf8-source", { text: "猫" }, { opencodeSessionId: streamId });
+			capture(store, "ascii-source", { text: "abc" }, { opencodeSessionId: streamId });
+			const admission = store.admitRawEventFlushJob({
+				source: "codex",
+				streamId,
+				manifestFingerprint,
+				providerFingerprint,
+			});
+			const claim = claimFlushJob(store, admission.jobId as number);
+			if (!claim) throw new Error("expected invalid-span claim");
+			const sessionId = insertTestSession(store.db);
+			const before = store.db.prepare("SELECT COUNT(*) AS count FROM memory_items").get();
+			const invalidCitations = [
+				[{ source: 2, start: null, end: null }],
+				[
+					{ source: 0, start: null, end: null },
+					{ source: 0, start: 9, end: 12 },
+				],
+				[
+					{ source: 1, start: null, end: null },
+					{ source: 0, start: null, end: null },
+				],
+				[{ source: 0, start: 9, end: null }],
+				[{ source: 0, start: 9, end: 99 }],
+				[{ source: 0, start: 10, end: 12 }],
+			];
+			for (const [index, sourceCitations] of invalidCitations.entries()) {
+				expect(() =>
+					store.completeRawEventFlushJobMemory(
+						{
+							claim,
+							sourceEventIds: ["utf8-source", "ascii-source"],
+							observedOutputCount: 1,
+							diagnostic: {},
+						},
+						(_newMemoryIdFloor, derivation) => [
+							derivation.remember({
+								sourceCitations,
+								sessionId,
+								kind: "discovery",
+								title: `Invalid citation ${index}`,
+								bodyText: "Body",
+							}),
+						],
+					),
+				).toThrow(/citation|span|source|order/i);
+				expect(store.db.prepare("SELECT COUNT(*) AS count FROM memory_items").get()).toEqual(
+					before,
+				);
+			}
+
+			store.db
+				.prepare("UPDATE raw_events SET sensitivity = 'private' WHERE event_id = 'utf8-source'")
+				.run();
+			expect(() =>
+				store.completeRawEventFlushJobMemory(
+					{
+						claim,
+						sourceEventIds: ["utf8-source", "ascii-source"],
+						observedOutputCount: 1,
+						diagnostic: {},
+					},
+					(_newMemoryIdFloor, derivation) => [
+						derivation.remember({
+							sourceCitations: [{ source: 0, start: null, end: null }],
+							sessionId,
+							kind: "discovery",
+							title: "Drift",
+							bodyText: "Drift",
+						}),
+					],
+				),
+			).toThrow(/source set|drift/i);
+			expect(store.db.prepare("SELECT COUNT(*) AS count FROM memory_items").get()).toEqual(before);
+			expect(
+				store.db
+					.prepare("SELECT status FROM raw_event_flush_batches WHERE id = ?")
+					.get(claim.jobId),
+			).toEqual({ status: "processing" });
+		});
+
+		it("deduplicates exact retry anchors, rejects active overlap, suppresses tombstones, and permits siblings", () => {
+			const createAnchor = (streamId: string, title: string) => {
+				const eventId = `${streamId}-event`;
+				capture(store, eventId, { text: "abcdefghij" }, { opencodeSessionId: streamId });
+				const admission = store.admitRawEventFlushJob({
+					source: "codex",
+					streamId,
+					manifestFingerprint,
+					providerFingerprint,
+				});
+				const claim = claimFlushJob(store, admission.jobId as number);
+				if (!claim) throw new Error("expected anchor claim");
+				const sessionId = insertTestSession(store.db);
+				const complete = (
+					activeClaim: typeof claim,
+					start: number,
+					end: number,
+					revisionTitle = title,
+				) =>
+					store.completeRawEventFlushJobMemory(
+						{
+							claim: activeClaim,
+							sourceEventIds: [eventId],
+							observedOutputCount: 1,
+							diagnostic: {},
+						},
+						(_newMemoryIdFloor, derivation) => [
+							derivation.remember({
+								sourceCitations: [{ source: 0, start, end }],
+								sessionId,
+								kind: "discovery",
+								title: revisionTitle,
+								bodyText: "Body",
+							}),
+						],
+					);
+				const first = complete(claim, 9, 14);
+				return { claim, complete, first };
+			};
+
+			const exact = createAnchor("anchor-exact", "Exact anchor");
+			const exactRetry = exact.complete(reopenCompletedFlushJob(exact.claim), 9, 14);
+			expect(exactRetry.memoryIds).toEqual(exact.first.memoryIds);
+			expect(
+				store.db
+					.prepare("SELECT COUNT(*) AS count FROM memory_items WHERE source_spans_json IS NOT NULL")
+					.get(),
+			).toEqual({ count: 1 });
+
+			const active = createAnchor("anchor-active-overlap", "Active anchor");
+			const activeRetry = reopenCompletedFlushJob(active.claim);
+			expect(() => active.complete(activeRetry, 12, 17, "Overlapping anchor")).toThrow(
+				/overlap|anchor/i,
+			);
+
+			const tombstoned = createAnchor("anchor-tombstone", "Tombstoned anchor");
+			store.forget(tombstoned.first.memoryIds[0] as number);
+			const suppressed = tombstoned.complete(
+				reopenCompletedFlushJob(tombstoned.claim),
+				12,
+				17,
+				"Suppressed anchor",
+			);
+			expect(suppressed.memoryIds).toEqual([]);
+
+			const sibling = createAnchor("anchor-disjoint", "First sibling");
+			const second = sibling.complete(
+				reopenCompletedFlushJob(sibling.claim),
+				14,
+				19,
+				"Second sibling",
+			);
+			expect(second.memoryIds[0]).not.toBe(sibling.first.memoryIds[0]);
+		});
+
+		it("suppresses tombstoned re-derivations that cite a different event subset", () => {
+			const streamId = "tombstone-subset";
+			const eventA = `${streamId}-a`;
+			const eventB = `${streamId}-b`;
+			capture(store, eventA, { text: "abcdefghij" }, { opencodeSessionId: streamId });
+			capture(store, eventB, { text: "klmnopqrst" }, { opencodeSessionId: streamId });
+			const admission = store.admitRawEventFlushJob({
+				source: "codex",
+				streamId,
+				manifestFingerprint,
+				providerFingerprint,
+			});
+			const claim = claimFlushJob(store, admission.jobId as number);
+			if (!claim) throw new Error("expected subset claim");
+			const sessionId = insertTestSession(store.db);
+			const complete = (
+				activeClaim: typeof claim,
+				citations: Array<{ source: number; start: number; end: number }>,
+				title: string,
+			) =>
+				store.completeRawEventFlushJobMemory(
+					{
+						claim: activeClaim,
+						sourceEventIds: [eventA, eventB],
+						observedOutputCount: 1,
+						diagnostic: {},
+					},
+					(_newMemoryIdFloor, derivation) => [
+						derivation.remember({
+							sourceCitations: citations,
+							sessionId,
+							kind: "discovery",
+							title,
+							bodyText: "Body",
+						}),
+					],
+				);
+
+			const first = complete(
+				claim,
+				[
+					{ source: 0, start: 9, end: 14 },
+					{ source: 1, start: 9, end: 14 },
+				],
+				"Two-event anchor",
+			);
+			store.forget(first.memoryIds[0] as number);
+
+			// Gate fires: citing only a SUBSET of the tombstoned events with
+			// overlapping bytes must still be suppressed — event-set equality
+			// would let this resurrect deleted content.
+			const subset = complete(
+				reopenCompletedFlushJob(claim),
+				[{ source: 0, start: 12, end: 17 }],
+				"Subset re-derivation",
+			);
+			expect(subset.memoryIds).toEqual([]);
+
+			// Gate passes: byte-disjoint content on the same event is a sibling.
+			const disjoint = complete(
+				reopenCompletedFlushJob(claim),
+				[{ source: 0, start: 14, end: 19 }],
+				"Disjoint sibling",
+			);
+			expect(disjoint.memoryIds).toHaveLength(1);
+		});
+
+		it("rejects an active-anchor overlap even when the citation adds an unrelated event", () => {
+			const streamId = "superset-active";
+			const eventA = `${streamId}-a`;
+			const eventB = `${streamId}-b`;
+			capture(store, eventA, { text: "abcdefghij" }, { opencodeSessionId: streamId });
+			capture(store, eventB, { text: "klmnopqrst" }, { opencodeSessionId: streamId });
+			const admission = store.admitRawEventFlushJob({
+				source: "codex",
+				streamId,
+				manifestFingerprint,
+				providerFingerprint,
+			});
+			const claim = claimFlushJob(store, admission.jobId as number);
+			if (!claim) throw new Error("expected superset claim");
+			const sessionId = insertTestSession(store.db);
+			const complete = (
+				activeClaim: typeof claim,
+				citations: Array<{ source: number; start: number; end: number }>,
+				title: string,
+			) =>
+				store.completeRawEventFlushJobMemory(
+					{
+						claim: activeClaim,
+						sourceEventIds: [eventA, eventB],
+						observedOutputCount: 1,
+						diagnostic: {},
+					},
+					(_newMemoryIdFloor, derivation) => [
+						derivation.remember({
+							sourceCitations: citations,
+							sessionId,
+							kind: "discovery",
+							title,
+							bodyText: "Body",
+						}),
+					],
+				);
+
+			const first = complete(claim, [{ source: 0, start: 9, end: 14 }], "Single-event anchor");
+			expect(first.memoryIds).toHaveLength(1);
+
+			// Padding the citation with an unrelated event must not slip an
+			// overlapping anchor past the active-overlap rejection: ambiguous
+			// overlap rejects; only disjoint spans may become siblings.
+			expect(() =>
+				complete(
+					reopenCompletedFlushJob(claim),
+					[
+						{ source: 0, start: 9, end: 12 },
+						{ source: 1, start: 9, end: 14 },
+					],
+					"Superset bypass attempt",
+				),
+			).toThrow(/overlap|anchor/i);
+		});
+
+		it("floors derived sensitivity over the full projected set, not just cited ordinals", () => {
+			const runFloorCase = (streamId: string, secondSensitivity: "eligible" | "local_only") => {
+				capture(
+					store,
+					`${streamId}-cited`,
+					{ text: "cited text" },
+					{ opencodeSessionId: streamId, sensitivity: "eligible" },
+				);
+				capture(
+					store,
+					`${streamId}-uncited`,
+					{ text: "uncited text" },
+					{ opencodeSessionId: streamId, sensitivity: secondSensitivity },
+				);
+				const admission = store.admitRawEventFlushJob({
+					source: "codex",
+					streamId,
+					manifestFingerprint: localProviderManifest.configurationFingerprint,
+					providerFingerprint: localProviderManifest.summaryProvider.providerFingerprint,
+				});
+				const claim = claimFlushJob(store, admission.jobId as number, localProviderManifest);
+				if (!claim) throw new Error("expected floor claim");
+				const sessionId = insertTestSession(store.db);
+				const completion = store.completeRawEventFlushJobMemory(
+					{
+						claim,
+						sourceEventIds: [`${streamId}-cited`, `${streamId}-uncited`],
+						observedOutputCount: 1,
+						diagnostic: {},
+					},
+					(_newMemoryIdFloor, derivation) => [
+						derivation.remember({
+							// Cites ONLY the eligible ordinal — the restricted source is
+							// still in the provider's prompt, so it must still floor.
+							sourceCitations: [{ source: 0, start: null, end: null }],
+							sessionId,
+							kind: "discovery",
+							title: `Floor ${streamId}`,
+							bodyText: "Body",
+						}),
+					],
+				);
+				return store.db
+					.prepare("SELECT sensitivity FROM memory_items WHERE id = ?")
+					.get(completion.memoryIds[0]);
+			};
+
+			// Gate fires: an uncited restricted source floors the derived memory.
+			expect(runFloorCase("floor-restricted", "local_only")).toEqual({
+				sensitivity: "local_only",
+			});
+			// Gate passes: an all-eligible projected set stays eligible.
+			expect(runFloorCase("floor-eligible", "eligible")).toEqual({ sensitivity: "eligible" });
 		});
 
 		it("replays a fanout signal using its stored global producer identity", () => {
@@ -3540,6 +4016,7 @@ describe("MemoryStore", () => {
 		it("does not replay an older pending activation after a newer sequence", () => {
 			const jobId = insertRetryExhaustedJob("activation-sequence-superseded");
 			const siblingJobId = insertRetryExhaustedJob("activation-sequence-superseded-sibling");
+			const newerManifest = testProviderManifest("activation-sequence-newer");
 			expect(
 				store.applyResumeSignal({
 					signalId: "activation-sequence-blocker-signal",
@@ -3561,8 +4038,8 @@ describe("MemoryStore", () => {
 			const newer = {
 				receiptId: "activation-sequence-newer-pending",
 				activationSequence: 51,
-				manifestFingerprint: `sha256:${"f".repeat(64)}`,
-				providerFingerprint: `sha256:${"0".repeat(64)}`,
+				manifestFingerprint: newerManifest.configurationFingerprint,
+				providerFingerprint: newerManifest.summaryProvider.providerFingerprint,
 			};
 			expect(store.importActivationReceipt(older)).toMatchObject({
 				disposition: "grant_pending",
@@ -3573,11 +4050,7 @@ describe("MemoryStore", () => {
 				disposition: "grant_pending",
 				fanoutCount: 0,
 			});
-			const blockerClaim = store.claimRawEventFlushJob({
-				jobId,
-				manifestFingerprint,
-				providerFingerprint,
-			});
+			const blockerClaim = claimFlushJob(store, jobId);
 			if (!blockerClaim) throw new Error("expected blocker claim");
 			expect(
 				store.failRawEventFlushJob({
@@ -3591,11 +4064,7 @@ describe("MemoryStore", () => {
 				disposition: "grant_pending",
 				fanoutCount: 1,
 			});
-			const newerClaim = store.claimRawEventFlushJob({
-				jobId,
-				manifestFingerprint: newer.manifestFingerprint,
-				providerFingerprint: newer.providerFingerprint,
-			});
+			const newerClaim = claimFlushJob(store, jobId, newerManifest);
 			if (!newerClaim) throw new Error("expected newer activation claim");
 			expect(
 				store.failRawEventFlushJob({
@@ -3950,11 +4419,7 @@ describe("MemoryStore", () => {
 				fanoutCount: 1,
 				results: [{ jobId: secondJobId, disposition: "accepted" }],
 			});
-			const firstClaim = store.claimRawEventFlushJob({
-				jobId: firstJobId,
-				manifestFingerprint,
-				providerFingerprint,
-			});
+			const firstClaim = claimFlushJob(store, firstJobId);
 			if (!firstClaim) throw new Error("expected pending doctor claim");
 			expect(store.importActivationReceipt(activation)).toMatchObject({
 				disposition: "grant_pending",
@@ -3992,8 +4457,9 @@ describe("MemoryStore", () => {
 
 		it("records a durable no-op when a frozen target changes before replay", () => {
 			const jobId = insertRetryExhaustedJob("fanout-frozen-attempt-change");
-			const nextManifest = `sha256:${"e".repeat(64)}`;
-			const nextProvider = `sha256:${"f".repeat(64)}`;
+			const nextProviderManifest = testProviderManifest("fanout-frozen-next");
+			const nextManifest = nextProviderManifest.configurationFingerprint;
+			const nextProvider = nextProviderManifest.summaryProvider.providerFingerprint;
 			expect(
 				store.importActivationReceipt({
 					receiptId: "fanout-frozen-first-activation",
@@ -4012,11 +4478,7 @@ describe("MemoryStore", () => {
 				disposition: "grant_pending",
 				fanoutCount: 0,
 			});
-			const claim = store.claimRawEventFlushJob({
-				jobId,
-				manifestFingerprint: nextManifest,
-				providerFingerprint: nextProvider,
-			});
+			const claim = claimFlushJob(store, jobId, nextProviderManifest);
 			if (!claim) throw new Error("expected frozen target claim");
 			expect(
 				store.failRawEventFlushJob({

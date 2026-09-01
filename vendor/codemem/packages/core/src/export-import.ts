@@ -1,6 +1,12 @@
 import { readFileSync } from "node:fs";
 import { drizzle } from "drizzle-orm/better-sqlite3";
 import { assertSchemaReady, type Database, fromJson, toJson, toJsonNullable } from "./db.js";
+import {
+	CAPTURE_ONLY_DESTINATION_FINGERPRINT,
+	compileUntrustedDestinationBoundary,
+	type DestinationBoundaryV1,
+	memoryDestinationBoundarySql,
+} from "./destination-boundary.js";
 import { buildFilterClausesWithContext } from "./filters.js";
 import { expandUserPath } from "./observer-config.js";
 import { projectColumnClause, resolveProject as resolveProjectName } from "./project.js";
@@ -8,6 +14,7 @@ import * as schema from "./schema.js";
 import { LOCAL_DEFAULT_SCOPE_ID } from "./scope-resolution.js";
 import { resolveSessionScopeId } from "./scope-stamping.js";
 import { isOneOf, trimEndWhere } from "./text-trim.js";
+import type { SensitivityV1, SourceSpanV1 } from "./types.js";
 
 const TRAILING_SLASH = isOneOf("/");
 
@@ -35,7 +42,7 @@ export interface ImportOptions {
 }
 
 export interface ExportPayload {
-	version: "1.0";
+	version: "1.0" | "2.0";
 	exported_at: string;
 	export_metadata: {
 		tool_version: "codemem";
@@ -74,6 +81,15 @@ const SUMMARY_METADATA_KEYS = [
 	"discovery_source",
 ] as const;
 
+const REPOSITORY_IDENTITY = /^repo-v1:sha256:[a-f0-9]{64}$/;
+const FINGERPRINT = /^sha256:[a-f0-9]{64}$/;
+const SENSITIVITY_RANK: Record<SensitivityV1, number> = {
+	eligible: 0,
+	local_only: 1,
+	private: 2,
+	secret: 3,
+};
+
 function nowIso(): string {
 	return new Date().toISOString();
 }
@@ -86,6 +102,11 @@ function cleanString(value: unknown): string | null {
 	if (typeof value !== "string") return null;
 	const trimmed = value.trim();
 	return trimmed || null;
+}
+
+function boundedString(value: unknown, maxBytes = 256): string | null {
+	const cleaned = cleanString(value);
+	return cleaned && Buffer.byteLength(cleaned, "utf8") <= maxBytes ? cleaned : null;
 }
 
 function resolveLocalDeviceId(db: Database): string {
@@ -101,12 +122,49 @@ function resolveLocalDeviceId(db: Database): string {
 	}
 }
 
-function buildScopeFilter(db: Database): ScopeFilter {
+function buildScopeFilter(db: Database, destinationBoundary: DestinationBoundaryV1): ScopeFilter {
 	return buildFilterClausesWithContext(null, {
 		actorId: "export",
 		deviceId: resolveLocalDeviceId(db),
 		enforceScopeVisibility: true,
+		destinationBoundary,
 	});
+}
+
+function defaultExportBoundary(): DestinationBoundaryV1 {
+	return compileUntrustedDestinationBoundary({
+		consumer: "export",
+		configurationFingerprint: CAPTURE_ONLY_DESTINATION_FINGERPRINT,
+	});
+}
+
+function validRepositoryIdentity(value: unknown): string | null {
+	return typeof value === "string" && REPOSITORY_IDENTITY.test(value) ? value : null;
+}
+
+function normalizeContentSecurity(
+	row: JsonObject,
+	version: ExportPayload["version"],
+): { sensitivity: SensitivityV1; repositoryIdentity: string | null } {
+	if (version === "1.0") return { sensitivity: "secret", repositoryIdentity: null };
+	const sensitivity =
+		typeof row.sensitivity === "string" && Object.hasOwn(SENSITIVITY_RANK, row.sensitivity)
+			? (row.sensitivity as SensitivityV1)
+			: null;
+	const repositoryIdentity = validRepositoryIdentity(row.repository_identity);
+	const repositoryWasValid = row.repository_identity == null || repositoryIdentity !== null;
+	if (
+		sensitivity === null ||
+		!repositoryWasValid ||
+		((sensitivity === "local_only" || sensitivity === "private") && repositoryIdentity === null)
+	) {
+		return { sensitivity: "secret", repositoryIdentity: null };
+	}
+	return { sensitivity, repositoryIdentity };
+}
+
+function strongestSensitivity(left: SensitivityV1, right: SensitivityV1): SensitivityV1 {
+	return SENSITIVITY_RANK[left] >= SENSITIVITY_RANK[right] ? left : right;
 }
 
 function scopeCanBeImported(db: Database, scopeId: string, deviceId: string): boolean {
@@ -229,8 +287,10 @@ function querySessions(
 	since: string | null,
 	scopeFilter: ScopeFilter,
 	includeInactive: boolean,
+	destinationBoundary: DestinationBoundaryV1,
 ): JsonObject[] {
-	let sql = "SELECT * FROM sessions";
+	let sql = `SELECT id, started_at, ended_at, project, tool_version, import_key, repository_identity
+		FROM sessions`;
 	const params: unknown[] = [];
 	const clauses: string[] = [];
 	if (project) {
@@ -246,25 +306,45 @@ function querySessions(
 	}
 	const memoryClauses = ["memory_items.session_id = sessions.id", ...scopeFilter.clauses];
 	if (!includeInactive) memoryClauses.splice(1, 0, "memory_items.active = 1");
-	clauses.push(`EXISTS (SELECT 1 FROM memory_items WHERE ${memoryClauses.join(" AND ")})`);
-	params.push(...scopeFilter.params);
+	const promptBoundary = memoryDestinationBoundarySql(destinationBoundary, "user_prompts");
+	const summaryBoundary = memoryDestinationBoundarySql(destinationBoundary, "session_summaries");
+	clauses.push(`(
+		EXISTS (SELECT 1 FROM memory_items WHERE ${memoryClauses.join(" AND ")})
+		OR EXISTS (
+			SELECT 1 FROM user_prompts
+			WHERE user_prompts.session_id = sessions.id AND ${promptBoundary.clause}
+		)
+		OR EXISTS (
+			SELECT 1 FROM session_summaries
+			WHERE session_summaries.session_id = sessions.id AND ${summaryBoundary.clause}
+		)
+	)`);
+	params.push(...scopeFilter.params, ...promptBoundary.params, ...summaryBoundary.params);
 	if (clauses.length > 0) sql += ` WHERE ${clauses.join(" AND ")}`;
 	sql += " ORDER BY started_at ASC";
 	const rows = db.prepare(sql).all(...params) as JsonObject[];
-	return rows.map((row) => parseRowJsonFields(row, ["metadata_json"]));
+	return rows.map((row) => ({
+		...row,
+		project: boundedString(normalizeImportedProject(row.project)),
+		tool_version: boundedString(row.tool_version, 128),
+		repository_identity: validRepositoryIdentity(row.repository_identity),
+	}));
 }
 
-function fetchBySessionIds(
+function fetchContentBySessionIds(
 	db: Database,
-	table: string,
+	table: "session_summaries" | "user_prompts",
 	sessionIds: number[],
 	orderBy: string,
-	extraWhere = "",
+	destinationBoundary: DestinationBoundaryV1,
 ): JsonObject[] {
 	if (sessionIds.length === 0) return [];
 	const placeholders = sessionIds.map(() => "?").join(",");
-	const sql = `SELECT * FROM ${table} WHERE session_id IN (${placeholders})${extraWhere} ORDER BY ${orderBy}`;
-	return db.prepare(sql).all(...sessionIds) as JsonObject[];
+	const destination = memoryDestinationBoundarySql(destinationBoundary, table);
+	const sql = `SELECT * FROM ${table}
+		WHERE session_id IN (${placeholders}) AND ${destination.clause}
+		ORDER BY ${orderBy}`;
+	return db.prepare(sql).all(...sessionIds, ...destination.params) as JsonObject[];
 }
 
 function exportedMemoryScopeId(row: JsonObject): string {
@@ -280,6 +360,8 @@ function parseMemoryExportRow(row: JsonObject): JsonObject {
 			"concepts",
 			"files_read",
 			"files_modified",
+			"source_event_ids_json",
+			"source_spans_json",
 		]),
 		scope_id: exportedMemoryScopeId(row),
 	};
@@ -301,13 +383,17 @@ function fetchMemoryRows(
 		.all(...params) as JsonObject[];
 }
 
-export function exportMemoriesWithDb(db: Database, opts: ExportOptions = {}): ExportPayload {
+export function exportMemoriesWithDb(
+	db: Database,
+	opts: ExportOptions = {},
+	destinationBoundary: DestinationBoundaryV1 = defaultExportBoundary(),
+): ExportPayload {
 	assertSchemaReady(db);
 	const resolvedProject = resolveExportProject(opts);
 	const filters: JsonObject = {};
 	if (resolvedProject) filters.project = resolvedProject;
 	if (opts.since) filters.since = opts.since;
-	const scopeFilter = buildScopeFilter(db);
+	const scopeFilter = buildScopeFilter(db, destinationBoundary);
 
 	const sessions = querySessions(
 		db,
@@ -315,6 +401,7 @@ export function exportMemoriesWithDb(db: Database, opts: ExportOptions = {}): Ex
 		opts.since ?? null,
 		scopeFilter,
 		Boolean(opts.includeInactive),
+		destinationBoundary,
 	);
 	const sessionIds = sessions.map((row) => Number(row.id)).filter(Number.isFinite);
 
@@ -322,16 +409,21 @@ export function exportMemoriesWithDb(db: Database, opts: ExportOptions = {}): Ex
 		(row) => parseMemoryExportRow(row),
 	);
 
-	const summaries = fetchBySessionIds(
+	const summaries = fetchContentBySessionIds(
 		db,
 		"session_summaries",
 		sessionIds,
 		"created_at_epoch ASC",
+		destinationBoundary,
 	).map((row) => parseRowJsonFields(row, ["metadata_json", "files_read", "files_edited"]));
 
-	const prompts = fetchBySessionIds(db, "user_prompts", sessionIds, "created_at_epoch ASC").map(
-		(row) => parseRowJsonFields(row, ["metadata_json"]),
-	);
+	const prompts = fetchContentBySessionIds(
+		db,
+		"user_prompts",
+		sessionIds,
+		"created_at_epoch ASC",
+		destinationBoundary,
+	).map((row) => parseRowJsonFields(row, ["metadata_json"]));
 
 	const promptImportKeys = new Map<number, string>();
 	for (const prompt of prompts) {
@@ -346,7 +438,7 @@ export function exportMemoriesWithDb(db: Database, opts: ExportOptions = {}): Ex
 	}
 
 	return {
-		version: "1.0",
+		version: "2.0",
 		exported_at: nowIso(),
 		export_metadata: {
 			tool_version: "codemem",
@@ -371,7 +463,7 @@ export function readImportPayload(inputFile: string): ExportPayload {
 		throw new Error("Import payload must be a JSON object");
 	}
 	const payload = parsed as ExportPayload;
-	if (payload.version !== "1.0") {
+	if (payload.version !== "1.0" && payload.version !== "2.0") {
 		throw new Error(
 			`Unsupported export version: ${String((parsed as JsonObject).version ?? "unknown")}`,
 		);
@@ -379,18 +471,252 @@ export function readImportPayload(inputFile: string): ExportPayload {
 	return payload;
 }
 
-function findImportedId(db: Database, table: string, importKey: string): number | null {
-	const row = db.prepare(`SELECT id FROM ${table} WHERE import_key = ? LIMIT 1`).get(importKey) as
-		| { id: number }
-		| undefined;
+function findImportedId(
+	db: Database,
+	table: "sessions" | "user_prompts" | "memory_items" | "session_summaries",
+	importKey: string,
+	repositoryIdentity: string | null,
+): number | null {
+	const row = db
+		.prepare(`SELECT id FROM ${table} WHERE import_key = ? AND repository_identity IS ? LIMIT 1`)
+		.get(importKey, repositoryIdentity) as { id: number } | undefined;
 	return row?.id ?? null;
 }
 
-function nextUserName(): string {
-	return process.env.USER?.trim() || process.env.USERNAME?.trim() || "import";
+function strengthenImportedContent(
+	db: Database,
+	table: "user_prompts" | "session_summaries",
+	id: number,
+	incomingSensitivity: SensitivityV1,
+): void {
+	const row = db.prepare(`SELECT sensitivity FROM ${table} WHERE id = ?`).get(id) as
+		| { sensitivity: SensitivityV1 }
+		| undefined;
+	if (!row) return;
+	const sensitivity = strongestSensitivity(row.sensitivity, incomingSensitivity);
+	if (sensitivity !== row.sensitivity) {
+		db.prepare(`UPDATE ${table} SET sensitivity = ? WHERE id = ?`).run(sensitivity, id);
+	}
 }
 
 type DrizzleDb = ReturnType<typeof drizzle>;
+
+type NormalizedMemoryProvenance = {
+	lineageId: string | null;
+	revisionId: string | null;
+	revisionOrdinal: number | null;
+	supersedesMemoryId: number | null;
+	derivationKey: string | null;
+	sourceEventIds: string[] | null;
+	sourceSpans: SourceSpanV1[] | null;
+	manifestFingerprint: string | null;
+	providerFingerprint: string | null;
+	attemptFingerprint: string | null;
+};
+
+type NormalizedMemorySecurity = {
+	sensitivity: SensitivityV1;
+	repositoryIdentity: string | null;
+	provenance: NormalizedMemoryProvenance | null;
+};
+
+function parseArray(value: unknown): unknown[] | null {
+	if (Array.isArray(value)) return value;
+	if (typeof value !== "string") return null;
+	try {
+		const parsed = JSON.parse(value) as unknown;
+		return Array.isArray(parsed) ? parsed : null;
+	} catch {
+		return null;
+	}
+}
+
+function normalizeSourceSpans(value: unknown): SourceSpanV1[] | null {
+	const rawSpans = parseArray(value);
+	if (!rawSpans || rawSpans.length === 0) return null;
+	const spans: SourceSpanV1[] = [];
+	for (const value of rawSpans) {
+		if (value == null || typeof value !== "object" || Array.isArray(value)) return null;
+		const span = value as JsonObject;
+		if (
+			typeof span.eventId !== "string" ||
+			span.eventId.length === 0 ||
+			!Number.isSafeInteger(span.startByte) ||
+			!Number.isSafeInteger(span.endByte) ||
+			Number(span.startByte) < 0 ||
+			Number(span.startByte) >= Number(span.endByte)
+		) {
+			return null;
+		}
+		spans.push({
+			eventId: span.eventId,
+			startByte: Number(span.startByte),
+			endByte: Number(span.endByte),
+		});
+	}
+	for (let index = 1; index < spans.length; index += 1) {
+		const previous = spans[index - 1] as SourceSpanV1;
+		const current = spans[index] as SourceSpanV1;
+		// Code-unit comparison, not localeCompare: the exporter sorted these by
+		// code units for the lineage hash, and a locale-aware re-validation on
+		// the importing device could disagree and silently drop provenance.
+		if (
+			previous.eventId > current.eventId ||
+			(previous.eventId === current.eventId && previous.startByte >= current.startByte)
+		) {
+			return null;
+		}
+	}
+	return spans;
+}
+
+function normalizeMemoryProvenance(row: JsonObject): NormalizedMemoryProvenance | null {
+	const sourceValues = parseArray(row.source_event_ids_json);
+	let sourceEventIds =
+		sourceValues?.filter(
+			(value): value is string => typeof value === "string" && value.length > 0,
+		) ?? null;
+	let sourceSpans = normalizeSourceSpans(row.source_spans_json);
+	const spanEventIds = sourceSpans ? new Set(sourceSpans.map((span) => span.eventId)) : null;
+	const revisionOrdinal = Number(row.revision_ordinal);
+	const supersedesMemoryId =
+		row.supersedes_memory_id == null ? null : Number(row.supersedes_memory_id);
+	if (
+		!sourceValues ||
+		!sourceEventIds ||
+		sourceEventIds.length === 0 ||
+		sourceEventIds.length !== sourceValues.length ||
+		new Set(sourceEventIds).size !== sourceEventIds.length ||
+		!sourceSpans ||
+		sourceSpans.length !== sourceEventIds.length ||
+		!spanEventIds ||
+		spanEventIds.size !== sourceSpans.length ||
+		sourceEventIds.some((eventId) => !spanEventIds.has(eventId))
+	) {
+		sourceEventIds = null;
+		sourceSpans = null;
+	}
+	const provenance: NormalizedMemoryProvenance = {
+		lineageId: boundedString(row.lineage_id),
+		revisionId: boundedString(row.revision_id),
+		revisionOrdinal:
+			Number.isSafeInteger(revisionOrdinal) && revisionOrdinal >= 1 ? revisionOrdinal : null,
+		supersedesMemoryId:
+			supersedesMemoryId !== null &&
+			Number.isSafeInteger(supersedesMemoryId) &&
+			supersedesMemoryId >= 1
+				? supersedesMemoryId
+				: null,
+		derivationKey: boundedString(row.derivation_key),
+		sourceEventIds,
+		sourceSpans,
+		manifestFingerprint:
+			typeof row.manifest_fingerprint === "string" && FINGERPRINT.test(row.manifest_fingerprint)
+				? row.manifest_fingerprint
+				: null,
+		providerFingerprint:
+			typeof row.provider_fingerprint === "string" && FINGERPRINT.test(row.provider_fingerprint)
+				? row.provider_fingerprint
+				: null,
+		attemptFingerprint:
+			typeof row.attempt_fingerprint === "string" && FINGERPRINT.test(row.attempt_fingerprint)
+				? row.attempt_fingerprint
+				: null,
+	};
+	return Object.values(provenance).some((value) => value !== null) ? provenance : null;
+}
+
+function normalizeMemorySecurity(
+	row: JsonObject,
+	version: ExportPayload["version"],
+): NormalizedMemorySecurity {
+	const security = normalizeContentSecurity(row, version);
+	const provenance =
+		version === "2.0" && security.repositoryIdentity !== null
+			? normalizeMemoryProvenance(row)
+			: null;
+	return { ...security, provenance };
+}
+
+type ExistingMemoryImport = {
+	id: number;
+	sensitivity: SensitivityV1;
+	repository_identity: string | null;
+	active: number;
+	deleted_at: string | null;
+	revision_id: string | null;
+	revision_ordinal: number | null;
+};
+
+function loadExistingMemory(db: Database, id: number): ExistingMemoryImport | null {
+	return (
+		(db
+			.prepare(
+				`SELECT id, sensitivity, repository_identity, active, deleted_at, revision_id, revision_ordinal
+				 FROM memory_items WHERE id = ?`,
+			)
+			.get(id) as ExistingMemoryImport | undefined) ?? null
+	);
+}
+
+function loadLineageMemories(
+	db: Database,
+	lineageId: string,
+	repositoryIdentity: string,
+): ExistingMemoryImport[] {
+	return db
+		.prepare(
+			`SELECT id, sensitivity, repository_identity, active, deleted_at, revision_id, revision_ordinal
+			 FROM memory_items
+			 WHERE lineage_id = ? AND repository_identity = ?
+			 ORDER BY COALESCE(revision_ordinal, 0) DESC, id DESC`,
+		)
+		.all(lineageId, repositoryIdentity) as ExistingMemoryImport[];
+}
+
+function mergeExistingMemory(
+	db: Database,
+	existing: ExistingMemoryImport,
+	incomingSensitivity: SensitivityV1,
+	incomingDeletedAt: string | null,
+): void {
+	const sensitivity = strongestSensitivity(existing.sensitivity, incomingSensitivity);
+	if (incomingDeletedAt !== null) {
+		db.prepare(
+			`UPDATE memory_items
+			 SET sensitivity = ?, active = 0, deleted_at = COALESCE(deleted_at, ?)
+			 WHERE id = ?`,
+		).run(sensitivity, incomingDeletedAt, existing.id);
+		return;
+	}
+	if (sensitivity !== existing.sensitivity) {
+		db.prepare("UPDATE memory_items SET sensitivity = ? WHERE id = ?").run(
+			sensitivity,
+			existing.id,
+		);
+	}
+}
+
+function normalizedMemoryFields(
+	security: NormalizedMemorySecurity,
+	supersedesMemoryId: number | null,
+): JsonObject {
+	const provenance = security.provenance;
+	return {
+		sensitivity: security.sensitivity,
+		repository_identity: security.repositoryIdentity,
+		lineage_id: provenance?.lineageId ?? null,
+		revision_id: provenance?.revisionId ?? null,
+		revision_ordinal: provenance?.revisionOrdinal ?? null,
+		supersedes_memory_id: supersedesMemoryId,
+		derivation_key: provenance?.derivationKey ?? null,
+		source_event_ids_json: provenance?.sourceEventIds ?? null,
+		source_spans_json: provenance?.sourceSpans ?? null,
+		manifest_fingerprint: provenance?.manifestFingerprint ?? null,
+		provider_fingerprint: provenance?.providerFingerprint ?? null,
+		attempt_fingerprint: provenance?.attemptFingerprint ?? null,
+	};
+}
 
 function insertSession(d: DrizzleDb, row: JsonObject): number {
 	const rows = d
@@ -398,14 +724,15 @@ function insertSession(d: DrizzleDb, row: JsonObject): number {
 		.values({
 			started_at: typeof row.started_at === "string" ? row.started_at : nowIso(),
 			ended_at: typeof row.ended_at === "string" ? row.ended_at : null,
-			cwd: String(row.cwd ?? process.cwd()),
+			cwd: row.cwd == null ? null : String(row.cwd),
 			project: row.project == null ? null : String(row.project),
 			git_remote: row.git_remote == null ? null : String(row.git_remote),
 			git_branch: row.git_branch == null ? null : String(row.git_branch),
-			user: String(row.user ?? nextUserName()),
-			tool_version: String(row.tool_version ?? "import"),
+			user: row.user == null ? null : String(row.user),
+			tool_version: boundedString(row.tool_version, 128) ?? "import",
 			metadata_json: toJson(row.metadata_json ?? null),
 			import_key: String(row.import_key),
+			repository_identity: validRepositoryIdentity(row.repository_identity),
 		})
 		.returning({ id: schema.sessions.id })
 		.all();
@@ -427,6 +754,8 @@ function insertPrompt(d: DrizzleDb, row: JsonObject): number {
 				typeof row.created_at_epoch === "number" ? row.created_at_epoch : nowEpochMs(),
 			metadata_json: toJson(row.metadata_json ?? null),
 			import_key: String(row.import_key),
+			sensitivity: String(row.sensitivity ?? "secret"),
+			repository_identity: validRepositoryIdentity(row.repository_identity),
 		})
 		.returning({ id: schema.userPrompts.id })
 		.all();
@@ -454,6 +783,7 @@ function validateImportScopes(
 	memories: JsonObject[],
 	deviceId: string,
 	remapProject: string | null,
+	payloadVersion: ExportPayload["version"],
 ): void {
 	const unauthorized = new Set<string>();
 	for (const memory of memories) {
@@ -469,7 +799,10 @@ function validateImportScopes(
 						project,
 						createdAt: typeof memory.created_at === "string" ? memory.created_at : null,
 					});
-		if (findImportedId(db, "memory_items", memoryImportKey) != null) continue;
+		const security = normalizeMemorySecurity(memory, payloadVersion);
+		if (findImportedId(db, "memory_items", memoryImportKey, security.repositoryIdentity) != null) {
+			continue;
+		}
 		if (!scopeCanBeImported(db, sourceScopeId, deviceId)) {
 			unauthorized.add(sourceScopeId);
 		}
@@ -482,9 +815,9 @@ function validateImportScopes(
 function insertMemory(db: Database, d: DrizzleDb, row: JsonObject, deviceId: string): number {
 	const now = nowIso();
 	const parsedActive = row.active == null ? 1 : Number(row.active);
-	const active = Number.isFinite(parsedActive) ? parsedActive : 1;
 	const deletedAt =
 		typeof row.deleted_at === "string" && row.deleted_at.trim().length > 0 ? row.deleted_at : null;
+	const active = deletedAt === null && parsedActive === 1 ? 1 : 0;
 	const workspaceId = row.workspace_id == null ? null : String(row.workspace_id);
 	const scopeId = importedMemoryScopeId(db, row, deviceId);
 	const values: MemoryInsert = {
@@ -518,6 +851,20 @@ function insertMemory(db: Database, d: DrizzleDb, row: JsonObject, deviceId: str
 		rev: Number(row.rev ?? 1),
 		import_key: String(row.import_key),
 		scope_id: scopeId,
+		project: row.project == null ? null : String(row.project),
+		sensitivity: String(row.sensitivity ?? "secret"),
+		repository_identity: validRepositoryIdentity(row.repository_identity),
+		lineage_id: cleanString(row.lineage_id),
+		revision_id: cleanString(row.revision_id),
+		revision_ordinal: row.revision_ordinal == null ? null : Number(row.revision_ordinal),
+		supersedes_memory_id:
+			row.supersedes_memory_id == null ? null : Number(row.supersedes_memory_id),
+		derivation_key: cleanString(row.derivation_key),
+		source_event_ids_json: toJsonNullable(row.source_event_ids_json),
+		source_spans_json: toJsonNullable(row.source_spans_json),
+		manifest_fingerprint: cleanString(row.manifest_fingerprint),
+		provider_fingerprint: cleanString(row.provider_fingerprint),
+		attempt_fingerprint: cleanString(row.attempt_fingerprint),
 	};
 	const rows = d
 		.insert(schema.memoryItems)
@@ -549,6 +896,8 @@ function insertSummary(d: DrizzleDb, row: JsonObject): number {
 				typeof row.created_at_epoch === "number" ? row.created_at_epoch : nowEpochMs(),
 			metadata_json: toJson(row.metadata_json ?? null),
 			import_key: String(row.import_key),
+			sensitivity: String(row.sensitivity ?? "secret"),
+			repository_identity: validRepositoryIdentity(row.repository_identity),
 		})
 		.returning({ id: schema.sessionSummaries.id })
 		.all();
@@ -562,6 +911,9 @@ export function importMemoriesWithDb(
 	payload: ExportPayload,
 	opts: ImportOptions = {},
 ): ImportResult {
+	if (payload.version !== "1.0" && payload.version !== "2.0") {
+		throw new Error(`Unsupported export version: ${String(payload.version ?? "unknown")}`);
+	}
 	const sessionsData = Array.isArray(payload.sessions) ? payload.sessions : [];
 	const memoriesData = Array.isArray(payload.memory_items) ? payload.memory_items : [];
 	const summariesData = Array.isArray(payload.session_summaries) ? payload.session_summaries : [];
@@ -569,7 +921,7 @@ export function importMemoriesWithDb(
 
 	assertSchemaReady(db);
 	const deviceId = resolveLocalDeviceId(db);
-	validateImportScopes(db, memoriesData, deviceId, opts.remapProject ?? null);
+	validateImportScopes(db, memoriesData, deviceId, opts.remapProject ?? null, payload.version);
 	if (opts.dryRun) {
 		return {
 			sessions: sessionsData.length,
@@ -584,6 +936,7 @@ export function importMemoriesWithDb(
 		const sessionMapping = new Map<number, number>();
 		const promptMapping = new Map<number, number>();
 		const promptImportKeyMapping = new Map<string, number>();
+		const memoryMapping = new Map<number, number>();
 		let importedSessions = 0;
 		let importedPrompts = 0;
 		let importedMemories = 0;
@@ -592,11 +945,13 @@ export function importMemoriesWithDb(
 		for (const session of sessionsData) {
 			const oldSessionId = Number(session.id);
 			const project = opts.remapProject || normalizeImportedProject(session.project);
+			const repositoryIdentity =
+				payload.version === "2.0" ? validRepositoryIdentity(session.repository_identity) : null;
 			const importKey = buildImportKey("export", "session", session.id, {
 				project,
 				createdAt: typeof session.started_at === "string" ? session.started_at : null,
 			});
-			const existingId = findImportedId(db, "sessions", importKey);
+			const existingId = findImportedId(db, "sessions", importKey, repositoryIdentity);
 			if (existingId != null) {
 				sessionMapping.set(oldSessionId, existingId);
 				continue;
@@ -609,9 +964,18 @@ export function importMemoriesWithDb(
 				import_metadata: session.metadata_json ?? null,
 				import_key: importKey,
 			};
+			// The sensitive-field scrub applies to EVERY payload version: legacy
+			// v1 exports are exactly the ones that still carry real host paths
+			// and usernames, so gating the scrub on v2 would skip the payload
+			// class containing the PII it targets.
 			const newId = insertSession(d, {
 				...session,
 				project,
+				cwd: null,
+				git_remote: null,
+				git_branch: null,
+				user: null,
+				repository_identity: repositoryIdentity,
 				metadata_json: metadata,
 				import_key: importKey,
 			});
@@ -624,6 +988,7 @@ export function importMemoriesWithDb(
 			const newSessionId = sessionMapping.get(oldSessionId);
 			if (newSessionId == null) continue;
 			const project = opts.remapProject || normalizeImportedProject(prompt.project);
+			const security = normalizeContentSecurity(prompt, payload.version);
 			const promptImportKey =
 				typeof prompt.import_key === "string" && prompt.import_key.trim()
 					? prompt.import_key.trim()
@@ -631,8 +996,14 @@ export function importMemoriesWithDb(
 							project,
 							createdAt: typeof prompt.created_at === "string" ? prompt.created_at : null,
 						});
-			const existingId = findImportedId(db, "user_prompts", promptImportKey);
+			const existingId = findImportedId(
+				db,
+				"user_prompts",
+				promptImportKey,
+				security.repositoryIdentity,
+			);
 			if (existingId != null) {
+				strengthenImportedContent(db, "user_prompts", existingId, security.sensitivity);
 				if (typeof prompt.id === "number") promptMapping.set(prompt.id, existingId);
 				promptImportKeyMapping.set(promptImportKey, existingId);
 				continue;
@@ -648,6 +1019,8 @@ export function importMemoriesWithDb(
 				...prompt,
 				session_id: newSessionId,
 				project,
+				sensitivity: security.sensitivity,
+				repository_identity: security.repositoryIdentity,
 				metadata_json: metadata,
 				import_key: promptImportKey,
 			});
@@ -661,6 +1034,7 @@ export function importMemoriesWithDb(
 			const newSessionId = sessionMapping.get(oldSessionId);
 			if (newSessionId == null) continue;
 			const project = opts.remapProject || normalizeImportedProject(memory.project);
+			const security = normalizeMemorySecurity(memory, payload.version);
 			const memoryImportKey =
 				typeof memory.import_key === "string" && memory.import_key.trim()
 					? memory.import_key.trim()
@@ -668,16 +1042,87 @@ export function importMemoriesWithDb(
 							project,
 							createdAt: typeof memory.created_at === "string" ? memory.created_at : null,
 						});
-			if (findImportedId(db, "memory_items", memoryImportKey) != null) continue;
+			const sourceMemoryId = Number(memory.id);
+			const incomingDeletedAt =
+				typeof memory.deleted_at === "string" && memory.deleted_at.trim()
+					? memory.deleted_at
+					: null;
+			const importedId = findImportedId(
+				db,
+				"memory_items",
+				memoryImportKey,
+				security.repositoryIdentity,
+			);
+			if (importedId !== null) {
+				const existing = loadExistingMemory(db, importedId);
+				if (existing) {
+					mergeExistingMemory(db, existing, security.sensitivity, incomingDeletedAt);
+					if (Number.isSafeInteger(sourceMemoryId)) memoryMapping.set(sourceMemoryId, existing.id);
+				}
+				continue;
+			}
+
+			let supersedesMemoryId: number | null = null;
+			let activeToSupersede: ExistingMemoryImport | null = null;
+			let insertionSensitivity = security.sensitivity;
+			const provenance = security.provenance;
+			if (
+				provenance?.lineageId &&
+				provenance.revisionId &&
+				provenance.revisionOrdinal !== null &&
+				security.repositoryIdentity
+			) {
+				const lineage = loadLineageMemories(db, provenance.lineageId, security.repositoryIdentity);
+				insertionSensitivity = lineage.reduce(
+					(strongest, existing) => strongestSensitivity(strongest, existing.sensitivity),
+					security.sensitivity,
+				);
+				const exactRevision = lineage.find(
+					(existing) => existing.revision_id === provenance.revisionId,
+				);
+				if (exactRevision) {
+					mergeExistingMemory(db, exactRevision, insertionSensitivity, incomingDeletedAt);
+					if (Number.isSafeInteger(sourceMemoryId)) {
+						memoryMapping.set(sourceMemoryId, exactRevision.id);
+					}
+					continue;
+				}
+				const tombstone = lineage.find((existing) => existing.deleted_at !== null);
+				const active = lineage.find(
+					(existing) => existing.active === 1 && existing.deleted_at === null,
+				);
+				if (incomingDeletedAt === null && tombstone) {
+					mergeExistingMemory(db, tombstone, insertionSensitivity, null);
+					if (Number.isSafeInteger(sourceMemoryId)) memoryMapping.set(sourceMemoryId, tombstone.id);
+					continue;
+				}
+				const incomingIsActive = Number(memory.active ?? 1) === 1 && incomingDeletedAt === null;
+				if (incomingDeletedAt !== null && active) {
+					supersedesMemoryId = active.id;
+					activeToSupersede = active;
+				} else if (incomingIsActive && active) {
+					if ((active.revision_ordinal ?? 0) >= provenance.revisionOrdinal) {
+						mergeExistingMemory(db, active, insertionSensitivity, null);
+						if (Number.isSafeInteger(sourceMemoryId)) memoryMapping.set(sourceMemoryId, active.id);
+						continue;
+					}
+					supersedesMemoryId = active.id;
+					activeToSupersede = active;
+				} else if (provenance.supersedesMemoryId !== null) {
+					const mappedId = memoryMapping.get(provenance.supersedesMemoryId);
+					const mapped = mappedId == null ? null : loadExistingMemory(db, mappedId);
+					if (mapped?.repository_identity === security.repositoryIdentity) {
+						supersedesMemoryId = mapped.id;
+					}
+				}
+			}
 
 			let linkedPromptId: number | null = null;
 			if (
 				typeof memory.user_prompt_import_key === "string" &&
 				memory.user_prompt_import_key.trim()
 			) {
-				linkedPromptId =
-					promptImportKeyMapping.get(memory.user_prompt_import_key.trim()) ??
-					findImportedId(db, "user_prompts", memory.user_prompt_import_key.trim());
+				linkedPromptId = promptImportKeyMapping.get(memory.user_prompt_import_key.trim()) ?? null;
 			} else if (typeof memory.user_prompt_id === "number") {
 				linkedPromptId = promptMapping.get(memory.user_prompt_id) ?? null;
 			}
@@ -689,6 +1134,13 @@ export function importMemoriesWithDb(
 				import_metadata: memory.metadata_json ?? null,
 				import_key: memoryImportKey,
 			};
+			const importedMetadata = normalizeImportMetadata(memory.metadata_json);
+			if (provenance && importedMetadata) {
+				for (const key of ["derived_source", "derived_stream_id"] as const) {
+					const value = cleanString(importedMetadata[key]);
+					if (value) baseMetadata[key] = value;
+				}
+			}
 			if (
 				typeof memory.user_prompt_import_key === "string" &&
 				memory.user_prompt_import_key.trim()
@@ -700,7 +1152,7 @@ export function importMemoriesWithDb(
 					? mergeSummaryMetadata(baseMetadata, memory.metadata_json ?? null)
 					: baseMetadata;
 
-			insertMemory(
+			const newMemoryId = insertMemory(
 				db,
 				d,
 				{
@@ -710,9 +1162,19 @@ export function importMemoriesWithDb(
 					user_prompt_id: linkedPromptId,
 					metadata_json: metadata,
 					import_key: memoryImportKey,
+					...normalizedMemoryFields(
+						{ ...security, sensitivity: insertionSensitivity },
+						supersedesMemoryId,
+					),
 				},
 				deviceId,
 			);
+			if (activeToSupersede) {
+				db.prepare("UPDATE memory_items SET active = 0 WHERE id = ? AND active = 1").run(
+					activeToSupersede.id,
+				);
+			}
+			if (Number.isSafeInteger(sourceMemoryId)) memoryMapping.set(sourceMemoryId, newMemoryId);
 			importedMemories += 1;
 		}
 
@@ -721,6 +1183,7 @@ export function importMemoriesWithDb(
 			const newSessionId = sessionMapping.get(oldSessionId);
 			if (newSessionId == null) continue;
 			const project = opts.remapProject || normalizeImportedProject(summary.project);
+			const security = normalizeContentSecurity(summary, payload.version);
 			const summaryImportKey =
 				typeof summary.import_key === "string" && summary.import_key.trim()
 					? summary.import_key.trim()
@@ -728,7 +1191,16 @@ export function importMemoriesWithDb(
 							project,
 							createdAt: typeof summary.created_at === "string" ? summary.created_at : null,
 						});
-			if (findImportedId(db, "session_summaries", summaryImportKey) != null) continue;
+			const existingSummaryId = findImportedId(
+				db,
+				"session_summaries",
+				summaryImportKey,
+				security.repositoryIdentity,
+			);
+			if (existingSummaryId !== null) {
+				strengthenImportedContent(db, "session_summaries", existingSummaryId, security.sensitivity);
+				continue;
+			}
 			const metadata: JsonObject = {
 				source: "export",
 				original_summary_id: summary.id ?? null,
@@ -740,6 +1212,8 @@ export function importMemoriesWithDb(
 				...summary,
 				session_id: newSessionId,
 				project,
+				sensitivity: security.sensitivity,
+				repository_identity: security.repositoryIdentity,
 				metadata_json: metadata,
 				import_key: summaryImportKey,
 			});

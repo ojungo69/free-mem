@@ -2452,7 +2452,8 @@ var METHOD_FIELDS = {
 		"title",
 		"body",
 		"confidence",
-		"project"
+		"project",
+		"cwd"
 	]
 };
 var EMPTY_COUNTER = {

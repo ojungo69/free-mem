@@ -9,6 +9,7 @@
  */
 
 import { extractApplyPatchPaths, MUTATING_TOOL_NAMES } from "./apply-patch.js";
+import { compileProviderDestinationBoundary } from "./destination-boundary.js";
 import { extractAdapterEvent } from "./ingest-events.js";
 import { type IngestOptions, ingest } from "./ingest-pipeline.js";
 import {
@@ -42,6 +43,9 @@ function isTimeoutLike(error: Error): boolean {
 	return error.name === "TimeoutError" || error.message.toLowerCase().includes("timeout");
 }
 
+// Maps an internal failure onto a closed set of fixed template strings. The
+// raw message is only ever CLASSIFIED — never embedded — so the result stays
+// content-free for diagnostics.
 function summarizeFlushFailure(exc: Error, provider: string | null | undefined): string {
 	const providerTitle = providerDisplayName(provider);
 	const rawMessage = String(exc.message ?? "")
@@ -230,7 +234,8 @@ export async function flushRawEvents(
 
 	const manifestFingerprint = ingestOpts.configurationFingerprint;
 	const providerFingerprint = ingestOpts.providerFingerprint;
-	if (!manifestFingerprint || !providerFingerprint) {
+	const manifest = ingestOpts.capabilityManifest;
+	if (!manifestFingerprint || !providerFingerprint || !manifest) {
 		throw new Error("raw-event flush requires frozen manifest and provider fingerprints");
 	}
 	const admission = store.admitRawEventFlushJob({
@@ -247,17 +252,24 @@ export async function flushRawEvents(
 	) {
 		return { flushed: 0, updatedState: 0 };
 	}
+	const repositoryIdentity = store.rawEventFlushJobRepositoryIdentity(admission.jobId);
+	const boundary = compileProviderDestinationBoundary(manifest, {
+		repositoryIdentity,
+		tlsPeerVerified: ingestOpts.providerTlsPeerVerified === true,
+	});
 	const claim = store.claimRawEventFlushJob({
 		jobId: admission.jobId,
 		manifestFingerprint,
 		providerFingerprint,
 		maxMemoryItemsPerDerivation: ingestOpts.resourceProfile?.maxMemoryItemsPerDerivation,
-		manifest: ingestOpts.capabilityManifest,
+		manifest,
+		boundary,
 	});
 	if (!claim) return { flushed: 0, updatedState: 0 };
 	const capturedEvents = store.loadRawEventFlushJobEvents(claim);
-	const sourceEventIds = capturedEvents.map((event) => String(event.event_id));
-	const events = capturedEvents.filter((event) => event.capture_state === "accepted");
+	const sourceEventIds = store.rawEventFlushClaimSourceEventIds(claim);
+	const projectedSourceSet = store.rawEventFlushClaimProjectedSourceSet(claim);
+	const events = capturedEvents;
 	const projectedSourceEventIds = events.map((event) => String(event.event_id));
 	const startEventSeq = claim.startEventSeq;
 	const lastEventSeq = claim.endEventSeq;
@@ -269,11 +281,18 @@ export async function flushRawEvents(
 			diagnostic: {
 				version: 1,
 				action: "skipped",
-				reason: "redaction_degraded",
+				reason:
+					boundary.executionLocation === "local" && repositoryIdentity === null
+						? "repository_unknown"
+						: "all_restricted",
+				destination: boundary.executionLocation,
+				configurationFingerprint: boundary.configurationFingerprint,
+				providerFingerprint: boundary.providerFingerprint,
+				attemptFingerprint: claim.attemptFingerprint,
 				nextAction: "none",
 			},
 		});
-		return { flushed: capturedEvents.length, updatedState: 1 };
+		return { flushed: sourceEventIds.length, updatedState: 1 };
 	}
 
 	// Build session context. Claude Code raw events arrive as `claude.hook`
@@ -293,6 +312,11 @@ export async function flushRawEvents(
 		claim,
 		source_event_ids: sourceEventIds,
 		projected_source_event_ids: projectedSourceEventIds,
+		projected_repository_identity: projectedSourceSet.repositoryIdentity,
+		projected_sources: projectedSourceSet.sources.map((item) => ({
+			ordinal: item.ordinal,
+			redacted_payload: item.redactedPayload,
+		})),
 	};
 
 	if (isTerminalLowSignalSession(events)) {
@@ -310,7 +334,7 @@ export async function flushRawEvents(
 			},
 			() => [],
 		);
-		return { flushed: capturedEvents.length, updatedState: 1 };
+		return { flushed: sourceEventIds.length, updatedState: 1 };
 	}
 
 	// Build ingest payload
@@ -365,10 +389,10 @@ export async function flushRawEvents(
 				observerProvider: provider ?? null,
 				observerModel: status?.model ?? null,
 				observerRuntime: status?.runtime ?? null,
-				observerAuthSource: status?.auth?.source ?? null,
-				observerAuthType: status?.auth?.type ?? null,
+				observerAuthSource: null,
+				observerAuthType: null,
 				observerErrorCode: status?.lastError?.code ?? null,
-				observerErrorMessage: truncateErrorMessage(status?.lastError?.message ?? "", 400) || null,
+				observerErrorMessage: null,
 			});
 		} catch {
 			// The canonical job failure above is authoritative; legacy diagnostics are best-effort.
@@ -377,5 +401,5 @@ export async function flushRawEvents(
 	}
 
 	// Ingest commits memory/job/frontier through the Store-owned completion transaction.
-	return { flushed: capturedEvents.length, updatedState: 1 };
+	return { flushed: sourceEventIds.length, updatedState: 1 };
 }

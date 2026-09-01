@@ -2,10 +2,10 @@ import { randomUUID } from "node:crypto";
 import { mkdtempSync, rmSync, statSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
-import type {
-	ProviderChoiceV1,
-	ProviderTransportProfileV1,
-	ResourceProfileV1,
+import {
+	type ProviderChoiceV1,
+	providerTransportProfile,
+	type ResourceProfileV1,
 } from "./capability-manifest.js";
 import { connect, connectReadOnly, getSchemaVersion, isEmbeddingDisabled } from "./db.js";
 import {
@@ -13,6 +13,7 @@ import {
 	hasPendingDedupKeyBackfill,
 	runDedupKeyBackfillPass,
 } from "./dedup-key-backfill.js";
+import type { DestinationBoundaryV1 } from "./destination-boundary.js";
 import { getSessionExtractionEval } from "./extraction-eval.js";
 import {
 	aiBackfillStructuredContent,
@@ -223,6 +224,7 @@ export type DaemonJobServiceOptions = {
 		embeddingProvider?: { readonly state: string };
 		summaryProvider?: ProviderChoiceV1;
 		resourceProfile?: ResourceProfileV1;
+		destinationBoundary?: DestinationBoundaryV1;
 	};
 	beforeMaintenance?: () => Promise<void>;
 	afterMaintenance?: () => Promise<void> | void;
@@ -915,7 +917,6 @@ export class DaemonJobService {
 				) {
 					throw new Error("structured.backfill has no enabled frozen provider.");
 				}
-				const resourceProfile = this.options.capability.resourceProfile;
 				return aiBackfillStructuredContent(this.store.db, {
 					limit,
 					kinds: optionalStrings(args, "kinds", 50, 128),
@@ -923,14 +924,9 @@ export class DaemonJobService {
 					dryRun: row.dry_run === 1,
 					scanner,
 					runtimeReason: "ready",
+					destinationBoundary: this.options.capability.destinationBoundary,
 					summaryProvider: this.options.capability.summaryProvider,
-					resourceProfile: {
-						observerRequestTimeoutMs: resourceProfile.observerRequestTimeoutMs,
-						observerMaxInputChars: resourceProfile.observerMaxInputChars,
-						observerMaxOutputTokens: resourceProfile.observerMaxOutputTokens,
-						observerMaxResponseBytes: resourceProfile.observerMaxResponseBytes,
-						observerTemperature: resourceProfile.observerTemperature,
-					} satisfies ProviderTransportProfileV1,
+					resourceProfile: providerTransportProfile(this.options.capability.resourceProfile),
 				});
 			}
 			case "refs.backfill":

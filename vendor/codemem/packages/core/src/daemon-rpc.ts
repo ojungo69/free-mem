@@ -19,6 +19,12 @@ import {
 	typedError,
 } from "./daemon-rpc-contract.js";
 import { isEmbeddingDisabled } from "./db.js";
+import {
+	CAPTURE_ONLY_DESTINATION_FINGERPRINT,
+	compileUntrustedDestinationBoundary,
+	type DestinationBoundaryV1,
+	type DestinationConsumerV1,
+} from "./destination-boundary.js";
 import { validateMemoryKind } from "./memory-kinds.js";
 import {
 	dispatchClassA,
@@ -32,6 +38,7 @@ import {
 	validateNormalizedEvent,
 } from "./normalized-event.js";
 import { collectOperationalStatus } from "./operational-status.js";
+import { resolveRepositoryIdentity } from "./project.js";
 
 export { NORMALIZED_SCHEMA_VERSION } from "./normalized-event.js";
 
@@ -60,7 +67,7 @@ import {
 	validateSpoolRedaction,
 } from "./spool.js";
 import { type MemoryStore, ProcessingResumeError } from "./store.js";
-import type { DoctorProcessingJobProjection, MemoryFilters } from "./types.js";
+import type { DoctorProcessingJobProjection, MemoryFilters, SensitivityV1 } from "./types.js";
 import type { ViewerAuthState } from "./viewer-auth.js";
 import type { ViewerReadHandler } from "./viewer-read.js";
 import type { WriterActor } from "./writer-actor.js";
@@ -167,6 +174,9 @@ const METHOD_BODY_FIELDS: Record<RpcMethod, readonly string[]> = {
 		"confidence",
 		"project",
 		"adapterRedaction",
+		// Probe input for server-side repository-identity resolution; the caller
+		// never supplies the identity itself.
+		"cwd",
 	],
 	"DELETE /v1/memories/:id": ["id", "requestId", "expectedRevision"],
 	"GET /v1/checkpoints": ["project", "state", "limit"],
@@ -377,6 +387,17 @@ export type DaemonRpcContext = {
 
 function isMaintenanceMode(ctx: DaemonRpcContext): boolean {
 	return ctx.jobs.isMaintenanceMode() || ctx.restoreState?.active === true;
+}
+
+function daemonReadBoundary(
+	ctx: DaemonRpcContext,
+	consumer: DestinationConsumerV1,
+): DestinationBoundaryV1 {
+	return compileUntrustedDestinationBoundary({
+		consumer,
+		configurationFingerprint:
+			ctx.capability.configurationFingerprint ?? CAPTURE_ONLY_DESTINATION_FINGERPRINT,
+	});
 }
 
 function processingJobForDoctor(
@@ -837,6 +858,7 @@ function persistEventWithReceipt(
 	const source = event.agent === "claude-code" ? "claude" : String(event.agent);
 	const occurredAtMs = Date.parse(String(event.occurredAt));
 	const redactionDegraded = event.redaction_degraded === true;
+	const repositoryIdentity = resolveRepositoryIdentity(String(event.cwd));
 	let captureSensitivity = "eligible";
 	if (redactionDegraded || event.sensitivity === "secret") captureSensitivity = "secret";
 	else if (event.sensitivity === "private") captureSensitivity = "private";
@@ -860,7 +882,7 @@ function persistEventWithReceipt(
 					event_type: eventType,
 					payload: rawPayload,
 					ts_wall_ms: occurredAtMs,
-					repository_identity: null,
+					repository_identity: repositoryIdentity,
 					capture_manifest_fingerprint: ctx.capability.configurationFingerprint,
 					sensitivity: captureSensitivity,
 					capture_state: redactionDegraded ? "quarantined" : "accepted",
@@ -1014,12 +1036,26 @@ function handleRemember(
 		},
 	);
 	const redaction = mergedRedaction(intake, previousRedaction);
+	const trustedSensitivity: SensitivityV1 =
+		redaction.redaction_degraded || redaction.sensitivity === "secret"
+			? "secret"
+			: redaction.sensitivity === "private"
+				? "private"
+				: redaction.local_only
+					? "local_only"
+					: "eligible";
 	const payload: Record<string, unknown> = { ...intake.payload, kind };
 	if (redaction.sensitivity === "secret" || redaction.redaction_degraded) {
 		delete payload.title;
 		delete payload.body;
 		delete payload.project;
 	}
+	// Repository identity is derived server-side from the caller's cwd, exactly
+	// like the raw-event path above — the caller supplies a probe input, never
+	// the identity itself. Without it, a restricted memory would default to
+	// secret under the store's pair invariant.
+	const rememberRepositoryIdentity =
+		typeof body.cwd === "string" && body.cwd.trim() ? resolveRepositoryIdentity(body.cwd) : null;
 	const confidence = payload.confidence ?? 0.5;
 	if (
 		typeof confidence !== "number" ||
@@ -1032,10 +1068,13 @@ function handleRemember(
 	const receipt = dispatchClassA(ctx.writer, {
 		method: "POST /v1/memories/record",
 		idempotencyKey: String(body.idempotencyKey),
-		payload: { ...payload, redaction },
+		// The derived repository identity is part of the mutation's identity:
+		// the same idempotencyKey replayed from a different repository must
+		// conflict, not replay the first repository's receipt.
+		payload: { ...payload, redaction, repositoryIdentity: rememberRepositoryIdentity },
 		apply: () => {
 			const sessionId = ensureSession(ctx.writer, optionalString(payload.project));
-			const memoryId = ctx.store.remember(
+			const memoryId = ctx.store.rememberTrusted(
 				sessionId,
 				kind,
 				String(payload.title ?? ""),
@@ -1043,6 +1082,7 @@ function handleRemember(
 				confidence,
 				undefined,
 				redaction,
+				{ sensitivity: trustedSensitivity, repositoryIdentity: rememberRepositoryIdentity },
 			);
 			return { memoryId };
 		},
@@ -1290,6 +1330,7 @@ function handleRetrievalRpc(
 }
 
 function handlePack(ctx: DaemonRpcContext, body: Record<string, unknown>): Record<string, unknown> {
+	const destinationBoundary = daemonReadBoundary(ctx, "daemon_pack");
 	const filters = parseMemoryFilters(body.filters);
 	const limit = parseBoundedInteger(body.limit, 8, 1, 50, "limit");
 	const tokenBudget =
@@ -1313,14 +1354,21 @@ function handlePack(ctx: DaemonRpcContext, body: Record<string, unknown>): Recor
 	});
 	const context = String(body.context);
 	if (body.trace === true) {
-		const artifacts = ctx.store.buildMemoryPackWithTrace(context, limit, tokenBudget, filters);
+		const artifacts = ctx.store.buildMemoryPackWithTrace(
+			context,
+			limit,
+			tokenBudget,
+			filters,
+			undefined,
+			destinationBoundary,
+		);
 		return {
 			pack: artifacts.response,
 			trace: artifacts.trace,
 			retrievalReceiptId: receipt.receiptId,
 		};
 	}
-	const pack = ctx.store.buildMemoryPack(context, limit, tokenBudget, filters);
+	const pack = ctx.store.buildMemoryPack(context, limit, tokenBudget, filters, destinationBoundary);
 	return {
 		pack,
 		retrievalReceiptId: receipt.receiptId,
@@ -1454,6 +1502,7 @@ function handleSearch(
 	ctx: DaemonRpcContext,
 	body: Record<string, unknown>,
 ): Record<string, unknown> {
+	const destinationBoundary = daemonReadBoundary(ctx, "daemon_search");
 	const mode = String(body.mode);
 	const filters = parseMemoryFilters(body.filters);
 	const limit = parseBoundedInteger(body.limit, 10, 1, 100, "limit");
@@ -1505,32 +1554,52 @@ function handleSearch(
 	});
 	let items: unknown;
 	if (mode === "search" || mode === "search_index") {
-		items = ctx.store.search(query as string, limit, filters);
+		items = ctx.store.search(query as string, limit, filters, destinationBoundary);
 	} else if (mode === "find_by_file") {
-		items = ctx.store.findByFile(repositoryPath as string, {
-			limit,
-			...(filters?.project ? { project: filters.project } : {}),
-		});
+		items = ctx.store.findByFile(
+			repositoryPath as string,
+			{
+				limit,
+				...(filters?.project ? { project: filters.project } : {}),
+			},
+			destinationBoundary,
+		);
 	} else if (mode === "recent") {
-		items = ctx.store.recent(limit, filters);
+		items = ctx.store.recent(limit, filters, 0, destinationBoundary);
 	} else if (mode === "timeline") {
-		items = ctx.store.timeline(query, memoryId, depthBefore, depthAfter, filters);
+		items = ctx.store.timeline(
+			query,
+			memoryId,
+			depthBefore,
+			depthAfter,
+			filters,
+			destinationBoundary,
+		);
 	} else if (mode === "get_many") {
 		items = ids.flatMap((id) =>
-			ctx.store.timeline(null, id, 0, 0, filters).filter((item) => item.id === id),
+			ctx.store
+				.timeline(null, id, 0, 0, filters, destinationBoundary)
+				.filter((item) => item.id === id),
 		);
 	} else if (mode === "explain") {
-		items = ctx.store.explain(query, ids, limit, filters, {
-			includePackContext: body.includePackContext === true,
-		});
+		items = ctx.store.explain(
+			query,
+			ids,
+			limit,
+			filters,
+			{ includePackContext: body.includePackContext === true },
+			destinationBoundary,
+		);
 	} else if (mode === "expand") {
 		const seen = new Set<number>();
 		items = ids.flatMap((id) => {
-			return ctx.store.timeline(null, id, depthBefore, depthAfter, filters).filter((item) => {
-				if (seen.has(item.id)) return false;
-				seen.add(item.id);
-				return true;
-			});
+			return ctx.store
+				.timeline(null, id, depthBefore, depthAfter, filters, destinationBoundary)
+				.filter((item) => {
+					if (seen.has(item.id)) return false;
+					seen.add(item.id);
+					return true;
+				});
 		});
 	}
 	return {
@@ -1554,7 +1623,7 @@ function handleMemoryGet(
 		payload: { id, project: body.project, kind: body.kind },
 		apply: () => ({ recorded: true }),
 	});
-	let item = ctx.store.get(id);
+	let item = ctx.store.get(id, daemonReadBoundary(ctx, "daemon_get"));
 	if (
 		item &&
 		((filters?.project !== undefined && item.project !== filters.project) ||

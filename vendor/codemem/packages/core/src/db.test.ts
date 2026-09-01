@@ -11,6 +11,7 @@ import { homedir, tmpdir } from "node:os";
 import { join } from "node:path";
 import BetterSqlite3 from "better-sqlite3";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
+import { compileDefaultCapabilityManifest } from "./capability-manifest.js";
 import type { Database } from "./db.js";
 import {
 	assertSchemaReady,
@@ -30,6 +31,7 @@ import {
 	tableExists,
 	toJson,
 } from "./db.js";
+import { compileProviderDestinationBoundary } from "./destination-boundary.js";
 import { runDatabaseMigrations } from "./migration-runner.js";
 import { bootstrapSchema } from "./schema-bootstrap.js";
 import { resolveStorageLayout, runLegacyMigration, sha256File } from "./storage.js";
@@ -952,8 +954,18 @@ describe("schema v21 Slice 1 persistence", () => {
 				})),
 			);
 			const migratedStore = new MemoryStore(migrated);
-			const retryManifestFingerprint = `sha256:${"a".repeat(64)}`;
-			const retryProviderFingerprint = `sha256:${"b".repeat(64)}`;
+			const retryManifest = compileDefaultCapabilityManifest({
+				version: 1,
+				role: "summary",
+				state: "enabled",
+				wireProtocol: "openai_chat_completions_v1",
+				modelId: "db-test-retry-model",
+				modelRevision: "1",
+				endpointUrl: "https://summary.stub.invalid/v1/chat/completions",
+				credentialRef: { kind: "environment", name: "FREE_MEM_SUMMARY_API_KEY" },
+			});
+			const retryManifestFingerprint = retryManifest.configurationFingerprint;
+			const retryProviderFingerprint = retryManifest.summaryProvider.providerFingerprint;
 			const nextAdmission = migratedStore.admitRawEventFlushJob({
 				source: "opencode",
 				streamId: "completed-frontier-gap",
@@ -1001,6 +1013,11 @@ describe("schema v21 Slice 1 persistence", () => {
 				jobId: 1,
 				manifestFingerprint: retryManifestFingerprint,
 				providerFingerprint: retryProviderFingerprint,
+				manifest: retryManifest,
+				boundary: compileProviderDestinationBoundary(retryManifest, {
+					repositoryIdentity: migratedStore.rawEventFlushJobRepositoryIdentity(1),
+					tlsPeerVerified: true,
+				}),
 			});
 			if (!migratedClaim) throw new Error("expected migrated legacy claim");
 			expect(

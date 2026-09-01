@@ -298,13 +298,19 @@ false. Deleting the internal benchmark would discard useful tests unnecessarily.
 ## Decision 12: Projection and exact source-bound derivation
 
 **Decision**: Stable-filter events before building session context/transcript/prompt/request. Provider
-output cites only IDs/spans from the job's exact projected set. A newly admitted v21 job projects at
-most 100 events; a migrated legacy recovery job may project its wider immutable actual range. Each
-output inherits the strongest sensitivity and exact repository identity; mixed/unknown citations
-reject all output.
+output gives every item one direct ordinal-based citation child. The Store claim transaction creates
+and privately binds the exact `ProjectedSourceSetV1`; completion revalidates the boundary/raw rows,
+maps ordinals to exact IDs, and normalizes optional UTF-8 byte spans over canonical `redactedPayload` into
+Product Reset `{eventId,startByte,endByte}` anchors. A newly admitted v21 job projects at most 100
+events; a migrated legacy recovery job may project its wider immutable actual range. Each output
+inherits the strongest sensitivity and exact repository identity; missing/forged/drifted/mixed
+citations reject all output. Provider-backed no-claim ingest is fail-closed, while historical NULL
+provenance remains readable only as secret/unknown.
 
-Dedup/supersession is same-repository and monotonic. Ineligible pack traces are aggregate and
-content-free; eligible injected items keep source/reason evidence.
+Normalized spans establish source anchors and participate in lineage/dedup before semantic-kind
+classification. PR4 memory kinds and presentation consume this PR3 seam without redefining it.
+Ineligible pack traces are aggregate and content-free; eligible injected items keep source/reason
+evidence.
 
 **Rationale**: Filtering at `fetch` is too late, and provider-authored sensitivity is a downgrade
 path. Batch-wide fabricated provenance cannot satisfy the fixed runner.

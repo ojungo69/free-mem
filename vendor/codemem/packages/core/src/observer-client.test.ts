@@ -2,7 +2,8 @@ import { mkdirSync, mkdtempSync, rmSync, writeFileSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
-import { compileProviderChoice } from "./capability-manifest.js";
+import { compileDefaultCapabilityManifest, compileProviderChoice } from "./capability-manifest.js";
+import { compileProviderDestinationBoundary } from "./destination-boundary.js";
 import {
 	createLegacyObserverClient,
 	loadObserverConfig,
@@ -1608,6 +1609,79 @@ describe("ObserverClient Slice 1 manifest transport", () => {
 
 		expect(result.raw).toBeNull();
 		expect(client.getStatus().lastError?.code).toBe("response_too_large");
+	});
+
+	it("T032 reports provider failures only as closed content-free egress diagnostics", async () => {
+		const sentinel = "FORBIDDEN_PROVIDER_RESPONSE_EXCERPT";
+		process.env.FREE_MEM_SUMMARY_API_KEY = fixtureToken("t032-egress-diagnostic");
+		const errors: unknown[][] = [];
+		const warnings: unknown[][] = [];
+		const errorSpy = vi.spyOn(console, "error").mockImplementation((...args) => errors.push(args));
+		const warningSpy = vi
+			.spyOn(console, "warn")
+			.mockImplementation((...args) => warnings.push(args));
+		try {
+			globalThis.fetch = (async () =>
+				new Response(JSON.stringify({ error: { message: sentinel } }), {
+					status: 401,
+					headers: { "content-type": "application/json" },
+				})) as typeof globalThis.fetch;
+			const manifest = compileDefaultCapabilityManifest({
+				version: 1,
+				role: "summary",
+				state: "enabled",
+				wireProtocol: OPENAI_CHOICE.wireProtocol,
+				modelId: OPENAI_CHOICE.modelId,
+				modelRevision: OPENAI_CHOICE.modelRevision,
+				endpointUrl: OPENAI_CHOICE.endpointUrl,
+				credentialRef: OPENAI_CHOICE.credentialRef,
+			});
+			const destinationBoundary = compileProviderDestinationBoundary(manifest, {
+				repositoryIdentity: `repo-v1:sha256:${"a".repeat(64)}`,
+				tlsPeerVerified: true,
+			});
+			const client = new ObserverClient(OPENAI_CHOICE, SLICE1_OBSERVER_PROFILE, {
+				destinationBoundary,
+			} satisfies ObserverHealthOptions);
+
+			let failure: unknown;
+			try {
+				await client.observe("system", "restricted prompt sentinel");
+			} catch (error) {
+				failure = error;
+			}
+			expect(failure).toBeInstanceOf(Error);
+			expect.soft(String(failure)).not.toContain(sentinel);
+			const diagnostic = client.getStatus().lastError as unknown as Record<string, unknown>;
+			expect(diagnostic).toMatchObject({
+				version: 1,
+				action: "failed",
+				reason: "provider_auth_failed",
+				destination: "remote",
+				configurationFingerprint: expect.stringMatching(/^sha256:[a-f0-9]{64}$/),
+				providerFingerprint: OPENAI_CHOICE.providerFingerprint,
+				nextAction: "configure_credential",
+			});
+			expect(Object.keys(diagnostic).toSorted()).toEqual(
+				[
+					"action",
+					"attemptFingerprint",
+					"configurationFingerprint",
+					"counts",
+					"destination",
+					"nextAction",
+					"providerFingerprint",
+					"reason",
+					"version",
+				].filter((key) => Object.hasOwn(diagnostic, key)),
+			);
+			expect(diagnostic).toHaveProperty("counts");
+			expect(diagnostic).not.toHaveProperty("message");
+			expect(JSON.stringify({ diagnostic, errors, warnings })).not.toContain(sentinel);
+		} finally {
+			errorSpy.mockRestore();
+			warningSpy.mockRestore();
+		}
 	});
 });
 

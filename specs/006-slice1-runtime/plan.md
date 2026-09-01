@@ -279,9 +279,16 @@ loopback consumer observation bound into accepted result evidence.
   eligible only. Unauthenticated local HTTP is credential-none/eligible-only. Local HTTPS processes
   private/local-only only after verified peer identity and for a known source repository; secret
   never.
-- Provider output cites only the projected job set. Reject unknown/mixed citations and output above
-  the active attempt manifest's derivation limit atomically. Persist strongest sensitivity, exact
-  repository, lineage/revision, and attempt provenance.
+- Provider output cites only the projected job set. Each new observation/summary carries one direct
+  ordinal-based `citations` child. The Store claim transaction applies the compiler-created
+  DestinationBoundary and privately binds `ProjectedSourceSetV1` to that claim; no new durable queue
+  or schema column is added. Completion revalidates the boundary and raw rows, maps source ordinals to
+  exact IDs, normalizes optional half-open UTF-8 byte spans over canonical `redactedPayload`, and includes
+  those spans in lineage/anchor/dedup identity. Reject missing/duplicate/noncanonical/out-of-range
+  citations, claim/source drift, mixed repositories, and output above the active attempt manifest's
+  derivation limit atomically. Provider-backed no-claim ingest is disabled/fail-closed; historical
+  NULL provenance stays secret/unknown. Persist strongest sensitivity, exact repository,
+  lineage/revision, and attempt provenance.
 - Same-repository dedup/supersession retains strongest sensitivity and never revives tombstones.
 
 ### Read/export/log boundaries
@@ -308,10 +315,10 @@ the merged boundary prove all reachable consumers. It does not close after raw f
 
 ## PR 4 - Bidirectional memory and triggered lifecycle
 
-- Add fixed `summary`, `failed_approach`, and `next_action` parser/store/MCP shapes and exact bounded
-  source citations.
-- Complete deterministic lineage/revision/no-op behavior and final lexical InjectionPack reasons,
-  limits, stable ordering, and provenance.
+- Add fixed `summary`, `failed_approach`, and `next_action` parser/store/MCP/presentation shapes that
+  reuse the completed PR3 ordinal-citation, normalized-span, lineage, revision, and no-op seam without
+  redefining its wire or authority.
+- Complete final lexical InjectionPack reasons, limits, stable ordering, and provenance.
 - Inject a nudge callback into daemon RPC and call it only after newly accepted event commit,
   including spool replay; batch calls coalesce through 1 s debounce.
 - Fix RawEventSweeper shutdown fencing: nudge/timer/in-flight-finally cannot reschedule after stop;

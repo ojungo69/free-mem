@@ -7,9 +7,16 @@
 
 import { Hono } from "hono";
 import { captureOnlyCapabilityProjection } from "../capability-manifest.js";
+import {
+	CAPTURE_ONLY_DESTINATION_FINGERPRINT,
+	compileUntrustedDestinationBoundary,
+	type DestinationBoundaryV1,
+	destinationBoundarySql,
+} from "../destination-boundary.js";
 import type { ObserverClient } from "../observer-client.js";
 import type { RawEventSweeper } from "../raw-event-sweeper.js";
 import type { MemoryStore } from "../store.js";
+import { boundaryFilteredBacklogTotals } from "./raw-events.js";
 
 type StoreFactory = () => MemoryStore;
 
@@ -18,6 +25,7 @@ export interface ObserverStatusDeps {
 	getSweeper: () => RawEventSweeper | null;
 	getObserver?: () => ObserverClient | null;
 	getCapabilitySnapshot?: () => Record<string, unknown>;
+	destinationBoundary?: DestinationBoundaryV1;
 }
 
 function normalizeActiveObserver(active: ReturnType<ObserverClient["getStatus"]> | null) {
@@ -56,6 +64,52 @@ function capabilityObserverStatus(capability: Record<string, unknown>) {
 	};
 }
 
+// error_type is written from Error.name (arbitrary TEXT, legacy rows worse);
+// map it onto this closed enum instead of echoing stored values to the viewer.
+function closedFailureType(raw: unknown): "auth_failed" | "provider_timeout" | "unexpected_error" {
+	const value = String(raw ?? "");
+	if (value === "ObserverAuthError") return "auth_failed";
+	if (value === "TimeoutError" || value.toLowerCase().includes("timeout")) {
+		return "provider_timeout";
+	}
+	return "unexpected_error";
+}
+
+/**
+ * Latest failed flush batch, restricted to batches whose OWN event range the
+ * destination boundary can see, projected onto a closed vocabulary. Never
+ * returns stream or session identifiers, free-text messages, provider codes
+ * (both TEXT columns are unbounded), or auth/model details.
+ */
+function latestVisibleFlushFailure(
+	store: MemoryStore,
+	boundary: DestinationBoundaryV1,
+): Record<string, unknown> | null {
+	const predicate = destinationBoundarySql(boundary, "events");
+	const row = store.db
+		.prepare(
+			`SELECT batches.error_type, batches.attempt_count, batches.updated_at
+			 FROM raw_event_flush_batches AS batches
+			 WHERE batches.status IN ('error', 'failed', 'retry_exhausted')
+			   AND EXISTS (
+				SELECT 1 FROM raw_events AS events
+				WHERE events.source = batches.source
+				  AND events.stream_id = batches.stream_id
+				  AND events.event_seq BETWEEN batches.start_event_seq AND batches.end_event_seq
+				  AND ${predicate.clause}
+			   )
+			 ORDER BY batches.updated_at DESC LIMIT 1`,
+		)
+		.get(...predicate.params) as Record<string, unknown> | undefined;
+	if (!row) return null;
+	return {
+		status: "error",
+		error_type: closedFailureType(row.error_type),
+		attempt_count: Number(row.attempt_count ?? 0),
+		updated_at: typeof row.updated_at === "string" ? row.updated_at : null,
+	};
+}
+
 function buildFailureImpact(
 	latestFailure: Record<string, unknown> | null,
 	queueTotals: { pending: number; sessions: number },
@@ -73,6 +127,15 @@ function buildFailureImpact(
 
 export function observerStatusRoutes(deps?: ObserverStatusDeps) {
 	const app = new Hono();
+	// Queue totals go through the same boundary predicate as the raw-events
+	// route, so restricted sessions never surface even as counts. No boundary
+	// supplied → fail closed to the untrusted capture-only boundary.
+	const boundary =
+		deps?.destinationBoundary ??
+		compileUntrustedDestinationBoundary({
+			consumer: "viewer",
+			configurationFingerprint: CAPTURE_ONLY_DESTINATION_FINGERPRINT,
+		});
 
 	app.get("/api/observer-status", (c) => {
 		const store = deps?.getStore();
@@ -80,8 +143,9 @@ export function observerStatusRoutes(deps?: ObserverStatusDeps) {
 		const observer = deps?.getObserver?.() ?? null;
 		const capability = deps?.getCapabilitySnapshot?.() ?? captureOnlyCapabilityProjection();
 
-		// Stub fallback when store doesn't have the required methods (e.g. tests with mock store)
-		if (!store || typeof store.rawEventBacklogTotals !== "function") {
+		// Stub fallback when store doesn't have the required surface (e.g. tests
+		// with mock store). Boundary-filtered totals need a live db handle.
+		if (!store || typeof store.db?.prepare !== "function") {
 			return c.json({
 				active: capabilityObserverStatus(capability),
 				capability,
@@ -96,9 +160,9 @@ export function observerStatusRoutes(deps?: ObserverStatusDeps) {
 			});
 		}
 
-		const queueTotals = store.rawEventBacklogTotals();
+		const queueTotals = boundaryFilteredBacklogTotals(store, boundary);
 		const authBackoff = sweeper?.authBackoffStatus() ?? { active: false, remainingS: 0 };
-		const latestFailure = store.latestRawEventFlushFailure();
+		const latestFailure = latestVisibleFlushFailure(store, boundary);
 		const active = deps?.getCapabilitySnapshot
 			? capabilityObserverStatus(capability)
 			: normalizeActiveObserver(observer?.getStatus() ?? null);

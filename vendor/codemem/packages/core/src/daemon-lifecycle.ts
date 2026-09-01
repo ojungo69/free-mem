@@ -7,19 +7,22 @@ import {
 	captureOnlyCapabilityProjection,
 	ProviderTlsPreflightError,
 	preflightProviderTls,
+	providerTransportProfile,
 	safeManifestProjection,
 } from "./capability-manifest.js";
 import { type CanonicalWriter, openCanonicalWriter } from "./daemon-canonical.js";
 import { DaemonJobService } from "./daemon-jobs.js";
 import { DaemonOperationService, recoverDaemonRestoresBeforeOpen } from "./daemon-operations.js";
 import { attachDaemonRpc, type DaemonRpcContext, dispatchSpoolMutation } from "./daemon-rpc.js";
+import { compileProviderDestinationBoundary } from "./destination-boundary.js";
 import { cutoverLegacyLayoutIfNeeded } from "./legacy-cutover.js";
 import {
 	buildNormalizedEventFromClaudeHook,
 	buildNormalizedEventFromCodexHook,
 } from "./normalized-event.js";
+import { ObserverClient } from "./observer-client.js";
 import { createDailyBackup } from "./online-backup.js";
-import type { RawEventSweeper } from "./raw-event-sweeper.js";
+import { RawEventSweeper } from "./raw-event-sweeper.js";
 import { warmRedactionWorker } from "./redaction-worker.js";
 import {
 	acquireSpoolLock,
@@ -326,7 +329,7 @@ export async function startDaemon(options: {
 	}
 
 	let canonical: CanonicalWriter | undefined;
-	const sweeper: RawEventSweeper | null = null;
+	let sweeper: RawEventSweeper | null = null;
 	let jobs: DaemonJobService | undefined;
 	let server: Server | undefined;
 	let live: LiveDaemon | undefined;
@@ -341,6 +344,7 @@ export async function startDaemon(options: {
 			null;
 		let providerHealth: "available" | "provider_unavailable" | "provider_tls_rejected" =
 			"available";
+		let providerTlsPeerVerified = false;
 		let activationReceiptState: "absent" | "validated" | "rejected" = "absent";
 		let capability: DaemonCapabilityState;
 		if (manifest) {
@@ -354,7 +358,8 @@ export async function startDaemon(options: {
 				console.error("[codemem] capability activation receipt was rejected.");
 			}
 			try {
-				await preflightProviderTls(manifest.summaryProvider);
+				const preflight = await preflightProviderTls(manifest.summaryProvider);
+				providerTlsPeerVerified = !("skipped" in preflight);
 			} catch (error) {
 				providerHealth =
 					error instanceof ProviderTlsPreflightError ? error.reason : "provider_unavailable";
@@ -394,8 +399,44 @@ export async function startDaemon(options: {
 			fingerprint: liveIdentity.fingerprint,
 			nonce: randomUUID(),
 		};
-		const observer = null;
-		jobs = new DaemonJobService(canonical.store, { dataDir: layout.dataDir, capability });
+		let observer: ObserverClient | null = null;
+		let providerDestinationBoundary:
+			| ReturnType<typeof compileProviderDestinationBoundary>
+			| undefined;
+		if (manifest && capability.providerEnabled) {
+			providerDestinationBoundary = compileProviderDestinationBoundary(manifest, {
+				repositoryIdentity: null,
+				tlsPeerVerified: providerTlsPeerVerified,
+			});
+			observer = new ObserverClient(
+				manifest.summaryProvider,
+				providerTransportProfile(manifest.resourceProfile),
+				{
+					destinationBoundary: providerDestinationBoundary,
+					onHealthState: async (state) => {
+						canonical?.store.recordProviderHealth({
+							manifestFingerprint: manifest.configurationFingerprint,
+							providerFingerprint: manifest.summaryProvider.providerFingerprint,
+							health: state === "healthy" ? "available" : "provider_unavailable",
+						});
+					},
+				},
+			);
+			sweeper = new RawEventSweeper(canonical.store, {
+				observer,
+				resourceProfile: manifest.resourceProfile,
+				capabilityManifest: manifest,
+				configurationFingerprint: manifest.configurationFingerprint,
+				providerFingerprint: manifest.summaryProvider.providerFingerprint,
+				providerTlsPeerVerified,
+			});
+		}
+		jobs = new DaemonJobService(canonical.store, {
+			dataDir: layout.dataDir,
+			capability: manifest
+				? { ...capability, destinationBoundary: providerDestinationBoundary }
+				: capability,
+		});
 		const operations = new DaemonOperationService(canonical.store, jobs, layout.dataDir);
 		const rpc: DaemonRpcContext = {
 			identity,
@@ -522,6 +563,7 @@ export async function startDaemon(options: {
 			},
 		};
 		liveDaemons.set(layout.dataDir, startingLive);
+		sweeper?.start();
 		lifecycle.close();
 		started = true;
 		return handle;

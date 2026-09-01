@@ -1,7 +1,7 @@
 /**
  * Role-based retrieval eval — scoring library.
  *
- * Pure functions over @codemem/core's already-exported primitives. No new core
+ * Pure functions over @codemem/core src primitives (deep imports). No new core
  * behavior, no CLI commands. Under the refocused dual-artifact model there is no
  * `prefer_derived_facts` boost to toggle, so this harness is a SINGLE-SNAPSHOT
  * corpus-quality measurement: it runs a probe battery through the pack trace
@@ -10,14 +10,13 @@
  * ordering) be gated on real-corpus drift instead of unit tests alone.
  */
 
-import {
-	buildMemoryPackTrace,
-	classifyMemoryWorthiness,
-	isSummaryLikeMemory,
-	type MemoryItemResponse,
-	type MemoryStore,
-	readArtifactClass,
-} from "@codemem/core";
+// Relative src imports keep pack-eval's src-constructed MemoryStore in the same
+// type universe (the barrel stopped value-exporting the pack/store surface when
+// the destination boundary closed over content reads).
+import { classifyMemoryWorthiness, readArtifactClass } from "../../packages/core/src/memory-quality.js";
+import type { MemoryStore } from "../../packages/core/src/store.js";
+import { isSummaryLikeMemory } from "../../packages/core/src/summary-memory.js";
+import type { MemoryItemResponse, PackTrace } from "../../packages/core/src/types.js";
 import type { Probe, ProbeMode } from "./scenarios.js";
 
 export type ArtifactBucket = "session_summary" | "derived_fact" | "telemetry" | "durable_other";
@@ -101,7 +100,7 @@ const EMPTY_MARKER_SHARES: Record<StoredArtifactMarker, number> = {
  * section (summary -> timeline -> observations) after prioritization, dedupe,
  * and trimming — i.e. the order the user actually sees — so we read from there.
  */
-function finalPackOrder(trace: ReturnType<typeof buildMemoryPackTrace>): number[] {
+function finalPackOrder(trace: PackTrace): number[] {
 	const { summary, timeline, observations } = trace.assembly.sections;
 	const ordered: number[] = [];
 	const seen = new Set<number>();
@@ -115,7 +114,9 @@ function finalPackOrder(trace: ReturnType<typeof buildMemoryPackTrace>): number[
 
 /** Run one probe through the pack trace path (no usage-row writes). */
 export function runProbe(store: MemoryStore, probe: Probe, topN = 5): ProbeMetrics {
-	const trace = buildMemoryPackTrace(store, probe.query, Math.max(topN, 10));
+	// The store method routes through the fail-closed daemon_pack boundary — the
+	// bare buildMemoryPackTrace export was removed when the boundary closed.
+	const trace = store.buildMemoryPackTrace(probe.query, Math.max(topN, 10));
 	const top = finalPackOrder(trace)
 		.slice(0, topN)
 		.flatMap((id) => {

@@ -1,3 +1,4 @@
+import { execFileSync } from "node:child_process";
 import { mkdirSync, mkdtempSync, rmSync, writeFileSync } from "node:fs";
 import { createConnection, createServer } from "node:net";
 import { tmpdir } from "node:os";
@@ -5,7 +6,9 @@ import { join, resolve } from "node:path";
 import { afterEach, describe, expect, it, vi } from "vitest";
 import { attachDaemonRpc } from "./daemon-rpc.js";
 import { connect } from "./db.js";
+import { compileProviderDestinationBoundary } from "./destination-boundary.js";
 import * as core from "./index.js";
+import { resolveRepositoryIdentity } from "./project.js";
 import {
 	acquireCapabilityLifecycleLock,
 	activateCapabilityManifest,
@@ -1383,7 +1386,7 @@ describe("T008 capability runtime RPC", () => {
 		);
 		expect(capability).toMatchObject({
 			configurationFingerprint: manifest.configurationFingerprint,
-			runtimeReason: "pending_privacy_boundary",
+			runtimeReason: "provider_unavailable",
 			providerHealth: "provider_unavailable",
 			summaryProvider: { providerFingerprint: manifest.summaryProvider.providerFingerprint },
 		});
@@ -1392,7 +1395,7 @@ describe("T008 capability runtime RPC", () => {
 		expect(received.length).toBeGreaterThan(0);
 	});
 
-	it("keeps privacy pending while reporting a rejected TLS trust override", async () => {
+	it("reports a rejected TLS trust override as the runtime reason", async () => {
 		const dataDir = tempDataDir();
 		const manifest = capabilityManifest(
 			"https://summary.stub.invalid/v1/chat/completions",
@@ -1410,7 +1413,7 @@ describe("T008 capability runtime RPC", () => {
 				),
 			);
 			expect(capability).toMatchObject({
-				runtimeReason: "pending_privacy_boundary",
+				runtimeReason: "provider_tls_rejected",
 				providerHealth: "provider_tls_rejected",
 			});
 		} finally {
@@ -1420,6 +1423,147 @@ describe("T008 capability runtime RPC", () => {
 });
 
 describe("T018/T019 durable capture and processing-job RPC", () => {
+	it("T028 derives repository authority from cwd while labels stay non-authoritative", async () => {
+		const dataDir = tempDataDir();
+		const repository = join(resolve(dataDir, ".."), "repository");
+		mkdirSync(repository);
+		execFileSync("git", ["-C", repository, "init", "--quiet"]);
+		execFileSync("git", [
+			"-C",
+			repository,
+			"remote",
+			"add",
+			"origin",
+			"https://git.example.invalid/acme/project.git",
+		]);
+		const expectedIdentity = resolveRepositoryIdentity(repository);
+		expect(expectedIdentity).toMatch(/^repo-v1:sha256:[a-f0-9]{64}$/);
+
+		const handle = await core.startDaemon({ dataDir });
+		created.push(handle);
+		const idempotencyKey = "t028-repository-authority";
+		const event = {
+			...normalizedEvent(idempotencyKey),
+			idempotencyKey,
+			cwd: repository,
+			projectKey: "forged-project-label",
+			workspaceKey: "forged-workspace-label",
+		};
+		expect(
+			await core.callDaemonRpc(
+				handle.socketPath,
+				handshake({
+					id: idempotencyKey,
+					method: "POST /v1/events",
+					body: { idempotencyKey, event },
+				}),
+			),
+		).toMatchObject({ result: { status: "committed" } });
+
+		const activePointer = core.readCurrentDatabasePointer(handle.layout);
+		const reader = ReadOnlyActor.open(resolve(handle.layout.dbDir, activePointer as string));
+		try {
+			expect(
+				reader
+					.prepare("SELECT repository_identity FROM raw_events WHERE event_id = ?")
+					.get(idempotencyKey),
+			).toEqual({ repository_identity: expectedIdentity });
+		} finally {
+			reader.close();
+		}
+	});
+
+	it("derives the record RPC's repository identity from the caller's cwd", async () => {
+		const dataDir = tempDataDir();
+		const repository = join(resolve(dataDir, ".."), "record-repository");
+		mkdirSync(repository);
+		execFileSync("git", ["-C", repository, "init", "--quiet"]);
+		const expectedIdentity = resolveRepositoryIdentity(repository);
+		expect(expectedIdentity).toMatch(/^repo-v1:sha256:[a-f0-9]{64}$/);
+
+		const handle = await core.startDaemon({ dataDir });
+		created.push(handle);
+		const record = (idempotencyKey: string, cwd?: string) =>
+			core.callDaemonRpc(
+				handle.socketPath,
+				handshake({
+					id: idempotencyKey,
+					method: "POST /v1/memories/record",
+					body: {
+						idempotencyKey,
+						kind: "discovery",
+						title: `Title ${idempotencyKey}`,
+						body: `Body ${idempotencyKey}`,
+						...(cwd ? { cwd } : {}),
+					},
+				}),
+			);
+
+		expect(await record("record-cwd-identity", repository)).toMatchObject({
+			result: { memoryId: expect.any(Number) },
+		});
+		expect(await record("record-no-cwd")).toMatchObject({
+			result: { memoryId: expect.any(Number) },
+		});
+
+		const activePointer = core.readCurrentDatabasePointer(handle.layout);
+		const reader = ReadOnlyActor.open(resolve(handle.layout.dbDir, activePointer as string));
+		try {
+			const identityOf = (title: string) =>
+				reader.prepare("SELECT repository_identity FROM memory_items WHERE title = ?").get(title);
+			// Gate passes: a git cwd binds the memory to its repository identity.
+			expect(identityOf("Title record-cwd-identity")).toEqual({
+				repository_identity: expectedIdentity,
+			});
+			// Gate fires: no probe input, no identity — never inferred elsewhere.
+			expect(identityOf("Title record-no-cwd")).toEqual({ repository_identity: null });
+		} finally {
+			reader.close();
+		}
+	});
+
+	it("binds record idempotency to the derived repository identity", async () => {
+		const dataDir = tempDataDir();
+		const repositoryA = join(resolve(dataDir, ".."), "idem-repo-a");
+		const repositoryB = join(resolve(dataDir, ".."), "idem-repo-b");
+		for (const repo of [repositoryA, repositoryB]) {
+			mkdirSync(repo);
+			execFileSync("git", ["-C", repo, "init", "--quiet"]);
+		}
+
+		const handle = await core.startDaemon({ dataDir });
+		created.push(handle);
+		const record = (cwd: string) =>
+			core.callDaemonRpc(
+				handle.socketPath,
+				handshake({
+					id: `idem-${cwd.endsWith("a") ? "a" : "b"}`,
+					method: "POST /v1/memories/record",
+					body: {
+						idempotencyKey: "same-key-two-repos",
+						kind: "discovery",
+						title: "Idempotent title",
+						body: "Idempotent body",
+						cwd,
+					},
+				}),
+			);
+
+		const first = await record(repositoryA);
+		expect(first).toMatchObject({ result: { memoryId: expect.any(Number) } });
+		// Gate passes: replay from the same repository returns the same receipt.
+		const replay = await record(repositoryA);
+		expect(replay).toEqual(first);
+		// Gate fires: the same key from ANOTHER repository must not replay the
+		// first repository's receipt.
+		const crossed = await record(repositoryB);
+		if ("result" in crossed) {
+			expect(crossed).not.toEqual(first);
+		} else {
+			expect(crossed).toHaveProperty("error");
+		}
+	});
+
 	it("keeps capture conflicts non-successful and saturates direct admission at two", async () => {
 		const dataDir = tempDataDir();
 		const handle = await core.startDaemon({ dataDir });
@@ -1434,13 +1578,15 @@ describe("T018/T019 durable capture and processing-job RPC", () => {
 				}),
 			);
 
-		const canonical = normalizedEvent("t018-null-identity");
+		const unknownCwd = join(resolve(dataDir, ".."), "not-a-repository");
+		mkdirSync(unknownCwd);
+		const canonical = { ...normalizedEvent("t018-null-identity"), cwd: unknownCwd };
 		expect(await send("t018-null-identity", canonical)).toMatchObject({
 			result: { status: "committed" },
 		});
 		const conflicting = {
 			...canonical,
-			cwd: "/tmp/conflicting",
+			cwd: join(unknownCwd, "conflicting"),
 			projectKey: "conflicting-project",
 			occurredAt: new Date(1_000).toISOString(),
 			payload: { text: "must not become canonical" },
@@ -1471,7 +1617,7 @@ describe("T018/T019 durable capture and processing-job RPC", () => {
 						 FROM raw_event_sessions WHERE source = ? AND stream_id = ?`,
 					)
 					.get("codex", "t008-session"),
-			).toEqual({ cwd: process.cwd(), project: "t008-project", last_seen_ts_wall_ms: 0 });
+			).toEqual({ cwd: unknownCwd, project: "t008-project", last_seen_ts_wall_ms: 0 });
 			expect(
 				reader
 					.prepare(
@@ -1782,6 +1928,11 @@ describe("T018/T019 durable capture and processing-job RPC", () => {
 				jobId: batchId,
 				manifestFingerprint,
 				providerFingerprint,
+				manifest,
+				boundary: compileProviderDestinationBoundary(manifest, {
+					repositoryIdentity: resumed.rawEventFlushJobRepositoryIdentity(batchId),
+					tlsPeerVerified: false,
+				}),
 			});
 			if (!claim) throw new Error("expected legacy doctor claim");
 			expect(
@@ -1801,6 +1952,138 @@ describe("T018/T019 durable capture and processing-job RPC", () => {
 			});
 		} finally {
 			resumed.close();
+		}
+	});
+});
+
+describe("T031 daemon read boundary", () => {
+	it("forces RPC callers to remote authority and exposes only eligible memory", async () => {
+		const dataDir = tempDataDir();
+		const initialized = await core.startDaemon({ dataDir });
+		await initialized.stop();
+		const layout = core.resolveStorageLayout(dataDir);
+		const pointer = core.readCurrentDatabasePointer(layout);
+		if (!pointer) throw new Error("expected canonical database pointer");
+		const store = openTestMemoryStore(resolve(layout.dbDir, pointer));
+		const repositoryA = `repo-v1:sha256:${"a".repeat(64)}`;
+		const repositoryB = `repo-v1:sha256:${"b".repeat(64)}`;
+		const sessionId = store.startSession({ project: "forged-project" });
+		const insert = (
+			title: string,
+			sensitivity: "eligible" | "private" | "local_only" | "secret",
+			repositoryIdentity: string | null,
+			createdAt: string,
+		): number => {
+			const id = store.remember(sessionId, "discovery", title, "t031 privacy boundary");
+			store.db
+				.prepare(
+					`UPDATE memory_items
+					 SET sensitivity = ?, repository_identity = ?, created_at = ?, updated_at = ?
+					 WHERE id = ?`,
+				)
+				.run(sensitivity, repositoryIdentity, createdAt, createdAt, id);
+			return id;
+		};
+		const ids = {
+			eligible: insert("Eligible", "eligible", repositoryA, "2026-01-01T00:00:00.000Z"),
+			private: insert("Private", "private", repositoryA, "2026-01-01T01:00:00.000Z"),
+			localOnly: insert("Local only", "local_only", repositoryA, "2026-01-01T02:00:00.000Z"),
+			secret: insert("Secret", "secret", repositoryA, "2026-01-01T03:00:00.000Z"),
+			crossRepository: insert(
+				"Cross repository",
+				"private",
+				repositoryB,
+				"2026-01-01T04:00:00.000Z",
+			),
+			unknownRepository: insert("Unknown repository", "private", null, "2026-01-01T05:00:00.000Z"),
+		};
+		store.close();
+
+		const handle = await core.startDaemon({ dataDir });
+		created.push(handle);
+		const rpc = async (
+			id: string,
+			method: core.RpcMethod,
+			body: Record<string, unknown>,
+		): Promise<Record<string, unknown>> =>
+			rpcResult(
+				await core.callDaemonRpc(
+					handle.socketPath,
+					handshake({ id, method, body: { requestId: id, ...body } }),
+				),
+			);
+		const itemIds = (value: unknown): number[] =>
+			Array.isArray(value)
+				? value
+						.map((item) => (item && typeof item === "object" ? Reflect.get(item, "id") : null))
+						.filter((id): id is number => typeof id === "number")
+						.sort((left, right) => left - right)
+				: [];
+
+		for (const [name, id] of Object.entries(ids)) {
+			const result = await rpc(`get-${name}`, "GET /v1/memories/:id", {
+				id,
+				project: "forged-project",
+			});
+			if (name === "eligible") expect(result.item).toMatchObject({ id: ids.eligible });
+			else expect(result.item, name).toBeNull();
+		}
+		const search = await rpc("search", "POST /v1/search", {
+			mode: "search",
+			query: "t031 privacy boundary",
+			limit: 20,
+			filters: { project: "forged-project" },
+		});
+		const recent = await rpc("recent", "POST /v1/search", {
+			mode: "recent",
+			limit: 20,
+			filters: { project: "forged-project" },
+		});
+		const timeline = await rpc("timeline", "POST /v1/search", {
+			mode: "timeline",
+			memoryId: ids.eligible,
+			depthBefore: 20,
+			depthAfter: 20,
+			filters: { project: "forged-project" },
+		});
+		const explain = await rpc("explain", "POST /v1/search", {
+			mode: "explain",
+			query: "t031 privacy boundary",
+			ids: Object.values(ids),
+			limit: 20,
+			filters: { project: "forged-project" },
+		});
+		const pack = await rpc("pack", "POST /v1/context/pack", {
+			context: "t031 privacy boundary",
+			limit: 20,
+			filters: { project: "forged-project" },
+		});
+		expect(itemIds(search.items)).toEqual([ids.eligible]);
+		expect(itemIds(recent.items)).toEqual([ids.eligible]);
+		expect(itemIds(timeline.items)).toEqual([ids.eligible]);
+		expect(itemIds(Reflect.get(explain.items as object, "items"))).toEqual([ids.eligible]);
+		expect(Reflect.get(pack.pack as object, "item_ids")).toEqual([ids.eligible]);
+
+		for (const forgedField of [
+			"executionLocation",
+			"modelLocal",
+			"providerPeerTrust",
+			"repository",
+			"repositoryIdentity",
+		]) {
+			const response = await core.callDaemonRpc(
+				handle.socketPath,
+				handshake({
+					id: `forged-${forgedField}`,
+					method: "GET /v1/memories/:id",
+					body: {
+						id: ids.private,
+						requestId: `forged-${forgedField}`,
+						[forgedField]: forgedField === "modelLocal" ? true : "local",
+					},
+				}),
+			);
+			expect(response, forgedField).toMatchObject({ error: { code: "unknown_field" } });
 		}
 	});
 });

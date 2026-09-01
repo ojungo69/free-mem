@@ -151,6 +151,7 @@ async function rememberMemoryAction(opts: RememberMemoryOptions): Promise<void> 
 				title: opts.title,
 				body: opts.body,
 				confidence: 0.5,
+				cwd: process.cwd(),
 				...(project ? { project } : {}),
 			},
 		);

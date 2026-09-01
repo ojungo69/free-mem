@@ -11,6 +11,7 @@ import { tmpdir } from "node:os";
 import { join } from "node:path";
 import BetterSqlite3 from "better-sqlite3";
 import { afterEach, describe, expect, it, vi } from "vitest";
+import { createOnlineBackup, restoreCanonicalBackup, restorePayloadHash } from "./online-backup.js";
 import {
 	activateDatabaseArtifact,
 	readCurrentDatabasePointer,
@@ -20,6 +21,7 @@ import {
 	type StorageLayout,
 	sha256File,
 } from "./storage.js";
+import { initTestSchema } from "./test-utils.js";
 import { ReadOnlyActor } from "./writer-actor.js";
 
 const fsFault = vi.hoisted(() => ({
@@ -321,6 +323,199 @@ afterEach(() => {
 });
 
 describe("Phase 1 backup restore smoke", () => {
+	it("preserves v21 provenance, processing jobs, canonical events, and quarantine", async () => {
+		const root = mkdtempSync(join(tmpdir(), "codemem-privacy-backup-restore-"));
+		roots.push(root);
+		const dataDir = join(root, "data");
+		const layout = resolveStorageLayout(dataDir);
+		const sourcePath = join(root, "privacy-source.sqlite");
+		const repositoryIdentity = `repo-v1:sha256:${"1".repeat(64)}`;
+		const manifestFingerprint = `sha256:${"a".repeat(64)}`;
+		const providerFingerprint = `sha256:${"b".repeat(64)}`;
+		const attemptFingerprint = `sha256:${"c".repeat(64)}`;
+		const payloadDigest = `sha256:${"d".repeat(64)}`;
+		const source = new BetterSqlite3(sourcePath);
+		try {
+			initTestSchema(source);
+			source
+				.prepare(
+					`INSERT INTO sessions(id, started_at, project, import_key, repository_identity)
+				 VALUES (1, '2026-09-01T00:00:00.000Z', 'privacy', 'privacy-session', ?)`,
+				)
+				.run(repositoryIdentity);
+			source
+				.prepare(
+					`INSERT INTO memory_items(
+					id, session_id, kind, title, body_text, active, created_at, updated_at,
+					metadata_json, import_key, sensitivity, repository_identity, lineage_id,
+					revision_id, revision_ordinal, derivation_key, source_event_ids_json,
+					source_spans_json, manifest_fingerprint, provider_fingerprint, attempt_fingerprint
+				 ) VALUES (
+					10, 1, 'discovery', 'PRIVATE_BACKUP_MEMORY', 'private backup body', 1, ?, ?,
+					'{}', 'privacy-memory', 'private', ?, 'lineage-backup', 'revision-backup-1', 1,
+					'derivation-backup', '["event-backup"]',
+					'[{"eventId":"event-backup","startByte":0,"endByte":19}]', ?, ?, ?
+				 )`,
+				)
+				.run(
+					"2026-09-01T00:00:01.000Z",
+					"2026-09-01T00:00:01.000Z",
+					repositoryIdentity,
+					manifestFingerprint,
+					providerFingerprint,
+					attemptFingerprint,
+				);
+			source
+				.prepare(
+					`INSERT INTO raw_events(
+					source, stream_id, opencode_session_id, event_id, event_seq, event_type,
+					payload_json, created_at, sensitivity, repository_identity,
+					capture_manifest_fingerprint, payload_digest
+				 ) VALUES ('codex', 'privacy-stream', 'privacy-stream', 'event-backup', 0, 'user_prompted',
+					'{"PRIVATE_CANONICAL_EVENT":true}', ?, 'private', ?, ?, ?)`,
+				)
+				.run("2026-09-01T00:00:02.000Z", repositoryIdentity, manifestFingerprint, payloadDigest);
+			source
+				.prepare(
+					`INSERT INTO raw_event_flush_batches(
+					id, source, stream_id, opencode_session_id, start_event_seq, end_event_seq,
+					extractor_version, status, admission_manifest_fingerprint,
+					admission_provider_fingerprint, attempt_manifest_fingerprint,
+					attempt_provider_fingerprint, attempt_fingerprint, attempt_max_memory_items,
+					created_at, updated_at
+				 ) VALUES (20, 'codex', 'privacy-stream', 'privacy-stream', 0, 0,
+					'observer-v1', 'processing', ?, ?, ?, ?, ?, 16, ?, ?)`,
+				)
+				.run(
+					manifestFingerprint,
+					providerFingerprint,
+					manifestFingerprint,
+					providerFingerprint,
+					attemptFingerprint,
+					"2026-09-01T00:00:03.000Z",
+					"2026-09-01T00:00:03.000Z",
+				);
+			source
+				.prepare(
+					`INSERT INTO raw_event_quarantine(
+					receipt_id, source, stream_id, event_id, event_type, payload_json,
+					payload_digest_version, payload_digest, safe_error_code,
+					capture_manifest_fingerprint, first_seen_at, last_seen_at
+				 ) VALUES ('quarantine-backup', 'codex', 'privacy-stream', 'event-quarantine',
+					'user_prompted', '{"PRIVATE_QUARANTINE_EVENT":true}',
+					'event-payload-digest-v1', ?, 'repository_identity_unknown_collision', ?, ?, ?)`,
+				)
+				.run(
+					`sha256:${"e".repeat(64)}`,
+					manifestFingerprint,
+					"2026-09-01T00:00:04.000Z",
+					"2026-09-01T00:00:04.000Z",
+				);
+		} finally {
+			source.close();
+		}
+		runLegacyMigration({
+			layout,
+			operationId: "privacy-seed",
+			verifiedBackupPath: sourcePath,
+			verifiedBackupSha256: sha256File(sourcePath),
+		});
+		const current = new BetterSqlite3(realpathSync(layout.currentPointerPath));
+		try {
+			await createOnlineBackup({
+				db: current,
+				destinationDir: layout.backupsDir,
+				operationId: "privacy-backup",
+				reason: "privacy preservation",
+			});
+			current.exec(
+				"DELETE FROM raw_event_quarantine; DELETE FROM raw_event_flush_batches; DELETE FROM raw_events; DELETE FROM memory_items;",
+			);
+		} finally {
+			current.close();
+		}
+		restoreCanonicalBackup({
+			dataDir,
+			operationId: "privacy-restore",
+			payloadHash: restorePayloadHash("privacy-backup"),
+			backupId: "privacy-backup",
+		});
+
+		const restored = ReadOnlyActor.open(realpathSync(layout.currentPointerPath));
+		try {
+			expect(
+				restored
+					.prepare(
+						`SELECT sensitivity, repository_identity, lineage_id, revision_id,
+							revision_ordinal, derivation_key, source_event_ids_json, source_spans_json,
+							manifest_fingerprint, provider_fingerprint, attempt_fingerprint
+						 FROM memory_items WHERE id = 10`,
+					)
+					.get(),
+			).toEqual({
+				sensitivity: "private",
+				repository_identity: repositoryIdentity,
+				lineage_id: "lineage-backup",
+				revision_id: "revision-backup-1",
+				revision_ordinal: 1,
+				derivation_key: "derivation-backup",
+				source_event_ids_json: '["event-backup"]',
+				source_spans_json: '[{"eventId":"event-backup","startByte":0,"endByte":19}]',
+				manifest_fingerprint: manifestFingerprint,
+				provider_fingerprint: providerFingerprint,
+				attempt_fingerprint: attemptFingerprint,
+			});
+			expect(
+				restored
+					.prepare(
+						`SELECT sensitivity, repository_identity, capture_manifest_fingerprint,
+							payload_digest FROM raw_events WHERE event_id = 'event-backup'`,
+					)
+					.get(),
+			).toEqual({
+				sensitivity: "private",
+				repository_identity: repositoryIdentity,
+				capture_manifest_fingerprint: manifestFingerprint,
+				payload_digest: payloadDigest,
+			});
+			expect(
+				restored
+					.prepare(
+						`SELECT status, admission_manifest_fingerprint, admission_provider_fingerprint,
+							attempt_manifest_fingerprint, attempt_provider_fingerprint,
+							attempt_fingerprint, attempt_max_memory_items
+						 FROM raw_event_flush_batches WHERE id = 20`,
+					)
+					.get(),
+			).toEqual({
+				status: "processing",
+				admission_manifest_fingerprint: manifestFingerprint,
+				admission_provider_fingerprint: providerFingerprint,
+				attempt_manifest_fingerprint: manifestFingerprint,
+				attempt_provider_fingerprint: providerFingerprint,
+				attempt_fingerprint: attemptFingerprint,
+				attempt_max_memory_items: 16,
+			});
+			expect(
+				restored
+					.prepare(
+						`SELECT sensitivity, capture_state, safe_error_code, payload_json,
+							capture_manifest_fingerprint FROM raw_event_quarantine
+						 WHERE receipt_id = 'quarantine-backup'`,
+					)
+					.get(),
+			).toEqual({
+				sensitivity: "secret",
+				capture_state: "quarantined",
+				safe_error_code: "repository_identity_unknown_collision",
+				payload_json: '{"PRIVATE_QUARANTINE_EVENT":true}',
+				capture_manifest_fingerprint: manifestFingerprint,
+			});
+		} finally {
+			restored.close();
+		}
+	});
+
 	it("P1-T057-01-backup-restore-fault-matrix", () => {
 		for (const [index, testCase] of cases.entries()) {
 			const data = fixture(index);

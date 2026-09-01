@@ -466,6 +466,16 @@ export function validateProviderTransportProfile(value: unknown): ProviderTransp
 	return fixedValue(value, expected, "provider transport profile");
 }
 
+export function providerTransportProfile(profile: ResourceProfileV1): ProviderTransportProfileV1 {
+	return {
+		observerRequestTimeoutMs: profile.observerRequestTimeoutMs,
+		observerMaxInputChars: profile.observerMaxInputChars,
+		observerMaxOutputTokens: profile.observerMaxOutputTokens,
+		observerMaxResponseBytes: profile.observerMaxResponseBytes,
+		observerTemperature: profile.observerTemperature,
+	};
+}
+
 function fixedValue<T>(value: unknown, expected: T, label: string): T {
 	assertJsonData(value, label);
 	if (canonicalJson(value) !== canonicalJson(expected))
@@ -587,6 +597,18 @@ export function safeManifestProjection(
 	schemaReadiness: "pending_schema_v21" | "ready" = "pending_schema_v21",
 ) {
 	const validated = validateCapabilityManifest(manifest);
+	const ready =
+		schemaReadiness === "ready" &&
+		activationReceipt === "validated" &&
+		providerHealth === "available";
+	const runtimeReason =
+		schemaReadiness !== "ready"
+			? ("pending_schema_v21" as const)
+			: providerHealth !== "available"
+				? providerHealth
+				: activationReceipt !== "validated"
+					? ("pending_privacy_boundary" as const)
+					: ("ready" as const);
 	return deepFreeze({
 		mode: "configured" as const,
 		configurationFingerprint: validated.configurationFingerprint,
@@ -594,14 +616,14 @@ export function safeManifestProjection(
 		summaryProvider: validated.summaryProvider,
 		embeddingProvider: validated.embeddingProvider,
 		resourceProfile: validated.resourceProfile,
-		runtimeReason: "pending_privacy_boundary" as const,
+		runtimeReason,
 		providerHealth,
 		activationReceipt,
-		providerEnabled: false,
-		sweeperEnabled: false,
+		providerEnabled: ready,
+		sweeperEnabled: ready,
 		lexicalEnabled: true,
 		schemaReadiness,
-		packReadiness: "pending_pack_boundary" as const,
+		packReadiness: ready ? ("ready" as const) : ("pending_pack_boundary" as const),
 	});
 }
 

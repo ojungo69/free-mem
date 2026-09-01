@@ -49,6 +49,7 @@ function scopeVisibleFilterContext(context: SemanticSearchScopeContext): Ownersh
 		// which already resolves this set; when absent the filter falls back to the
 		// equivalent EXISTS predicate. This function has no db handle of its own.
 		visibleScopeIds: context?.visibleScopeIds,
+		destinationBoundary: context?.destinationBoundary,
 	};
 }
 
@@ -606,6 +607,7 @@ export async function semanticSearch(
 	filters: MemoryFilters | null,
 	context: SemanticSearchScopeContext,
 ): Promise<SemanticSearchResult[]> {
+	if (isEmbeddingDisabled()) return [];
 	if (query.trim().length < 3) return [];
 	const searchModel = resolveSemanticSearchModel(db, resolveEmbeddingModel());
 	if (!searchModel) return [];

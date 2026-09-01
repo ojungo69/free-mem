@@ -17,12 +17,15 @@ import {
 	validateProviderChoice,
 	validateProviderTransportProfile,
 } from "./capability-manifest.js";
+import {
+	type DestinationBoundaryV1,
+	destinationBoundaryFingerprint,
+} from "./destination-boundary.js";
 import { codememHomeDir } from "./home.js";
 
 import {
 	ObserverAuthAdapter,
 	type ObserverAuthMaterial,
-	redactText,
 	renderObserverHeaders,
 } from "./observer-auth.js";
 import {
@@ -126,6 +129,20 @@ export interface ObserverStructuredJsonResponse extends ObserverResponse {
 	usedStructuredOutputs: boolean;
 }
 
+type ObserverDiagnosticReason =
+	| "provider_unavailable"
+	| "provider_redirect_rejected"
+	| "provider_tls_rejected"
+	| "provider_auth_failed"
+	| "output_invalid"
+	| "output_limit_exceeded";
+
+type ObserverDiagnosticNextAction =
+	| "none"
+	| "activate_valid_manifest"
+	| "configure_credential"
+	| "confirm_retry";
+
 export type ObserverTransportProfile = ProviderTransportProfileV1;
 
 export interface ObserverStatus {
@@ -136,7 +153,27 @@ export interface ObserverStatus {
 	actualModel?: string | null;
 	modelFallbackApplied?: boolean;
 	modelFallbackReason?: string | null;
-	lastError?: { code: string; message: string } | null;
+	lastError?: {
+		version: 1;
+		action: "failed";
+		reason: ObserverDiagnosticReason;
+		destination: "local" | "remote" | "unknown";
+		counts: {
+			considered: number;
+			transmitted: number;
+			eligible: number;
+			localOnly: number;
+			private: number;
+			secret: number;
+		};
+		configurationFingerprint: string | null;
+		providerFingerprint: string | null;
+		nextAction: ObserverDiagnosticNextAction;
+		/** Legacy non-enumerable compatibility alias. */
+		code?: string;
+		/** Removed from runtime diagnostics; retained only for source compatibility. */
+		message?: never;
+	} | null;
 }
 
 interface ObserverConfigKeyMapping {
@@ -499,6 +536,8 @@ export function loadObserverConfig(): ObserverConfig {
 // ---------------------------------------------------------------------------
 
 export class ObserverAuthError extends Error {
+	readonly code = "provider_auth_failed" as const;
+
 	constructor(message: string) {
 		super(message);
 		this.name = "ObserverAuthError";
@@ -573,13 +612,7 @@ function buildAnthropicStructuredPayload(
 
 function parseAnthropicResponse(body: Record<string, unknown>): string | null {
 	const content = body.content;
-	if (!Array.isArray(content)) {
-		console.warn(
-			`[codemem] Anthropic response has no content array (stop_reason=${body.stop_reason ?? "unknown"}, ` +
-				`keys=${Object.keys(body).join(",")})`,
-		);
-		return null;
-	}
+	if (!Array.isArray(content)) return null;
 	const parts: string[] = [];
 	for (const block of content) {
 		if (
@@ -590,17 +623,6 @@ function parseAnthropicResponse(body: Record<string, unknown>): string | null {
 			const text = (block as Record<string, unknown>).text;
 			if (typeof text === "string") parts.push(text);
 		}
-	}
-	if (parts.length === 0 && content.length > 0) {
-		const blockTypes = content
-			.map((b) =>
-				typeof b === "object" && b != null ? (b as Record<string, unknown>).type : typeof b,
-			)
-			.join(",");
-		console.warn(
-			`[codemem] Anthropic response has ${content.length} content block(s) but no text blocks (types=${blockTypes}, ` +
-				`stop_reason=${body.stop_reason ?? "unknown"})`,
-		);
 	}
 	return parts.length > 0 ? parts.join("") : null;
 }
@@ -642,6 +664,28 @@ function normalizeObserverUsage(body: Record<string, unknown>): ObserverTokenUsa
 
 function emptyCallResult(raw: string | null): ObserverCallResult {
 	return { raw, usage: null };
+}
+
+function observerDiagnosticForCode(code: string): {
+	reason: ObserverDiagnosticReason;
+	nextAction: ObserverDiagnosticNextAction;
+} {
+	switch (code) {
+		case "auth_missing":
+		case "auth_failed":
+			return { reason: "provider_auth_failed", nextAction: "configure_credential" };
+		case "response_too_large":
+			return { reason: "output_limit_exceeded", nextAction: "confirm_retry" };
+		case "redirect_rejected":
+			return { reason: "provider_redirect_rejected", nextAction: "activate_valid_manifest" };
+		case "tls_rejected":
+			return { reason: "provider_tls_rejected", nextAction: "activate_valid_manifest" };
+		case "empty_response":
+		case "invalid_model_id":
+			return { reason: "output_invalid", nextAction: "activate_valid_manifest" };
+		default:
+			return { reason: "provider_unavailable", nextAction: "confirm_retry" };
+	}
 }
 
 // ---------------------------------------------------------------------------
@@ -862,6 +906,7 @@ const LEGACY_OBSERVER_CONSTRUCTION = Symbol("legacy-observer-construction");
 
 export type ObserverHealthOptions = {
 	onHealthState?: (state: "healthy" | "unhealthy") => void | Promise<void>;
+	destinationBoundary?: DestinationBoundaryV1;
 };
 
 // ---------------------------------------------------------------------------
@@ -912,10 +957,12 @@ export class ObserverClient {
 	private readonly _maxResponseBytes: number;
 	private readonly _requestTimeoutMs: number;
 	private readonly _onHealthState: ObserverHealthOptions["onHealthState"];
+	private readonly _destinationBoundary: DestinationBoundaryV1 | null;
 
 	// Error tracking
 	private _lastErrorCode: string | null = null;
-	private _lastErrorMessage: string | null = null;
+	private _lastErrorReason: ObserverDiagnosticReason | null = null;
+	private _lastErrorNextAction: ObserverDiagnosticNextAction | null = null;
 	private readonly _observerExplicitConfigKeys: string[];
 
 	constructor(
@@ -940,7 +987,10 @@ export class ObserverClient {
 			this._manifestChoice = provider;
 			this._maxResponseBytes = profile.observerMaxResponseBytes;
 			this._requestTimeoutMs = profile.observerRequestTimeoutMs;
-			this._onHealthState = (legacyToken as ObserverHealthOptions | undefined)?.onHealthState;
+			const options = legacyToken as ObserverHealthOptions | undefined;
+			this._onHealthState = options?.onHealthState;
+			this._destinationBoundary = options?.destinationBoundary ?? null;
+			if (this._destinationBoundary) destinationBoundaryFingerprint(this._destinationBoundary);
 			this.provider = provider.wireProtocol === "anthropic_messages_v1" ? "anthropic" : "openai";
 			this.requestedModel = provider.modelId;
 			this.model = provider.modelId;
@@ -984,6 +1034,7 @@ export class ObserverClient {
 		}
 		this._manifestChoice = null;
 		this._onHealthState = undefined;
+		this._destinationBoundary = null;
 		this._maxResponseBytes = Number.POSITIVE_INFINITY;
 		this._requestTimeoutMs = FETCH_TIMEOUT_MS;
 		const config = configOrProvider;
@@ -1206,11 +1257,32 @@ export class ObserverClient {
 				hasToken: !!this.auth.token,
 			},
 		};
-		if (this._lastErrorMessage) {
-			status.lastError = {
-				code: this._lastErrorCode ?? "observer_error",
-				message: this._lastErrorMessage,
+		if (this._lastErrorReason && this._lastErrorNextAction) {
+			const boundary = this._destinationBoundary;
+			const diagnostic: NonNullable<ObserverStatus["lastError"]> = {
+				version: 1,
+				action: "failed",
+				reason: this._lastErrorReason,
+				destination:
+					boundary?.executionLocation ?? this._manifestChoice?.executionLocation ?? "unknown",
+				counts: {
+					considered: 0,
+					transmitted: 0,
+					eligible: 0,
+					localOnly: 0,
+					private: 0,
+					secret: 0,
+				},
+				configurationFingerprint: boundary?.configurationFingerprint ?? null,
+				providerFingerprint:
+					boundary?.providerFingerprint ?? this._manifestChoice?.providerFingerprint ?? null,
+				nextAction: this._lastErrorNextAction,
 			};
+			Object.defineProperty(diagnostic, "code", {
+				value: this._lastErrorCode ?? "observer_error",
+				enumerable: false,
+			});
+			status.lastError = diagnostic;
 		}
 		return status;
 	}
@@ -1634,18 +1706,20 @@ export class ObserverClient {
 	// -----------------------------------------------------------------------
 
 	private _handleHttpError(status: number, errorText: string, providerLabel: string): void {
-		const summary = redactText(errorText);
-
 		if (isAuthStatus(status)) {
 			this._setLastError(
 				`${providerLabel} authentication failed. Refresh credentials and retry.`,
 				"auth_failed",
 			);
-			throw new ObserverAuthError(`${providerLabel} auth error: ${status}: ${summary}`);
+			throw new ObserverAuthError("provider_auth_failed");
 		}
 
 		if (status === 429) {
 			this._setLastError(`${providerLabel} rate limited. Retry later.`, "rate_limited");
+			return;
+		}
+		if (status >= 300 && status < 400) {
+			this._setLastError("provider_redirect_rejected", "redirect_rejected");
 			return;
 		}
 
@@ -1656,12 +1730,8 @@ export class ObserverClient {
 				const error = parsed.error as Record<string, unknown> | undefined;
 				if (error && typeof error === "object") {
 					const errorType = String(error.type ?? "").toLowerCase();
-					const message = String(error.message ?? "");
-					if (errorType === "not_found_error" && message.toLowerCase().startsWith("model:")) {
-						this._setLastError(
-							`${providerLabel} model ID not found: ${message.split(":")[1]?.trim() ?? this.model}.`,
-							"invalid_model_id",
-						);
+					if (errorType === "not_found_error") {
+						this._setLastError("output_invalid", "invalid_model_id");
 						return;
 					}
 				}
@@ -1673,16 +1743,18 @@ export class ObserverClient {
 		this._setLastError(`${providerLabel} request failed (${status}).`, "provider_request_failed");
 	}
 
-	private _setLastError(message: string, code?: string): void {
-		const text = message.trim();
-		if (!text) return;
-		this._lastErrorMessage = text;
-		this._lastErrorCode = (code ?? "observer_error").trim() || "observer_error";
+	private _setLastError(_message: string, code?: string): void {
+		const safeCode = (code ?? "observer_error").trim() || "observer_error";
+		const diagnostic = observerDiagnosticForCode(safeCode);
+		this._lastErrorCode = safeCode;
+		this._lastErrorReason = diagnostic.reason;
+		this._lastErrorNextAction = diagnostic.nextAction;
 	}
 
 	private _clearLastError(): void {
 		this._lastErrorCode = null;
-		this._lastErrorMessage = null;
+		this._lastErrorReason = null;
+		this._lastErrorNextAction = null;
 	}
 }
 
