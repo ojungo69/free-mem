@@ -1,0 +1,21 @@
+vendor/codemem/packages/core/src/store.ts
+  s_2f3bfc069410d6::t_d30ea31bc2eb59 1770-1775,1779-1795
+vendor/codemem/packages/core/src/viewer-routes/stats.test.ts
+  s_2f3bfc069410d6::t_bba3e822efc65e 118-161
+---
+{
+  "schema_version": "authorship/3.0.0",
+  "git_ai_version": "1.6.16",
+  "base_commit_sha": "ed120d85d03007ac4af4d5c65d5f9d1e16e0cfcb",
+  "prompts": {},
+  "sessions": {
+    "s_2f3bfc069410d6": {
+      "agent_id": {
+        "tool": "claude",
+        "id": "a4c66e10-641a-463a-a827-804d97001ca1",
+        "model": "claude-fable-5-1"
+      },
+      "human_author": "ojungo69 <210335670+ojungo69@users.noreply.github.com>"
+    }
+  }
+}
