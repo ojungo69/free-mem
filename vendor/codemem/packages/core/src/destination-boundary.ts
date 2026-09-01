@@ -209,6 +209,11 @@ export function memoryDestinationBoundarySql(
 
 export function destinationBoundaryFingerprint(boundary: DestinationBoundaryV1): string {
 	assertCompiledBoundary(boundary);
-	const canonical = JSON.stringify(boundary, Object.keys(boundary).sort());
+	// Code-unit order, never localeCompare: the fingerprint must be identical on
+	// every device regardless of locale.
+	const canonical = JSON.stringify(
+		boundary,
+		Object.keys(boundary).sort((a, b) => (a < b ? -1 : a > b ? 1 : 0)),
+	);
 	return `sha256:${createHash("sha256").update(`free-mem:destination-boundary:v1\0${canonical}`).digest("hex")}`;
 }
