@@ -1,7 +1,7 @@
 /**
  * Role-based retrieval eval — scoring library.
  *
- * Pure functions over @codemem/core's already-exported primitives. No new core
+ * Pure functions over @codemem/core src primitives (deep imports). No new core
  * behavior, no CLI commands. Under the refocused dual-artifact model there is no
  * `prefer_derived_facts` boost to toggle, so this harness is a SINGLE-SNAPSHOT
  * corpus-quality measurement: it runs a probe battery through the pack trace

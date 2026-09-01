@@ -145,11 +145,7 @@ export function observerStatusRoutes(deps?: ObserverStatusDeps) {
 
 		// Stub fallback when store doesn't have the required surface (e.g. tests
 		// with mock store). Boundary-filtered totals need a live db handle.
-		if (
-			!store ||
-			typeof store.latestRawEventFlushFailure !== "function" ||
-			typeof store.db?.prepare !== "function"
-		) {
+		if (!store || typeof store.db?.prepare !== "function") {
 			return c.json({
 				active: capabilityObserverStatus(capability),
 				capability,
