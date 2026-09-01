@@ -1,0 +1,27 @@
+vendor/codemem/packages/core/src/maintenance/ai-structured.test.ts
+  s_5fa0a78bd481f6::t_0ef3af6b8cdf4c 110-112,117
+vendor/codemem/packages/core/src/pack.ts
+  s_5fa0a78bd481f6::t_6fd2c9b585b693 2197-2199,2224-2226,2251-2253
+vendor/codemem/packages/core/src/prompt-pack-ledger.test.ts
+  s_5fa0a78bd481f6::t_57ac9b6ef7532f 112
+vendor/codemem/packages/core/src/raw-event-sweeper.test.ts
+  s_5fa0a78bd481f6::t_60c798d1a857fc 274-276,278-283
+vendor/codemem/packages/viewer-server/src/index.test.ts
+  s_5fa0a78bd481f6::t_83f6f5a9a8fa95 875
+---
+{
+  "schema_version": "authorship/3.0.0",
+  "git_ai_version": "1.6.16",
+  "base_commit_sha": "302997f4ff72d5abf9d921a77686a47db4a98ad9",
+  "prompts": {},
+  "sessions": {
+    "s_5fa0a78bd481f6": {
+      "agent_id": {
+        "tool": "claude",
+        "id": "066495ef-7e3b-414a-a36e-ae29b514e159",
+        "model": "claude-fable-5-1"
+      },
+      "human_author": "ojungo69 <210335670+ojungo69@users.noreply.github.com>"
+    }
+  }
+}
