@@ -10,6 +10,10 @@
  */
 
 import type { Database } from "./db.js";
+import {
+	type DestinationBoundaryV1,
+	memoryDestinationBoundarySql,
+} from "./destination-boundary.js";
 import { projectClause } from "./project.js";
 import { normalizeConcept } from "./ref-populate.js";
 
@@ -58,6 +62,7 @@ export function findByFile(
 	db: Database,
 	filePath: string,
 	options?: RefQueryOptions,
+	destinationBoundary?: DestinationBoundaryV1,
 ): RefQueryResult[] {
 	const trimmed = filePath.trim();
 	if (!trimmed) return [];
@@ -84,6 +89,11 @@ export function findByFile(
 
 	const outerClauses: string[] = ["mi.active = 1"];
 	const outerParams: unknown[] = [];
+	if (destinationBoundary) {
+		const destination = memoryDestinationBoundarySql(destinationBoundary, "mi");
+		outerClauses.push(destination.clause);
+		outerParams.push(...destination.params);
+	}
 	let joinClause = "";
 
 	if (options?.project) {
@@ -136,6 +146,7 @@ export function findByConcept(
 	db: Database,
 	concept: string,
 	options?: RefQueryOptions,
+	destinationBoundary?: DestinationBoundaryV1,
 ): RefQueryResult[] {
 	const normalized = normalizeConcept(concept);
 	if (!normalized) return [];
@@ -144,6 +155,11 @@ export function findByConcept(
 
 	const outerClauses: string[] = ["mi.active = 1"];
 	const outerParams: unknown[] = [];
+	if (destinationBoundary) {
+		const destination = memoryDestinationBoundarySql(destinationBoundary, "mi");
+		outerClauses.push(destination.clause);
+		outerParams.push(...destination.params);
+	}
 	let joinClause = "";
 
 	if (options?.project) {

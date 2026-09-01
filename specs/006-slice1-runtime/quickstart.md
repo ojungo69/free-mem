@@ -191,12 +191,14 @@ corepack pnpm exec vitest run \
   packages/core/src/ingest-pipeline.test.ts \
   packages/core/src/ingest-prompts.test.ts \
   packages/core/src/ingest-xml-parser.test.ts \
+  packages/core/src/store.test.ts \
   packages/core/src/search.test.ts \
   packages/core/src/ref-queries.test.ts \
   packages/core/src/pack.test.ts \
   packages/core/src/prompt-pack-ledger.test.ts \
   packages/core/src/vectors.test.ts \
   packages/core/src/daemon-rpc.test.ts \
+  packages/core/src/observer-client.test.ts \
   packages/core/src/maintenance/ai-structured.test.ts \
   packages/core/src/maintenance/memory-role-report.test.ts \
   packages/core/src/viewer-routes/raw-events.test.ts \
@@ -206,6 +208,9 @@ corepack pnpm exec vitest run \
   packages/core/src/mutation-dispatcher.test.ts \
   packages/core/src/index.test.ts \
   packages/core/src/backup-restore-smoke.test.ts \
+  packages/core/src/capability-manifest.test.ts \
+  packages/core/src/daemon-lifecycle.test.ts \
+  packages/core/src/raw-event-sweeper.test.ts \
   packages/mcp-server/src/rpc-client.test.ts \
   packages/mcp-server/src/server.test.ts \
   packages/cli/src/commands/cli-rpc.test.ts \
@@ -233,9 +238,17 @@ Required matrix:
 - export v2 gates memory items, prompts, and legacy summaries; session shells omit cwd/Git remote/
   branch/user/free-form metadata; legacy v1 import content becomes secret/unknown;
 - all-restricted provider requests/bytes 0; mixed provider eligible-only in order;
-- unknown/out-of-set/mixed-repo citations and output above the active attempt's
-  `maxMemoryItemsPerDerivation` commit nothing; version 1 rejects 17 outputs, test-only version 2
-  accepts 17, and both reject 18 or more;
+- every new claimed provider item has exactly one direct non-empty `citations` child; canonical
+  ordinal whole-event cites and optional half-open UTF-8 canonical-payload spans resolve through the
+  Store-private claim projection, survive parse/repair, and persist exact IDs/spans;
+- missing/empty/duplicate/noncanonical/out-of-range ordinals, forbidden provider ID/repository/digest
+  authority, one-sided/malformed/out-of-bounds/code-point-split spans, caller-forged projection,
+  claim/source/boundary drift, stale claim, out-of-set/mixed-repo citations, and provider-backed
+  no-claim ingest commit nothing; same-response duplicate anchors reject atomically; later retries
+  deduplicate exact active anchors, quarantine active overlap, suppress tombstoned overlap, and allow
+  only disjoint spans to become distinct sibling provenance;
+- output above the active attempt's `maxMemoryItemsPerDerivation` commits nothing; version 1 rejects
+  17 outputs, test-only version 2 accepts 17, and both reject 18 or more;
 - restricted content is absent before render/measure/serialize and from logs/diagnostics/traces;
 - semantic-disabled vector rows are unchanged;
 - public core barrel exports neither unrestricted extraction replay nor distill corpus/report APIs.

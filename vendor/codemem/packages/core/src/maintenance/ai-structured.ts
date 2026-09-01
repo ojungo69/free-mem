@@ -4,6 +4,10 @@
 import type { ProviderChoiceV1, ProviderTransportProfileV1 } from "../capability-manifest.js";
 import type { Database } from "../db.js";
 import {
+	type DestinationBoundaryV1,
+	memoryDestinationBoundarySql,
+} from "../destination-boundary.js";
+import {
 	completeMaintenanceJob,
 	failMaintenanceJob,
 	startMaintenanceJob,
@@ -83,6 +87,7 @@ export interface AIBackfillStructuredContentOptions {
 	observer?: StructuredBackfillObserver;
 	summaryProvider?: ProviderChoiceV1;
 	resourceProfile?: ProviderTransportProfileV1;
+	destinationBoundary?: DestinationBoundaryV1;
 	runtimeReason?:
 		| "ready"
 		| "pending_privacy_boundary"
@@ -117,9 +122,10 @@ type StructuredBackfillRow = {
 function createStructuredBackfillObserver(
 	provider: ProviderChoiceV1 | undefined,
 	profile: ProviderTransportProfileV1 | undefined,
+	destinationBoundary: DestinationBoundaryV1,
 ): StructuredBackfillObserver {
 	if (!provider || !profile) throw new Error("Structured maintenance requires a frozen provider.");
-	return new ObserverClient(provider, profile);
+	return new ObserverClient(provider, profile, { destinationBoundary });
 }
 
 function parseJsonArrayOfStrings(value: string | null): string[] {
@@ -218,13 +224,8 @@ function sanitizeNarrative(value: string | null): string | null {
 			text.lastIndexOf("?"),
 		);
 		if (lastSentenceEnd >= 20) {
-			const before = text;
 			text = text.slice(0, lastSentenceEnd + 1).trim();
-			console.warn(
-				`[codemem] sanitizeNarrative trimmed: "${before.slice(-30)}" → "${text.slice(-30)}"`,
-			);
 		} else {
-			console.warn(`[codemem] sanitizeNarrative rejected: "${text.slice(0, 50)}"`);
 			return null;
 		}
 	}
@@ -290,28 +291,58 @@ export async function aiBackfillStructuredContent(
 	const structuredFilter = opts.overwrite
 		? "1=1"
 		: `(narrative IS NULL OR LENGTH(narrative) = 0 OR facts IS NULL OR LENGTH(facts) <= 2 OR concepts IS NULL OR LENGTH(concepts) <= 2)`;
+	if (opts.runtimeReason !== "ready") {
+		const pendingRows = db
+			.prepare(
+				`SELECT kind, metadata_json
+				 FROM memory_items
+				 WHERE active = 1
+				   AND kind IN (${placeholders})
+				   AND body_text IS NOT NULL
+				   AND LENGTH(body_text) > 0
+				   AND ${structuredFilter}
+				 ORDER BY created_at ASC
+				 ${limitClause}`,
+			)
+			.all(...kinds) as Array<{ kind: string; metadata_json: string | null }>;
+		const skipped = pendingRows.filter(
+			(row) => !isSummaryLikeMemory({ kind: row.kind, metadata: row.metadata_json }),
+		).length;
+		return { checked: 0, updated: 0, skipped, failed: 0 };
+	}
+	if (!opts.destinationBoundary) throw new Error("destination_unknown");
+	const destinationPredicate = memoryDestinationBoundarySql(
+		opts.destinationBoundary,
+		"memory_items",
+	);
 	const rows = db
 		.prepare(
-			`SELECT id, kind, title, body_text, metadata_json, narrative, facts, concepts
+			`SELECT memory_items.id, memory_items.kind, memory_items.title, memory_items.body_text,
+			        memory_items.metadata_json, memory_items.narrative, memory_items.facts,
+			        memory_items.concepts
 			 FROM memory_items
 			 WHERE active = 1
 			   AND kind IN (${placeholders})
 			   AND body_text IS NOT NULL
 			   AND LENGTH(body_text) > 0
 			   AND ${structuredFilter}
+			   AND ${destinationPredicate.clause}
 			 ORDER BY created_at ASC
 			 ${limitClause}`,
 		)
-		.all(...kinds) as StructuredBackfillRow[];
+		.all(...kinds, ...destinationPredicate.params) as StructuredBackfillRow[];
 	const eligibleRows = rows.filter(
 		(row) => !isSummaryLikeMemory({ kind: row.kind, metadata: row.metadata_json }),
 	);
-	if (opts.runtimeReason !== "ready") {
-		return { checked: 0, updated: 0, skipped: eligibleRows.length, failed: 0 };
-	}
+	if (eligibleRows.length === 0) return { checked: 0, updated: 0, skipped: 0, failed: 0 };
 
 	const observer =
-		opts.observer ?? createStructuredBackfillObserver(opts.summaryProvider, opts.resourceProfile);
+		opts.observer ??
+		createStructuredBackfillObserver(
+			opts.summaryProvider,
+			opts.resourceProfile,
+			opts.destinationBoundary,
+		);
 	const scanner = opts.scanner ?? new SecretScanner();
 	const total = eligibleRows.length;
 	startMaintenanceJob(db, {
@@ -444,18 +475,13 @@ export async function aiBackfillStructuredContent(
 				failed,
 			},
 		});
-	} catch (error) {
-		failMaintenanceJob(
-			db,
-			AI_BACKFILL_JOB_KIND,
-			error instanceof Error ? error.message : String(error),
-			{
-				message: `Failed after ${checked} memories`,
-				progressCurrent: checked,
-				progressTotal: total,
-			},
-		);
-		throw error;
+	} catch {
+		failMaintenanceJob(db, AI_BACKFILL_JOB_KIND, "output_invalid", {
+			message: "output_invalid",
+			progressCurrent: checked,
+			progressTotal: total,
+		});
+		throw new Error("output_invalid");
 	}
 
 	return { checked, updated, skipped, failed, ...(opts.dryRun ? { samples } : {}) };

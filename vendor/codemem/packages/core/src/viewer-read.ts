@@ -1,3 +1,7 @@
+import {
+	CAPTURE_ONLY_DESTINATION_FINGERPRINT,
+	compileUntrustedDestinationBoundary,
+} from "./destination-boundary.js";
 import type { ObserverClient } from "./observer-client.js";
 import type { RawEventSweeper } from "./raw-event-sweeper.js";
 import type { MemoryStore } from "./store.js";
@@ -35,14 +39,21 @@ export function createViewerReadHandler(deps: {
 	observer?: ObserverClient | null;
 	capability: Record<string, unknown>;
 }): ViewerReadHandler {
-	const app = memoryRoutes(() => deps.store);
+	const destinationBoundary = compileUntrustedDestinationBoundary({
+		consumer: "viewer",
+		configurationFingerprint:
+			typeof deps.capability.configurationFingerprint === "string"
+				? deps.capability.configurationFingerprint
+				: CAPTURE_ONLY_DESTINATION_FINGERPRINT,
+	});
+	const app = memoryRoutes(() => deps.store, destinationBoundary);
 	app.route(
 		"/",
-		statsRoutes(() => deps.store),
+		statsRoutes(() => deps.store, destinationBoundary),
 	);
 	app.route(
 		"/",
-		rawEventReadRoutes(() => deps.store),
+		rawEventReadRoutes(() => deps.store, destinationBoundary),
 	);
 	app.route(
 		"/",

@@ -3,6 +3,10 @@ import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { afterEach, beforeEach, describe, expect, it } from "vitest";
 import { connect } from "./db.js";
+import {
+	compileRunnerLocalDestinationBoundary,
+	compileUntrustedDestinationBoundary,
+} from "./destination-boundary.js";
 import { buildFilterClausesWithContext } from "./filters.js";
 import { sanitizeSearchQuery } from "./query-sanitizer.js";
 import { resolveVisibleScopeIds } from "./scope-resolution.js";
@@ -2063,5 +2067,110 @@ describe("MemoryStore.explain", () => {
 		const result = store.explain(null, [id1, id2], 10, { project: "   " });
 		expect(result.items).toHaveLength(2);
 		expect(result.errors.find((e) => e.code === "PROJECT_MISMATCH")).toBeUndefined();
+	});
+});
+
+describe("MemoryStore DestinationBoundary", () => {
+	const configurationFingerprint = `sha256:${"c".repeat(64)}`;
+	const repositoryA = `repo-v1:sha256:${"a".repeat(64)}`;
+	const repositoryB = `repo-v1:sha256:${"b".repeat(64)}`;
+	const remote = compileUntrustedDestinationBoundary({
+		consumer: "daemon_search",
+		configurationFingerprint,
+		targetAgent: "codex",
+		targetModel: "gpt-5",
+	});
+	const unknown = compileUntrustedDestinationBoundary({
+		consumer: "viewer",
+		configurationFingerprint,
+	});
+	const sameRepositoryLocal = compileRunnerLocalDestinationBoundary({
+		consumer: "daemon_search",
+		configurationFingerprint,
+		repositoryIdentity: repositoryA,
+	});
+
+	let tmpDir: string;
+	let store: MemoryStore;
+
+	beforeEach(() => {
+		tmpDir = mkdtempSync(join(tmpdir(), "codemem-search-boundary-test-"));
+		const dbPath = join(tmpDir, "test.sqlite");
+		const setupDb = connect(dbPath);
+		initTestSchema(setupDb);
+		setupDb.close();
+		store = openTestMemoryStore(dbPath);
+	});
+
+	afterEach(() => {
+		store.close();
+		rmSync(tmpDir, { recursive: true, force: true });
+	});
+
+	it("applies the closed sensitivity and repository matrix to every Store read surface", () => {
+		const sessionId = insertTestSession(store.db);
+		const insert = (
+			title: string,
+			sensitivity: "eligible" | "local_only" | "private" | "secret",
+			repositoryIdentity: string | null,
+			createdAt: string,
+		): number =>
+			Number(
+				store.db
+					.prepare(
+						`INSERT INTO memory_items(
+							session_id, kind, title, body_text, confidence, tags_text, active,
+							created_at, updated_at, metadata_json, rev, visibility, scope_id,
+							sensitivity, repository_identity
+						) VALUES (?, 'discovery', ?, 'privacyboundary matrix', 0.5, '', 1,
+							?, ?, '{}', 1, 'private', 'local-default', ?, ?)`,
+					)
+					.run(sessionId, title, createdAt, createdAt, sensitivity, repositoryIdentity)
+					.lastInsertRowid,
+			);
+		const ids = {
+			eligible: insert("Eligible", "eligible", repositoryA, "2026-01-01T00:00:00.000Z"),
+			localOnly: insert("Local only", "local_only", repositoryA, "2026-01-01T01:00:00.000Z"),
+			private: insert("Private", "private", repositoryA, "2026-01-01T02:00:00.000Z"),
+			crossRepository: insert(
+				"Cross repository",
+				"private",
+				repositoryB,
+				"2026-01-01T03:00:00.000Z",
+			),
+			unknownRepository: insert("Unknown repository", "private", null, "2026-01-01T04:00:00.000Z"),
+			secret: insert("Secret", "secret", repositoryA, "2026-01-01T05:00:00.000Z"),
+		};
+		const allIds = Object.values(ids);
+		const expectedRemote = [ids.eligible];
+		const expectedLocal = [ids.eligible, ids.localOnly, ids.private];
+		const sortedIds = (items: readonly { id: number }[]) =>
+			items.map((item) => item.id).sort((a, b) => a - b);
+		const visibleThroughEverySurface = (boundary: typeof remote) => ({
+			get: allIds.filter((id) => store.get(id, boundary) !== null).sort((a, b) => a - b),
+			recent: sortedIds(store.recent(20, undefined, 0, boundary)),
+			search: sortedIds(store.search("privacyboundary", 20, undefined, boundary)),
+			timeline: sortedIds(store.timeline(null, ids.eligible, 20, 20, undefined, boundary)),
+			explain: sortedIds(
+				store.explain("privacyboundary", allIds, 20, undefined, undefined, boundary).items,
+			),
+		});
+
+		for (const boundary of [remote, unknown]) {
+			for (const visible of Object.values(visibleThroughEverySurface(boundary))) {
+				expect(visible).toEqual(expectedRemote);
+			}
+		}
+		for (const visible of Object.values(visibleThroughEverySurface(sameRepositoryLocal))) {
+			expect(visible).toEqual(expectedLocal);
+		}
+
+		const projectLabelCannotAuthorize = store.search(
+			"privacyboundary",
+			20,
+			{ project: "test-project" },
+			sameRepositoryLocal,
+		);
+		expect(sortedIds(projectLabelCannotAuthorize)).toEqual(expectedLocal);
 	});
 });

@@ -108,6 +108,15 @@ plus manifest/provider/attempt provenance. Unknown/out-of-set citation, mixed re
 output count above the active attempt manifest's
 `maxMemoryItemsPerDerivation`, or partial parse rejects the whole derivation and commits no item.
 
+New PR3 provider XML binds each `<observation>` and `<summary>` through one direct `<citations>` child.
+Every `<cite>` uses only the zero-based ordinal of the ordered projected source and may include one
+optional half-open UTF-8 byte span into canonical `redactedPayload`; an omitted span normalizes to the full
+payload. The Store privately binds `ProjectedSourceSetV1` to the live claim, resolves ordinals to
+exact raw-event IDs and the trusted repository, and revalidates boundary/source drift before commit;
+no provider-supplied ID, repository, or digest is authority. Missing, malformed, duplicate,
+noncanonical, out-of-range, or drifted citations reject the complete provider output. Provider-backed
+persistence without that durable claim is fail-closed; legacy NULL provenance stays secret/unknown.
+
 Dedup/supersession is same-repository only, retains the stronger sensitivity, and never reactivates a
 tombstone. Unknown identity never merges into a known repository item.
 

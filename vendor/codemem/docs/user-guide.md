@@ -87,11 +87,11 @@ to do with it. Today the flag keeps the content out of the memory packs that get
 into your session, and blanks the prompt and working-set paths that the Claude and Codex
 hooks would otherwise capture.
 
-It does not yet gate the raw-event flush that feeds the observer. If you have configured an
-observer provider, local-only text in a captured event can still be sent to it. Issue
-[#130](https://github.com/ojungo69/free-mem/issues/130) tracks closing that gap. Until it
-is closed, read the flag as "kept out of memory packs and hook capture" rather than as a
-guarantee that the text stays on this device.
+The flag also gates the raw-event flush that feeds the observer
+([#130](https://github.com/ojungo69/free-mem/issues/130)): local-only content is never sent
+to a remote or unverified summary provider. It may still be processed on this device by a
+verified local provider serving the same repository. Read the flag as "this text does not
+leave the device", not as "this text is never summarized".
 
 ### Private blocks and secrets
 

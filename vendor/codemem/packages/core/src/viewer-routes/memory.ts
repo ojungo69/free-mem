@@ -2,10 +2,16 @@
  * Memory routes — observations, summaries, sessions, projects, pack, artifacts.
  */
 
-import { eq, inArray } from "drizzle-orm";
+import { inArray } from "drizzle-orm";
 import { drizzle } from "drizzle-orm/better-sqlite3";
 import { Hono } from "hono";
 import { fromJson } from "../db.js";
+import {
+	CAPTURE_ONLY_DESTINATION_FINGERPRINT,
+	compileUntrustedDestinationBoundary,
+	type DestinationBoundaryV1,
+	memoryDestinationBoundarySql,
+} from "../destination-boundary.js";
 import { buildFilterClausesWithContext } from "../filters.js";
 import { parseStrictInteger } from "../integers.js";
 import { schema } from "../schema.js";
@@ -40,9 +46,7 @@ function serializeMemoryRow(
 	};
 }
 
-/**
- * Attach session project/cwd fields to memory items.
- */
+/** Attach the safe display project to memory items. */
 function attachSessionFields(store: MemoryStore, items: Record<string, unknown>[]): void {
 	const sessionIds: number[] = [];
 	const seen = new Set<number>();
@@ -61,27 +65,24 @@ function attachSessionFields(store: MemoryStore, items: Record<string, unknown>[
 		.select({
 			id: schema.sessions.id,
 			project: schema.sessions.project,
-			cwd: schema.sessions.cwd,
 		})
 		.from(schema.sessions)
 		.where(inArray(schema.sessions.id, sessionIds))
 		.all();
 
-	const bySession = new Map<number, { project: string; cwd: string }>();
+	const bySession = new Map<number, string>();
 	for (const row of rows) {
 		const projectRaw = String(row.project ?? "").trim();
 		const project = projectRaw ? projectBasename(projectRaw) : "";
-		const cwd = String(row.cwd ?? "");
-		bySession.set(row.id, { project, cwd });
+		bySession.set(row.id, project);
 	}
 
 	for (const item of items) {
 		const sid = Number(item.session_id);
 		if (Number.isNaN(sid)) continue;
-		const fields = bySession.get(sid);
-		if (!fields) continue;
-		item.project ??= fields.project;
-		item.cwd ??= fields.cwd;
+		const project = bySession.get(sid);
+		if (project === undefined) continue;
+		item.project ??= project;
 	}
 }
 
@@ -103,12 +104,20 @@ function normalizeScope(raw: string | undefined): "mine" | "theirs" | undefined 
 	return undefined;
 }
 
-function buildViewerMemoryFilters(store: MemoryStore, filters?: MemoryFilters | null) {
-	return buildFilterClausesWithContext(filters, store.ownershipFilterContext());
+function buildViewerMemoryFilters(
+	store: MemoryStore,
+	destinationBoundary: DestinationBoundaryV1,
+	filters?: MemoryFilters | null,
+) {
+	return buildFilterClausesWithContext(filters, store.ownershipFilterContext(destinationBoundary));
 }
 
-function countVisibleMemoryRows(store: MemoryStore, filters?: MemoryFilters | null): number {
-	const filterResult = buildViewerMemoryFilters(store, filters);
+function countVisibleMemoryRows(
+	store: MemoryStore,
+	destinationBoundary: DestinationBoundaryV1,
+	filters?: MemoryFilters | null,
+): number {
+	const filterResult = buildViewerMemoryFilters(store, destinationBoundary, filters);
 	const clauses = ["memory_items.active = 1", ...filterResult.clauses];
 	const from = filterResult.joinSessions
 		? "memory_items JOIN sessions ON sessions.id = memory_items.session_id"
@@ -117,6 +126,27 @@ function countVisibleMemoryRows(store: MemoryStore, filters?: MemoryFilters | nu
 		.prepare(`SELECT COUNT(*) AS total FROM ${from} WHERE ${clauses.join(" AND ")}`)
 		.get(...filterResult.params) as Record<string, unknown> | undefined;
 	return Number(row?.total ?? 0);
+}
+
+// Artifacts have no scope of their own: a session's artifacts are reachable
+// only when the session's memories are all visible (scope authorization and
+// destination boundary both hold for every active memory in the session).
+function sessionAllowsArtifactAccess(
+	store: MemoryStore,
+	destinationBoundary: DestinationBoundaryV1,
+	sessionId: number,
+): boolean {
+	const visibleCount = countVisibleMemoryRows(store, destinationBoundary, {
+		session_id: sessionId,
+	});
+	if (visibleCount === 0) return false;
+	const row = store.db
+		.prepare(
+			`SELECT COUNT(*) AS total FROM memory_items
+			 WHERE session_id = ? AND active = 1`,
+		)
+		.get(sessionId) as Record<string, unknown> | undefined;
+	return visibleCount === Number(row?.total ?? 0);
 }
 
 function summaryLikeSqlPredicate(): string {
@@ -132,8 +162,12 @@ function summaryLikeSqlPredicate(): string {
 	)`;
 }
 
-function countVisibleObservationRows(store: MemoryStore, filters?: MemoryFilters | null): number {
-	const filterResult = buildViewerMemoryFilters(store, filters);
+function countVisibleObservationRows(
+	store: MemoryStore,
+	destinationBoundary: DestinationBoundaryV1,
+	filters?: MemoryFilters | null,
+): number {
+	const filterResult = buildViewerMemoryFilters(store, destinationBoundary, filters);
 	const clauses = [
 		"memory_items.active = 1",
 		`NOT ${summaryLikeSqlPredicate()}`,
@@ -148,30 +182,14 @@ function countVisibleObservationRows(store: MemoryStore, filters?: MemoryFilters
 	return Number(row?.total ?? 0);
 }
 
-function sessionAllowsArtifactAccess(store: MemoryStore, sessionId: number): boolean {
-	const visibleCount = countVisibleMemoryRows(store, { session_id: sessionId });
-	if (visibleCount === 0) return false;
-	const row = store.db
-		.prepare(
-			`SELECT COUNT(*) AS total FROM memory_items
-			 WHERE session_id = ? AND active = 1`,
-		)
-		.get(sessionId) as Record<string, unknown> | undefined;
-	return visibleCount === Number(row?.total ?? 0);
-}
-
-function countVisiblePromptRows(store: MemoryStore, project?: string | null): number {
-	const filterResult = buildViewerMemoryFilters(store, null);
-	const clauses = [
-		"user_prompts.session_id IS NOT NULL",
-		`EXISTS (
-			SELECT 1 FROM memory_items
-			WHERE memory_items.session_id = user_prompts.session_id
-			  AND memory_items.active = 1
-			  AND ${filterResult.clauses.join(" AND ")}
-		)`,
-	];
-	const params: unknown[] = [...filterResult.params];
+function countVisiblePromptRows(
+	store: MemoryStore,
+	destinationBoundary: DestinationBoundaryV1,
+	project?: string | null,
+): number {
+	const destination = memoryDestinationBoundarySql(destinationBoundary, "user_prompts");
+	const clauses = ["user_prompts.session_id IS NOT NULL", destination.clause];
+	const params: unknown[] = [...destination.params];
 	if (project) {
 		clauses.unshift("user_prompts.project = ?");
 		params.unshift(project);
@@ -182,17 +200,14 @@ function countVisiblePromptRows(store: MemoryStore, project?: string | null): nu
 	return Number(row?.total ?? 0);
 }
 
-function countVisibleArtifactRows(store: MemoryStore, project?: string | null): number {
-	const filterResult = buildViewerMemoryFilters(store, null);
-	const clauses = [
-		`EXISTS (
-			SELECT 1 FROM memory_items
-			WHERE memory_items.session_id = artifacts.session_id
-			  AND memory_items.active = 1
-			  AND ${filterResult.clauses.join(" AND ")}
-		)`,
-	];
-	const params: unknown[] = [...filterResult.params];
+function countVisibleArtifactRows(
+	store: MemoryStore,
+	destinationBoundary: DestinationBoundaryV1,
+	project?: string | null,
+): number {
+	const destination = memoryDestinationBoundarySql(destinationBoundary, "artifacts");
+	const clauses = [destination.clause];
+	const params: unknown[] = [...destination.params];
 	const from = project
 		? "artifacts JOIN sessions ON sessions.id = artifacts.session_id"
 		: "artifacts";
@@ -208,6 +223,7 @@ function countVisibleArtifactRows(store: MemoryStore, project?: string | null): 
 
 function queryMemoryPage(
 	store: MemoryStore,
+	destinationBoundary: DestinationBoundaryV1,
 	options: {
 		limit: number;
 		offset: number;
@@ -219,7 +235,7 @@ function queryMemoryPage(
 	if (options.project) filters.project = options.project;
 	if (options.scope) filters.ownership_scope = options.scope;
 
-	const filterResult = buildViewerMemoryFilters(store, filters);
+	const filterResult = buildViewerMemoryFilters(store, destinationBoundary, filters);
 	const clauses = ["memory_items.active = 1", ...filterResult.clauses];
 	const where = clauses.join(" AND ");
 	const from = filterResult.joinSessions
@@ -248,6 +264,7 @@ function isSummaryLikeMemory(item: Record<string, unknown>): boolean {
 
 function selectMemoryPage(
 	store: MemoryStore,
+	destinationBoundary: DestinationBoundaryV1,
 	options: {
 		limit: number;
 		offset: number;
@@ -261,7 +278,7 @@ function selectMemoryPage(
 	const matched: Record<string, unknown>[] = [];
 
 	while (matched.length < options.offset + options.limit + 1) {
-		const page = queryMemoryPage(store, {
+		const page = queryMemoryPage(store, destinationBoundary, {
 			limit: pageSize,
 			offset: rawOffset,
 			project: options.project,
@@ -276,7 +293,13 @@ function selectMemoryPage(
 	return matched.slice(options.offset, options.offset + options.limit + 1);
 }
 
-export function memoryRoutes(getStore: StoreFactory) {
+export function memoryRoutes(
+	getStore: StoreFactory,
+	destinationBoundary: DestinationBoundaryV1 = compileUntrustedDestinationBoundary({
+		consumer: "viewer",
+		configurationFingerprint: CAPTURE_ONLY_DESTINATION_FINGERPRINT,
+	}),
+) {
 	const app = new Hono();
 
 	// GET /api/sessions
@@ -284,7 +307,7 @@ export function memoryRoutes(getStore: StoreFactory) {
 		const store = getStore();
 		{
 			const limit = queryInt(c.req.query("limit"), 20);
-			const filterResult = buildViewerMemoryFilters(store, null);
+			const filterResult = buildViewerMemoryFilters(store, destinationBoundary, null);
 			const clauses = [
 				"memory_items.session_id = sessions.id",
 				"memory_items.active = 1",
@@ -292,17 +315,16 @@ export function memoryRoutes(getStore: StoreFactory) {
 			];
 			const rows = store.db
 				.prepare(
-					`SELECT sessions.* FROM sessions
+					`SELECT sessions.id, sessions.started_at, sessions.ended_at,
+					        sessions.project, sessions.tool_version, sessions.import_key,
+					        sessions.repository_identity
+					 FROM sessions
 					 WHERE EXISTS (SELECT 1 FROM memory_items WHERE ${clauses.join(" AND ")})
 					 ORDER BY sessions.started_at DESC
 					 LIMIT ?`,
 				)
 				.all(...filterResult.params, limit) as Record<string, unknown>[];
-			const items = rows.map((row) => ({
-				...row,
-				metadata_json: fromJson((row.metadata_json as string | null | undefined) ?? null),
-			}));
-			return c.json({ items });
+			return c.json({ items: rows });
 		}
 	});
 
@@ -310,7 +332,7 @@ export function memoryRoutes(getStore: StoreFactory) {
 	app.get("/api/projects", (c) => {
 		const store = getStore();
 		{
-			const filterResult = buildViewerMemoryFilters(store, null);
+			const filterResult = buildViewerMemoryFilters(store, destinationBoundary, null);
 			const clauses = [
 				"memory_items.session_id = sessions.id",
 				"memory_items.active = 1",
@@ -350,7 +372,7 @@ export function memoryRoutes(getStore: StoreFactory) {
 			const offset = Math.max(0, queryInt(c.req.query("offset"), 0));
 			const project = c.req.query("project") || undefined;
 			const scope = normalizeScope(c.req.query("scope"));
-			const items = selectMemoryPage(store, {
+			const items = selectMemoryPage(store, destinationBoundary, {
 				limit,
 				offset,
 				project,
@@ -381,7 +403,7 @@ export function memoryRoutes(getStore: StoreFactory) {
 			const offset = Math.max(0, queryInt(c.req.query("offset"), 0));
 			const project = c.req.query("project") || undefined;
 			const scope = normalizeScope(c.req.query("scope"));
-			const items = selectMemoryPage(store, {
+			const items = selectMemoryPage(store, destinationBoundary, {
 				limit,
 				offset,
 				project,
@@ -414,15 +436,15 @@ export function memoryRoutes(getStore: StoreFactory) {
 			let memories: number;
 			let observations: number;
 			if (project) {
-				prompts = countVisiblePromptRows(store, project);
-				artifacts = countVisibleArtifactRows(store, project);
-				memories = countVisibleMemoryRows(store, { project });
-				observations = countVisibleObservationRows(store, { project });
+				prompts = countVisiblePromptRows(store, destinationBoundary, project);
+				artifacts = countVisibleArtifactRows(store, destinationBoundary, project);
+				memories = countVisibleMemoryRows(store, destinationBoundary, { project });
+				observations = countVisibleObservationRows(store, destinationBoundary, { project });
 			} else {
-				prompts = countVisiblePromptRows(store);
-				artifacts = countVisibleArtifactRows(store);
-				memories = countVisibleMemoryRows(store);
-				observations = countVisibleObservationRows(store);
+				prompts = countVisiblePromptRows(store, destinationBoundary);
+				artifacts = countVisibleArtifactRows(store, destinationBoundary);
+				memories = countVisibleMemoryRows(store, destinationBoundary);
+				observations = countVisibleObservationRows(store, destinationBoundary);
 			}
 			const total = prompts + artifacts + memories;
 			return c.json({ total, memories, artifacts, prompts, observations });
@@ -439,7 +461,7 @@ export function memoryRoutes(getStore: StoreFactory) {
 			const filters: MemoryFilters = {};
 			if (kind) filters.kind = kind;
 			if (project) filters.project = project;
-			const items = store.recent(limit, filters);
+			const items = store.recent(limit, filters, 0, destinationBoundary);
 			const asRecords = items as unknown as Record<string, unknown>[];
 			attachSessionFields(store, asRecords);
 			return c.json({ items: asRecords });
@@ -458,15 +480,16 @@ export function memoryRoutes(getStore: StoreFactory) {
 			if (sessionId == null) {
 				return c.json({ error: "session_id must be int" }, 400);
 			}
-			if (!sessionAllowsArtifactAccess(store, sessionId)) {
+			if (!sessionAllowsArtifactAccess(store, destinationBoundary, sessionId)) {
 				return c.json({ error: "session not found" }, 404);
 			}
-			const d = drizzle(store.db, { schema });
-			const rows = d
-				.select()
-				.from(schema.artifacts)
-				.where(eq(schema.artifacts.session_id, sessionId))
-				.all();
+			const destination = memoryDestinationBoundarySql(destinationBoundary, "artifacts");
+			const rows = store.db
+				.prepare(
+					`SELECT artifacts.* FROM artifacts
+					 WHERE artifacts.session_id = ? AND ${destination.clause}`,
+				)
+				.all(sessionId, ...destination.params) as Record<string, unknown>[];
 			return c.json({ items: rows });
 		}
 	});

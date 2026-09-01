@@ -11,6 +11,7 @@
 import { isLowSignalObservation } from "./ingest-filters.js";
 import type { ParsedObservation, ParsedOutput, ParsedSummary } from "./ingest-types.js";
 import { isOneOf, trimEndWhere } from "./text-trim.js";
+import type { SourceCitationV1 } from "./types.js";
 
 const SENTENCE_PUNCTUATION = isOneOf(".!?");
 
@@ -34,7 +35,12 @@ const SUMMARY_FIELDS = new Set([
 	"notes",
 	"files_read",
 	"files_modified",
+	"citations",
 ]);
+
+export interface ParseObserverResponseOptions {
+	requireCitations?: boolean;
+}
 
 const OBSERVATION_CONCEPTS = new Set([
 	"how-it-works",
@@ -206,15 +212,82 @@ function observationKind(block: string): string {
 	return attribute?.trim().toLowerCase() ?? "";
 }
 
+function canonicalNonNegativeInteger(value: string): number | null {
+	if (!/^(?:0|[1-9][0-9]*)$/.test(value)) return null;
+	const parsed = Number(value);
+	return Number.isSafeInteger(parsed) ? parsed : null;
+}
+
+function parseCitationAttributes(value: string): SourceCitationV1 | null {
+	const attributes = new Map<string, string>();
+	const attribute = /([A-Za-z_][\w:.-]*)\s*=\s*(["'])(.*?)\2/g;
+	let cursor = 0;
+	for (let match = attribute.exec(value); match !== null; match = attribute.exec(value)) {
+		if (value.slice(cursor, match.index).trim()) return null;
+		const name = match[1] as string;
+		if (attributes.has(name)) return null;
+		attributes.set(name, match[3] as string);
+		cursor = attribute.lastIndex;
+	}
+	if (value.slice(cursor).trim()) return null;
+	if (
+		attributes.size < 1 ||
+		[...attributes.keys()].some((name) => name !== "source" && name !== "start" && name !== "end")
+	) {
+		return null;
+	}
+	const source = canonicalNonNegativeInteger(attributes.get("source") ?? "");
+	if (source === null) return null;
+	const hasStart = attributes.has("start");
+	const hasEnd = attributes.has("end");
+	if (hasStart !== hasEnd) return null;
+	if (!hasStart) return { source, start: null, end: null };
+	const start = canonicalNonNegativeInteger(attributes.get("start") ?? "");
+	const end = canonicalNonNegativeInteger(attributes.get("end") ?? "");
+	return start !== null && end !== null && start < end ? { source, start, end } : null;
+}
+
+function parseCitations(
+	block: string,
+	rootTag: "observation" | "summary",
+	required: boolean,
+): SourceCitationV1[] | null {
+	const citationBlocks = directChildFragments(block, rootTag).filter(
+		(fragment) => fragment.tag === "citations",
+	);
+	if (citationBlocks.length === 0) return required ? null : [];
+	if (citationBlocks.length !== 1 || !citationBlocks[0]?.complete) return null;
+	const value = citationBlocks[0].value;
+	const citations: SourceCitationV1[] = [];
+	const cite = /<cite(?=[\s/>])([^>]*)\/\s*>/gi;
+	let cursor = 0;
+	let previousSource = -1;
+	for (let match = cite.exec(value); match !== null; match = cite.exec(value)) {
+		if (value.slice(cursor, match.index).trim()) return null;
+		const parsed = parseCitationAttributes(match[1] ?? "");
+		if (!parsed || parsed.source <= previousSource) return null;
+		citations.push(parsed);
+		previousSource = parsed.source;
+		cursor = cite.lastIndex;
+	}
+	if (value.slice(cursor).trim() || citations.length === 0) return null;
+	return citations;
+}
+
 // ---------------------------------------------------------------------------
 // Block parsers
 // ---------------------------------------------------------------------------
 
-function parseObservationBlock(block: string): ParsedObservation | null {
+function parseObservationBlock(
+	block: string,
+	options: ParseObserverResponseOptions = {},
+): ParsedObservation | null {
 	// Minimal validation — must have at least a type or title
 	const kind = observationKind(block);
 	const title = extractTagText(block, "title");
 	if (!kind && !title) return null;
+	const citations = parseCitations(block, "observation", options.requireCitations === true);
+	if (citations === null) return null;
 
 	return {
 		kind,
@@ -225,10 +298,14 @@ function parseObservationBlock(block: string): ParsedObservation | null {
 		concepts: extractChildTexts(block, "concepts", "concept"),
 		filesRead: extractChildTexts(block, "files_read", "file"),
 		filesModified: extractChildTexts(block, "files_modified", "file"),
+		citations,
 	};
 }
 
-function parseSummaryBlock(block: string): ParsedSummary | null {
+function parseSummaryBlock(
+	block: string,
+	options: ParseObserverResponseOptions = {},
+): ParsedSummary | null {
 	const request = extractTagText(block, "request");
 	const investigated = extractTagText(block, "investigated");
 	const learned = extractTagText(block, "learned");
@@ -240,6 +317,8 @@ function parseSummaryBlock(block: string): ParsedSummary | null {
 	if (!request && !investigated && !learned && !completed && !nextSteps && !notes) {
 		return null;
 	}
+	const citations = parseCitations(block, "summary", options.requireCitations === true);
+	if (citations === null) return null;
 
 	return {
 		request,
@@ -250,6 +329,7 @@ function parseSummaryBlock(block: string): ParsedSummary | null {
 		notes,
 		filesRead: extractChildTexts(block, "files_read", "file"),
 		filesModified: extractChildTexts(block, "files_modified", "file"),
+		citations,
 	};
 }
 
@@ -263,14 +343,17 @@ function parseSummaryBlock(block: string): ParsedSummary | null {
  * Extracts all `<observation>` blocks and the last `<summary>` block.
  * Handles missing/empty tags gracefully.
  */
-export function parseObserverResponse(raw: string): ParsedOutput {
+export function parseObserverResponse(
+	raw: string,
+	options: ParseObserverResponseOptions = {},
+): ParsedOutput {
 	const cleaned = cleanXmlText(raw);
 
 	// Extract observations
 	const observations: ParsedObservation[] = [];
 	const obsBlocks = cleaned.match(OBSERVATION_BLOCK_RE) ?? [];
 	for (const block of obsBlocks) {
-		const parsed = parseObservationBlock(block);
+		const parsed = parseObservationBlock(block, options);
 		if (parsed) observations.push(parsed);
 	}
 
@@ -279,7 +362,7 @@ export function parseObserverResponse(raw: string): ParsedOutput {
 	const summaryBlocks = cleaned.match(SUMMARY_BLOCK_RE) ?? [];
 	const lastSummaryBlock = summaryBlocks.at(-1);
 	if (lastSummaryBlock) {
-		summary = parseSummaryBlock(lastSummaryBlock);
+		summary = parseSummaryBlock(lastSummaryBlock, options);
 	}
 
 	// Check for skip_summary
@@ -293,6 +376,7 @@ export function parseObserverResponse(raw: string): ParsedOutput {
 export function inspectObserverResponseStructure(
 	raw: string,
 	parsed: ParsedOutput = parseObserverResponse(raw),
+	options: ParseObserverResponseOptions = {},
 ): ObserverResponseStructuralDiagnostics {
 	const cleaned = cleanXmlText(raw);
 	const observationBlockValues = cleaned.match(OBSERVATION_BLOCK_RE) ?? [];
@@ -321,7 +405,7 @@ export function inspectObserverResponseStructure(
 		),
 	].sort();
 	const missingObservationKinds = observationBlockValues.filter(
-		(block) => !observationKind(block) && parseObservationBlock(block) !== null,
+		(block) => !observationKind(block) && parseObservationBlock(block, options) !== null,
 	).length;
 	const retainedSummaries = parsed.summary ? 1 : 0;
 	const discardedObservationBlocks = Math.max(0, observationBlocks - parsed.observations.length);
@@ -364,11 +448,15 @@ export function inspectObserverResponseStructure(
 }
 
 /** Return true when a completed observer response needs one structural repair attempt. */
-export function shouldRepairObserverResponse(raw: string | null, parsed: ParsedOutput): boolean {
+export function shouldRepairObserverResponse(
+	raw: string | null,
+	parsed: ParsedOutput,
+	options: ParseObserverResponseOptions = {},
+): boolean {
 	if (!raw) return false;
 	const hasStructuredOutput =
 		parsed.observations.length > 0 || parsed.summary !== null || parsed.skipSummaryReason !== null;
-	return !hasStructuredOutput || inspectObserverResponseStructure(raw, parsed).dataLoss;
+	return !hasStructuredOutput || inspectObserverResponseStructure(raw, parsed, options).dataLoss;
 }
 
 // Fail closed on rewritten content: a repair may add recovered observations or correct
@@ -383,7 +471,25 @@ function observationContentKey(observation: ParsedObservation): string {
 		concepts: normalizedList(observation.concepts),
 		filesRead: normalizedList(observation.filesRead),
 		filesModified: normalizedList(observation.filesModified),
+		citations: observation.citations ?? [],
 	});
+}
+
+function sameCitations(
+	left: readonly SourceCitationV1[] | undefined,
+	right: readonly SourceCitationV1[] | undefined,
+): boolean {
+	const a = left ?? [];
+	const b = right ?? [];
+	return (
+		a.length === b.length &&
+		a.every(
+			(citation, index) =>
+				citation.source === b[index]?.source &&
+				citation.start === b[index]?.start &&
+				citation.end === b[index]?.end,
+		)
+	);
 }
 
 function preservesParsedObservations(
@@ -472,7 +578,8 @@ function preservesParsedObservationFields(
 			initial.filesModified,
 			repaired.filesModified,
 			fragment ? extractRecoverableChildTexts(fragment, "files_modified", "file") : [],
-		)
+		) &&
+		sameCitations(initial.citations, repaired.citations)
 	);
 }
 
@@ -686,7 +793,8 @@ function preservesPopulatedSummaryFields(
 				retainedFragment ? extractRecoverableChildTexts(retainedFragment, parentTag, "file") : [],
 				unusedUnknownValues,
 			);
-		})
+		}) &&
+		sameCitations(initialSummary.citations, repairedSummary.citations)
 	);
 }
 

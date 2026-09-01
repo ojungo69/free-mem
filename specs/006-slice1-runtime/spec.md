@@ -9,6 +9,14 @@
 **Input**: Product Reset Slice 1 issue #137, including local-only egress blocker #130 and the
 Product Reset contracts under `specs/005-product-reset/`.
 
+## Clarifications
+
+### Session 2026-09-01
+
+- Q: How does new PR3 provider XML bind each summary or observation to exact projected sources? → A:
+  Each item contains an ordinal-based `citations` child; the active claim maps bounded source
+  ordinals to exact raw-event IDs, and optional spans use half-open UTF-8 byte offsets.
+
 ## User Scenarios & Testing *(mandatory)*
 
 ### User Story 1 - Keep Device-Only Memory On Device (Priority: P1)
@@ -310,9 +318,22 @@ daemon snapshot, doctor, Observer transport, maintenance, viewer, and later mana
   set and inherit the strongest cited sensitivity, exact repository identity,
   manifest/provider/attempt provenance, and deterministic lineage/revision identity. A newly
   admitted v21 job projects at most 100 events; a migrated legacy recovery job may project its wider
-  immutable actual range. Unknown or out-of-set citations, mixed repository identity, or output
-  above the active attempt manifest's `maxMemoryItemsPerDerivation` MUST reject the whole output
-  atomically.
+  immutable actual range. Each new provider-produced `<observation>` or `<summary>` MUST contain
+  exactly one direct non-empty `<citations>` child with one or more self-closing
+  `<cite source="N"/>` elements; `N` is the zero-based ordinal in the exact ordered projected set
+  shown to the provider. A cite MAY add `start` and `end` together as
+  half-open UTF-8 byte offsets into that projected event's canonical `redactedPayload` itself;
+  omitting both normalizes to the complete payload span. The Store claim transaction creates and
+  privately binds the exact projected source set; provider text never supplies an authoritative raw
+  event ID, repository, or projection digest. Completion revalidates claim, boundary, ordered source identity/digest,
+  and normalized `{eventId,startByte,endByte}` spans. Missing, duplicate, malformed, out-of-range,
+  out-of-set, mixed-repository, or noncanonical citation order, and output above the active attempt
+  manifest's `maxMemoryItemsPerDerivation`, MUST reject the whole output atomically. Lineage,
+  source-anchor/tombstone coverage, and derived dedup MUST include normalized spans, not event IDs
+  alone. Historical stored rows with NULL citation/span provenance remain readable but secret/unknown
+  at disclosure boundaries; the citation child is mandatory only for new provider output attached to
+  a durable PR3 raw-event claim. The no-claim legacy ingest path MUST NOT issue a provider request or
+  create remotely eligible derived provenance.
 - **FR-016**: One closed internal `DestinationBoundary` and eligibility function MUST govern every
   reachable content consumer: structured maintenance,
   search/recent/timeline/explain, `findByFile`/`findByConcept`, daemon get/search/pack, MCP direct and

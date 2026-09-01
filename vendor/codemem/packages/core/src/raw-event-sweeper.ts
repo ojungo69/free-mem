@@ -35,6 +35,7 @@ export class RawEventSweeper {
 	private readonly ingestOpts: IngestOptions;
 	private readonly profile: ResourceProfileV1;
 	private active = false;
+	private stopped = false; // fences nudge/reschedule after stop() until the next start()
 	private running = false; // reentrancy guard — prevents overlapping ticks
 	private currentTick: Promise<void> | null = null;
 	private wakeHandle: ReturnType<typeof setTimeout> | null = null;
@@ -92,14 +93,11 @@ export class RawEventSweeper {
 	// Auth backoff
 	// -----------------------------------------------------------------------
 
-	private handleAuthError(exc: ObserverAuthError): void {
+	private handleAuthError(): void {
 		this.authBackoffUntil = Date.now() / 1000 + AUTH_BACKOFF_S;
 		if (!this.authErrorLogged) {
 			this.authErrorLogged = true;
-			const msg =
-				`codemem: observer auth error — backing off for ${AUTH_BACKOFF_S}s. ` +
-				`Refresh your provider credentials or update observer_provider in settings. ` +
-				`(${exc.message})`;
+			const msg = `codemem: observer authentication failed; retry is paused for ${AUTH_BACKOFF_S}s.`;
 			console.error(msg);
 		}
 	}
@@ -136,6 +134,7 @@ export class RawEventSweeper {
 	 */
 	start(): void {
 		if (!this.enabled()) return;
+		this.stopped = false;
 		if (this.active) return;
 		this.active = true;
 		this.scheduleNext();
@@ -147,6 +146,7 @@ export class RawEventSweeper {
 	 */
 	async stop(): Promise<void> {
 		this.active = false;
+		this.stopped = true;
 		if (this.loopHandle != null) {
 			clearTimeout(this.loopHandle);
 			this.loopHandle = null;
@@ -157,6 +157,7 @@ export class RawEventSweeper {
 		}
 		for (const timer of this.autoFlushTimers.values()) clearTimeout(timer);
 		this.autoFlushTimers.clear();
+		this.autoFlushPending.clear();
 		if (this.currentTick != null) {
 			await this.currentTick;
 		}
@@ -178,6 +179,7 @@ export class RawEventSweeper {
 	 * Mirrors Python's RawEventAutoFlusher.note_activity() behavior.
 	 */
 	nudge(opencodeSessionId: string, source = "opencode"): void {
+		if (this.stopped) return;
 		if (!this.autoFlushEnabled()) return;
 		if (Date.now() / 1000 < this.authBackoffUntil) return;
 		const streamId = opencodeSessionId.trim();
@@ -211,6 +213,7 @@ export class RawEventSweeper {
 	}
 
 	private scheduleAutoFlush(opencodeSessionId: string, source: string): void {
+		if (this.stopped) return;
 		const key = `${source}:${opencodeSessionId}`;
 		if (this.sessionFlushing.has(key)) {
 			this.autoFlushPending.add(key);
@@ -254,13 +257,10 @@ export class RawEventSweeper {
 			});
 		} catch (exc) {
 			if (exc instanceof ObserverAuthError) {
-				this.handleAuthError(exc);
+				this.handleAuthError();
 				return;
 			}
-			console.error(
-				`codemem: raw event auto flush failed for ${opencodeSessionId}:`,
-				exc instanceof Error ? exc.message : exc,
-			);
+			console.error("codemem: raw event auto flush failed (output_invalid).");
 		} finally {
 			this.sessionFlushing.delete(key);
 			if (this.autoFlushPending.delete(key)) {
@@ -289,8 +289,8 @@ export class RawEventSweeper {
 		this.currentTick = (async () => {
 			try {
 				await this.tick();
-			} catch (err) {
-				console.error("codemem: sweeper tick failed unexpectedly:", err);
+			} catch {
+				console.error("codemem: sweeper tick failed (output_invalid).");
 			} finally {
 				this.running = false;
 				this.currentTick = null;
@@ -378,13 +378,10 @@ export class RawEventSweeper {
 				drained.add(`${source}:${streamId}`);
 			} catch (exc) {
 				if (exc instanceof ObserverAuthError) {
-					this.handleAuthError(exc);
+					this.handleAuthError();
 					return; // Stop all flush work during auth backoff
 				}
-				console.error(
-					`codemem: raw event queue worker flush failed for ${streamId}:`,
-					exc instanceof Error ? exc.message : exc,
-				);
+				console.error("codemem: raw event queue worker flush failed (output_invalid).");
 			} finally {
 				this.sessionFlushing.delete(key);
 			}
@@ -410,13 +407,10 @@ export class RawEventSweeper {
 				});
 			} catch (exc) {
 				if (exc instanceof ObserverAuthError) {
-					this.handleAuthError(exc);
+					this.handleAuthError();
 					return; // Stop all flush work during auth backoff
 				}
-				console.error(
-					`codemem: raw event sweeper flush failed for ${streamId}:`,
-					exc instanceof Error ? exc.message : exc,
-				);
+				console.error("codemem: raw event sweeper flush failed (output_invalid).");
 			} finally {
 				this.sessionFlushing.delete(key);
 			}

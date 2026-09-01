@@ -75,8 +75,8 @@ function insertTestMemory(
 				created_at, updated_at, metadata_json, actor_id, actor_display_name, visibility,
 				workspace_id, workspace_kind, origin_device_id, origin_source, trust_state,
 				facts, narrative, concepts, files_read, files_modified, prompt_number, rev, import_key,
-				scope_id
-			) VALUES (?, ?, ?, NULL, ?, 0.5, '', ?, ?, ?, ?, ?, ?, 'shared', 'shared:default', 'shared', ?, ?, 'trusted', NULL, NULL, NULL, NULL, NULL, NULL, 1, ?, ?)`,
+				scope_id, sensitivity
+			) VALUES (?, ?, ?, NULL, ?, 0.5, '', ?, ?, ?, ?, ?, ?, 'shared', 'shared:default', 'shared', ?, ?, 'trusted', NULL, NULL, NULL, NULL, NULL, NULL, 1, ?, ?, 'eligible')`,
 		)
 		.run(
 			options.sessionId,
@@ -464,9 +464,9 @@ describe("viewer-server", () => {
 				// recent_packs stays scope-filtered: only the visible-session pack
 				// survives, with hidden ids stripped from its metadata.
 				expect(body.recent_packs).toHaveLength(1);
-				// Aggregate totals are unfiltered SQL sums over every usage row
-				// (both packs), matching store.stats() semantics.
-				expect(body.totals).toMatchObject({ count: 2, tokens_read: 1122, tokens_saved: 1455 });
+				// Aggregate totals apply the same visibility predicate before the
+				// SQL sum, so the hidden-session pack is excluded from totals too.
+				expect(body.totals).toMatchObject({ count: 1, tokens_read: 123, tokens_saved: 456 });
 				expect(body.recent_packs[0]?.metadata_json).toMatchObject({
 					pack_item_ids: [visibleId],
 					added_ids: [visibleId],
@@ -517,11 +517,11 @@ describe("viewer-server", () => {
 					recent_packs: unknown[];
 					totals: { count: number; tokens_read: number; tokens_saved: number };
 				};
-				// The hidden-session pack is still excluded from recent_packs
-				// (session not visible), but the unfiltered aggregate totals count
-				// it just like store.stats() would.
+				// The hidden-session pack is excluded from recent_packs (session
+				// not visible) and the aggregate totals apply the same visibility
+				// predicate before summing, so it contributes nothing there either.
 				expect(body.recent_packs).toHaveLength(0);
-				expect(body.totals).toMatchObject({ count: 1, tokens_read: 999, tokens_saved: 999 });
+				expect(body.totals).toMatchObject({ count: 0, tokens_read: 0, tokens_saved: 0 });
 			} finally {
 				cleanup();
 			}
@@ -700,6 +700,18 @@ describe("viewer-server", () => {
 					.run("codemem", codememSession);
 				const otherSession = insertTestSession(store.db);
 				store.db.prepare("UPDATE sessions SET project = ? WHERE id = ?").run("other", otherSession);
+				// The usage aggregates only count rows whose session is visible, so
+				// give each session one eligible memory.
+				insertTestMemory(store, {
+					sessionId: codememSession,
+					kind: "discovery",
+					title: "Codemem visible memory",
+				});
+				insertTestMemory(store, {
+					sessionId: otherSession,
+					kind: "discovery",
+					title: "Other visible memory",
+				});
 
 				const insertUsage = (
 					sessionId: number,
@@ -861,10 +873,10 @@ describe("viewer-server", () => {
 		});
 
 		it("does not surface a visible pack older than the bounded recent-pack window", async () => {
-			// Documents the deliberate truncation tradeoff: the recent_packs window
-			// considers only the newest RECENT_PACK_SCAN_LIMIT (200) pack events, so
-			// a visible pack buried under that many newer non-visible packs is not
-			// surfaced — while the unfiltered aggregate still counts every event.
+			// The visibility predicate is applied in SQL before the bounded
+			// recent_packs window, so newer non-visible packs cannot starve a
+			// visible pack out of the window, and the aggregate counts only
+			// visible events.
 			const { app, getStore, cleanup } = createTestApp();
 			try {
 				await app.request("/api/stats");
@@ -902,10 +914,10 @@ describe("viewer-server", () => {
 					recent_packs: unknown[];
 					totals_global: { count: number };
 				};
-				// recent_packs is starved to empty even though a visible pack exists...
-				expect(body.recent_packs).toHaveLength(0);
-				// ...while the unfiltered aggregate still counts every pack event (201).
-				expect(body.totals_global.count).toBe(201);
+				// The visible pack survives the window despite 200 newer non-visible packs...
+				expect(body.recent_packs).toHaveLength(1);
+				// ...and the aggregate counts only the visible pack event.
+				expect(body.totals_global.count).toBe(1);
 			} finally {
 				cleanup();
 			}
@@ -1019,8 +1031,8 @@ describe("viewer-server", () => {
 				});
 				store.db
 					.prepare(
-						`INSERT INTO artifacts(session_id, kind, path, content_text, content_hash, created_at, metadata_json)
-						 VALUES (?, 'note', 'visible.txt', 'visible artifact', 'visible-hash', ?, '{}')`,
+						`INSERT INTO artifacts(session_id, kind, path, content_text, content_hash, created_at, metadata_json, sensitivity)
+						 VALUES (?, 'note', 'visible.txt', 'visible artifact', 'visible-hash', ?, '{}', 'eligible')`,
 					)
 					.run(visibleSessionId, "2026-01-01T00:00:00Z");
 
@@ -1033,8 +1045,8 @@ describe("viewer-server", () => {
 				});
 				store.db
 					.prepare(
-						`INSERT INTO artifacts(session_id, kind, path, content_text, content_hash, created_at, metadata_json)
-						 VALUES (?, 'note', 'hidden.txt', 'hidden artifact', 'hidden-hash', ?, '{}')`,
+						`INSERT INTO artifacts(session_id, kind, path, content_text, content_hash, created_at, metadata_json, sensitivity)
+						 VALUES (?, 'note', 'hidden.txt', 'hidden artifact', 'hidden-hash', ?, '{}', 'eligible')`,
 					)
 					.run(hiddenSessionId, "2026-01-01T00:00:00Z");
 
@@ -1053,8 +1065,8 @@ describe("viewer-server", () => {
 				});
 				store.db
 					.prepare(
-						`INSERT INTO artifacts(session_id, kind, path, content_text, content_hash, created_at, metadata_json)
-						 VALUES (?, 'note', 'mixed.txt', 'mixed artifact', 'mixed-hash', ?, '{}')`,
+						`INSERT INTO artifacts(session_id, kind, path, content_text, content_hash, created_at, metadata_json, sensitivity)
+						 VALUES (?, 'note', 'mixed.txt', 'mixed artifact', 'mixed-hash', ?, '{}', 'eligible')`,
 					)
 					.run(mixedSessionId, "2026-01-01T00:00:00Z");
 

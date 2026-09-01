@@ -28,6 +28,16 @@ import {
 	toJson,
 	toJsonNullable,
 } from "./db.js";
+import {
+	CAPTURE_ONLY_DESTINATION_FINGERPRINT,
+	compileUntrustedDestinationBoundary,
+	type DestinationBoundaryV1,
+	type DestinationConsumerV1,
+	destinationBoundaryFingerprint,
+	destinationBoundarySql,
+	isDestinationEligible,
+	memoryDestinationBoundarySql,
+} from "./destination-boundary.js";
 import { buildFilterClausesWithContext, type OwnershipFilterContext } from "./filters.js";
 import { buildMemoryDedupKey, normalizeMemoryDedupTitle } from "./memory-dedup.js";
 import { validateMemoryKind } from "./memory-kinds.js";
@@ -79,6 +89,7 @@ import type {
 	PackRenderOptions,
 	PackResponse,
 	PackTrace,
+	ProjectedSourceSetV1,
 	RawEventCaptureOutcome,
 	RawEventCaptureState,
 	RawEventFlushBatch,
@@ -93,6 +104,8 @@ import type {
 	ResumeSignalResult,
 	ResumeSignalV1,
 	SensitivityV1,
+	SourceCitationV1,
+	SourceSpanV1,
 	StoreStats,
 	TimelineItemResponse,
 } from "./types.js";
@@ -170,19 +183,64 @@ type RawEventCaptureInput = {
 	redactionDegraded?: boolean;
 };
 
-type RawEventJobCompletionClaim = Pick<
-	RawEventJobClaim,
-	"jobId" | "claimGeneration" | "attemptFingerprint"
->;
+type BoundRawEventSource = {
+	eventId: string;
+	eventSeq: number;
+	eventType: string;
+	tsWallMs: number | null;
+	tsMonoMs: number | null;
+	payloadJson: string;
+	sensitivity: SensitivityV1;
+	repositoryIdentity: string | null;
+	captureState: RawEventCaptureState;
+	safeErrorCode: string | null;
+	payloadDigestVersion: "event-payload-digest-v1";
+	payloadDigest: string;
+};
+
+type BoundRawEventProjection = {
+	boundary: DestinationBoundaryV1;
+	set: ProjectedSourceSetV1;
+	allSources: readonly BoundRawEventSource[];
+	projectedSources: readonly BoundRawEventSource[];
+};
+
+const PROVIDER_AUTHORITY_FIELDS = new Set([
+	"_normalized",
+	"eventId",
+	"event_id",
+	"idempotencyKey",
+	"payloadDigest",
+	"payload_digest",
+	"repositoryIdentity",
+	"repository_identity",
+	"sourceHash",
+]);
+
+function providerRedactedPayload(value: unknown): unknown {
+	if (Array.isArray(value)) return value.map(providerRedactedPayload);
+	if (!value || typeof value !== "object") return value;
+	return Object.fromEntries(
+		Object.entries(value as Record<string, unknown>)
+			.filter(([key]) => !PROVIDER_AUTHORITY_FIELDS.has(key))
+			.map(([key, child]) => [key, providerRedactedPayload(child)]),
+	);
+}
 
 type DerivedMemoryProvenance = {
+	source: string;
+	streamId: string;
 	repositoryIdentity: string;
 	sensitivity: SensitivityV1;
 	dedupSourceIdentity: string;
+	sourceEventIds: string[];
+	sourceSpans: SourceSpanV1[];
+	lineageId: string;
+	derivationKey: string;
 };
 
 type RawEventDerivedMemoryInput = {
-	citedSourceEventIds: string[];
+	sourceCitations: SourceCitationV1[];
 	sessionId: number;
 	kind: string;
 	title: string;
@@ -192,8 +250,13 @@ type RawEventDerivedMemoryInput = {
 	metadata?: Record<string, unknown>;
 };
 
+type TrustedMemoryDisposition = {
+	sensitivity: SensitivityV1;
+	repositoryIdentity: string | null;
+};
+
 export type RawEventDerivationContext = {
-	remember(input: RawEventDerivedMemoryInput): number;
+	remember(input: RawEventDerivedMemoryInput): RawEventMemoryCompletion;
 };
 
 type ResumeSignalJobRow = {
@@ -442,6 +505,46 @@ function buildDerivedMemoryDedupKey(
 	);
 }
 
+function isUtf8Boundary(value: string, offset: number): boolean {
+	const bytes = Buffer.from(value, "utf8");
+	return (
+		offset === 0 ||
+		offset === bytes.length ||
+		(offset > 0 && offset < bytes.length && ((bytes[offset] as number) & 0xc0) !== 0x80)
+	);
+}
+
+function sourceSpansEqual(left: readonly SourceSpanV1[], right: readonly SourceSpanV1[]): boolean {
+	return (
+		left.length === right.length &&
+		left.every(
+			(span, index) =>
+				span.eventId === right[index]?.eventId &&
+				span.startByte === right[index]?.startByte &&
+				span.endByte === right[index]?.endByte,
+		)
+	);
+}
+
+function sourceSpansOverlap(
+	left: readonly SourceSpanV1[],
+	right: readonly SourceSpanV1[],
+): boolean {
+	const leftEvents = [...new Set(left.map((span) => span.eventId))].sort();
+	const rightEvents = [...new Set(right.map((span) => span.eventId))].sort();
+	if (
+		leftEvents.length !== rightEvents.length ||
+		leftEvents.some((eventId, index) => eventId !== rightEvents[index])
+	) {
+		return false;
+	}
+	return left.some((a) =>
+		right.some(
+			(b) => a.eventId === b.eventId && a.startByte < b.endByte && b.startByte < a.endByte,
+		),
+	);
+}
+
 function resolveCrossSessionDedupWindowMs(): number {
 	const raw = process.env[CROSS_SESSION_DEDUP_WINDOW_ENV]?.trim();
 	if (!raw) return DEFAULT_CROSS_SESSION_DEDUP_WINDOW_MS;
@@ -485,6 +588,10 @@ export class MemoryStore {
 	 */
 	scanner: SecretScanner;
 	private readonly pendingVectorWrites = new Set<Promise<void>>();
+	private readonly rawEventClaimProjections = new WeakMap<
+		RawEventJobClaim,
+		BoundRawEventProjection
+	>();
 
 	/** Lazy Drizzle ORM wrapper — shares the same better-sqlite3 connection. */
 	private _drizzle: ReturnType<typeof drizzle> | null = null;
@@ -798,10 +905,10 @@ export class MemoryStore {
 		}
 	}
 
-	private logDedupHit(hit: DedupHit, kind: string, title: string): void {
+	private logDedupHit(hit: DedupHit, kind: string): void {
 		if (process.env[CODEMEM_DEBUG_ENV] !== "1") return;
 		process.stderr.write(
-			`[codemem] memory dedup hit scope=${hit.scope} existing_id=${hit.id} kind=${kind} title=${JSON.stringify(title)}\n`,
+			`[codemem] memory dedup hit scope=${hit.scope} existing_id=${hit.id} kind=${kind}\n`,
 		);
 	}
 
@@ -830,7 +937,7 @@ export class MemoryStore {
 	 * {@link buildOwnershipPredicate}. Shared by core read paths and viewer
 	 * routes to keep a single source of truth for "is this mine?".
 	 */
-	ownershipFilterContext(): OwnershipFilterContext {
+	ownershipFilterContext(destinationBoundary?: DestinationBoundaryV1): OwnershipFilterContext {
 		const claimedDeviceIds = this.sameActorPeerIds();
 		return {
 			actorId: this.actorId,
@@ -843,11 +950,27 @@ export class MemoryStore {
 			// per-row EXISTS predicate. Fronts get()/recent()/recentByKinds() and
 			// every viewer-server route.
 			visibleScopeIds: resolveVisibleScopeIds(this.db, this.deviceId),
+			destinationBoundary,
 		};
 	}
 
-	private scopeVisibleFilterContext(): OwnershipFilterContext {
-		return this.ownershipFilterContext();
+	private scopeVisibleFilterContext(
+		destinationBoundary?: DestinationBoundaryV1,
+	): OwnershipFilterContext {
+		return this.ownershipFilterContext(destinationBoundary);
+	}
+
+	private readBoundary(
+		boundary: DestinationBoundaryV1 | undefined,
+		consumer: DestinationConsumerV1,
+	): DestinationBoundaryV1 {
+		return (
+			boundary ??
+			compileUntrustedDestinationBoundary({
+				consumer,
+				configurationFingerprint: CAPTURE_ONLY_DESTINATION_FINGERPRINT,
+			})
+		);
 	}
 
 	// get
@@ -856,8 +979,11 @@ export class MemoryStore {
 	 * Fetch a single memory item by ID.
 	 * Returns null if not found (does not filter by active status).
 	 */
-	get(memoryId: number): MemoryItemResponse | null {
-		const filterResult = buildFilterClausesWithContext(null, this.scopeVisibleFilterContext());
+	get(memoryId: number, destinationBoundary?: DestinationBoundaryV1): MemoryItemResponse | null {
+		const filterResult = buildFilterClausesWithContext(
+			null,
+			this.scopeVisibleFilterContext(destinationBoundary),
+		);
 		const whereSql = buildWhereSql(
 			["memory_items.id = ?", ...filterResult.clauses],
 			[memoryId, ...filterResult.params],
@@ -913,6 +1039,7 @@ export class MemoryStore {
 		startedAt?: string | null;
 		toolVersion?: string;
 		user?: string;
+		repositoryIdentity?: string | null;
 	}): number {
 		const [source, streamId] = this.normalizeStreamIdentity(
 			opts.source ?? "opencode",
@@ -929,6 +1056,13 @@ export class MemoryStore {
 			)
 			.get();
 		if (existing?.session_id != null) {
+			if (opts.repositoryIdentity) {
+				this.db
+					.prepare(
+						"UPDATE sessions SET repository_identity = COALESCE(repository_identity, ?) WHERE id = ?",
+					)
+					.run(validatedRepositoryIdentity(opts.repositoryIdentity), existing.session_id);
+			}
 			return Number(existing.session_id);
 		}
 
@@ -944,6 +1078,7 @@ export class MemoryStore {
 				user: opts.user ?? process.env.USER ?? "unknown",
 				tool_version: opts.toolVersion ?? "raw_events",
 				metadata_json: toJson(opts.metadata ?? {}),
+				repository_identity: validatedRepositoryIdentity(opts.repositoryIdentity),
 			})
 			.returning({ id: schema.sessions.id })
 			.all();
@@ -1030,6 +1165,32 @@ export class MemoryStore {
 		);
 	}
 
+	rememberTrusted(
+		sessionId: number,
+		kind: string,
+		title: string,
+		bodyText: string,
+		confidence: number,
+		tags: string[] | undefined,
+		metadata: Record<string, unknown> | undefined,
+		disposition: TrustedMemoryDisposition,
+	): number {
+		return this.rememberInternal(
+			sessionId,
+			kind,
+			title,
+			bodyText,
+			confidence,
+			tags,
+			metadata,
+			null,
+			{
+				sensitivity: validatedSensitivity(disposition.sensitivity),
+				repositoryIdentity: validatedRepositoryIdentity(disposition.repositoryIdentity),
+			},
+		);
+	}
+
 	private rememberInternal(
 		sessionId: number,
 		kind: string,
@@ -1039,6 +1200,7 @@ export class MemoryStore {
 		tags: string[] | undefined,
 		metadata: Record<string, unknown> | undefined,
 		derivedProvenance: DerivedMemoryProvenance | null,
+		trustedDisposition: TrustedMemoryDisposition | null = null,
 	): number {
 		const validKind = validateMemoryKind(kind);
 		const now = nowIso();
@@ -1080,6 +1242,10 @@ export class MemoryStore {
 			: buildMemoryDedupKey(safeTitle);
 
 		metaPayload.clock_device_id ??= this.deviceId;
+		if (derivedProvenance) {
+			metaPayload.derived_source = derivedProvenance.source;
+			metaPayload.derived_stream_id = derivedProvenance.streamId;
+		}
 		const importKey = (metaPayload.import_key as string) || randomUUID();
 		metaPayload.import_key = importKey;
 
@@ -1127,7 +1293,7 @@ export class MemoryStore {
 			if (derivedProvenance) {
 				this.strengthenDerivedDuplicate(existingHit.id, derivedProvenance);
 			}
-			this.logDedupHit(existingHit, validKind, safeTitle);
+			this.logDedupHit(existingHit, validKind);
 			return existingHit.id;
 		}
 
@@ -1173,8 +1339,17 @@ export class MemoryStore {
 							? {
 									sensitivity: derivedProvenance.sensitivity,
 									repository_identity: derivedProvenance.repositoryIdentity,
+									lineage_id: derivedProvenance.lineageId,
+									derivation_key: derivedProvenance.derivationKey,
+									source_event_ids_json: toJson(derivedProvenance.sourceEventIds),
+									source_spans_json: toJson(derivedProvenance.sourceSpans),
 								}
-							: {}),
+							: trustedDisposition
+								? {
+										sensitivity: trustedDisposition.sensitivity,
+										repository_identity: trustedDisposition.repositoryIdentity,
+									}
+								: {}),
 					})
 					.returning({ id: schema.memoryItems.id })
 					.all();
@@ -1202,7 +1377,7 @@ export class MemoryStore {
 				if (derivedProvenance) {
 					this.strengthenDerivedDuplicate(existingSameSessionHit.id, derivedProvenance);
 				}
-				this.logDedupHit(existingSameSessionHit, validKind, safeTitle);
+				this.logDedupHit(existingSameSessionHit, validKind);
 				return existingSameSessionHit.id;
 			}
 			throw error;
@@ -1399,9 +1574,17 @@ export class MemoryStore {
 	 * Return recent active memories, newest first.
 	 * Supports optional filters via buildFilterClauses.
 	 */
-	recent(limit = 10, filters?: MemoryFilters | null, offset = 0): MemoryItemResponse[] {
+	recent(
+		limit = 10,
+		filters?: MemoryFilters | null,
+		offset = 0,
+		destinationBoundary?: DestinationBoundaryV1,
+	): MemoryItemResponse[] {
 		const baseClauses = ["memory_items.active = 1"];
-		const filterResult = buildFilterClausesWithContext(filters, this.scopeVisibleFilterContext());
+		const filterResult = buildFilterClausesWithContext(
+			filters,
+			this.scopeVisibleFilterContext(destinationBoundary),
+		);
 		const allClauses = [...baseClauses, ...filterResult.clauses];
 		const whereSql = buildWhereSql(allClauses, filterResult.params);
 
@@ -1431,13 +1614,17 @@ export class MemoryStore {
 		limit = 10,
 		filters?: MemoryFilters | null,
 		offset = 0,
+		destinationBoundary?: DestinationBoundaryV1,
 	): MemoryItemResponse[] {
 		const kindsList = kinds.filter((k) => k.length > 0);
 		if (kindsList.length === 0) return [];
 
 		const kindPlaceholders = kindsList.map(() => "?").join(", ");
 		const baseClauses = ["memory_items.active = 1", `memory_items.kind IN (${kindPlaceholders})`];
-		const filterResult = buildFilterClausesWithContext(filters, this.scopeVisibleFilterContext());
+		const filterResult = buildFilterClausesWithContext(
+			filters,
+			this.scopeVisibleFilterContext(destinationBoundary),
+		);
 		const allClauses = [...baseClauses, ...filterResult.clauses];
 		const params = [...kindsList, ...filterResult.params];
 		const whereSql = buildWhereSql(allClauses, params);
@@ -1468,7 +1655,10 @@ export class MemoryStore {
 	 * project via the sessions join; otherwise every row is aggregated.
 	 * Callers sort the returned rows as needed.
 	 */
-	usageAggregate(projectFilter?: string | null): Array<{
+	usageAggregate(
+		projectFilter?: string | null,
+		destinationBoundary?: DestinationBoundaryV1,
+	): Array<{
 		event: string;
 		count: number;
 		tokens_read: number;
@@ -1479,6 +1669,16 @@ export class MemoryStore {
 		// variant avoids a needless sessions join, and the projections (incl.
 		// the tokens_saved double-COALESCE) must stay byte-identical in both.
 		const hasProject = typeof projectFilter === "string" && projectFilter.length > 0;
+		const visible = destinationBoundary
+			? buildFilterClausesWithContext(null, this.scopeVisibleFilterContext(destinationBoundary))
+			: null;
+		const visibleUsageClause = visible
+			? `AND EXISTS (
+				SELECT 1 FROM memory_items
+				WHERE memory_items.session_id = usage_events.session_id
+					AND memory_items.active = 1 AND ${visible.clauses.join(" AND ")}
+			 )`
+			: "";
 		const rows = hasProject
 			? (this.db
 					.prepare(
@@ -1489,10 +1689,10 @@ export class MemoryStore {
 							COALESCE(SUM(COALESCE(usage_events.tokens_saved, 0)), 0) AS tokens_saved
 						 FROM usage_events
 						 JOIN sessions ON sessions.id = usage_events.session_id
-						 WHERE sessions.project = ?
+						 WHERE sessions.project = ? ${visibleUsageClause}
 						 GROUP BY usage_events.event`,
 					)
-					.all(projectFilter) as Record<string, unknown>[])
+					.all(projectFilter, ...(visible?.params ?? [])) as Record<string, unknown>[])
 			: (this.db
 					.prepare(
 						`SELECT event AS event,
@@ -1501,9 +1701,10 @@ export class MemoryStore {
 							COALESCE(SUM(tokens_written), 0) AS tokens_written,
 							COALESCE(SUM(COALESCE(tokens_saved, 0)), 0) AS tokens_saved
 						 FROM usage_events
+						 WHERE 1 = 1 ${visibleUsageClause}
 						 GROUP BY event`,
 					)
-					.all() as Record<string, unknown>[]);
+					.all(...(visible?.params ?? [])) as Record<string, unknown>[]);
 		return rows.map((row) => ({
 			event: String(row.event),
 			count: Number(row.count ?? 0),
@@ -1518,11 +1719,14 @@ export class MemoryStore {
 	/**
 	 * Return database statistics matching the Python stats() output shape.
 	 */
-	stats(): StoreStats {
+	stats(destinationBoundary?: DestinationBoundaryV1): StoreStats {
 		// biome-ignore lint/suspicious/noExplicitAny: Drizzle table union type is unwieldy
 		const countRows = (tbl: any) =>
 			this.d.select({ c: sql<number>`COUNT(*)` }).from(tbl).get()?.c ?? 0;
-		const visibleFilter = buildFilterClausesWithContext(null, this.scopeVisibleFilterContext());
+		const visibleFilter = buildFilterClausesWithContext(
+			null,
+			this.scopeVisibleFilterContext(destinationBoundary),
+		);
 		const countVisibleMemoryRows = (extraClauses: string[] = []): number => {
 			const clauses = [...extraClauses, ...visibleFilter.clauses];
 			const row = this.db
@@ -1545,8 +1749,30 @@ export class MemoryStore {
 		const totalMemories = countVisibleMemoryRows();
 		const activeMemories = countVisibleMemoryRows(["memory_items.active = 1"]);
 		const sessions = countVisibleMemorySessions();
-		const artifacts = countRows(schema.artifacts);
-		const rawEvents = countRows(schema.rawEvents);
+		const artifacts = destinationBoundary
+			? (() => {
+					const predicate = memoryDestinationBoundarySql(destinationBoundary, "artifacts");
+					return Number(
+						(
+							this.db
+								.prepare(`SELECT COUNT(*) AS c FROM artifacts WHERE ${predicate.clause}`)
+								.get(...predicate.params) as { c: number } | undefined
+						)?.c ?? 0,
+					);
+				})()
+			: countRows(schema.artifacts);
+		const rawEvents = destinationBoundary
+			? (() => {
+					const predicate = destinationBoundarySql(destinationBoundary, "raw_events");
+					return Number(
+						(
+							this.db
+								.prepare(`SELECT COUNT(*) AS c FROM raw_events WHERE ${predicate.clause}`)
+								.get(...predicate.params) as { c: number } | undefined
+						)?.c ?? 0,
+					);
+				})()
+			: countRows(schema.rawEvents);
 
 		let vectorCount = 0;
 		if (!isEmbeddingDisabled() && tableExists(this.db, "memory_vectors")) {
@@ -1583,7 +1809,7 @@ export class MemoryStore {
 		// Usage stats. Sort by count DESC to preserve the historical
 		// ORDER BY COUNT(*) DESC ordering of this block, with event name as a
 		// stable tiebreaker so equal-count rows have a deterministic order.
-		const usageEvents = this.usageAggregate().sort(
+		const usageEvents = this.usageAggregate(null, destinationBoundary).sort(
 			(a, b) => b.count - a.count || a.event.localeCompare(b.event),
 		);
 
@@ -1761,8 +1987,13 @@ export class MemoryStore {
 	 * Delegates to search.ts to keep the search logic decoupled.
 	 * Results are ranked by BM25 score, recency, and kind bonus.
 	 */
-	search(query: string, limit = 10, filters?: MemoryFilters): MemoryResult[] {
-		return searchFn(this, query, limit, filters);
+	search(
+		query: string,
+		limit = 10,
+		filters?: MemoryFilters,
+		destinationBoundary?: DestinationBoundaryV1,
+	): MemoryResult[] {
+		return searchFn(this, query, limit, filters, destinationBoundary);
 	}
 
 	// timeline
@@ -1779,8 +2010,9 @@ export class MemoryStore {
 		depthBefore = 3,
 		depthAfter = 3,
 		filters?: MemoryFilters | null,
+		destinationBoundary?: DestinationBoundaryV1,
 	): TimelineItemResponse[] {
-		return timelineFn(this, query, memoryId, depthBefore, depthAfter, filters);
+		return timelineFn(this, query, memoryId, depthBefore, depthAfter, filters, destinationBoundary);
 	}
 
 	// explain
@@ -1797,8 +2029,9 @@ export class MemoryStore {
 		limit = 10,
 		filters?: MemoryFilters | null,
 		options?: ExplainOptions,
+		destinationBoundary?: DestinationBoundaryV1,
 	): ExplainResponse {
-		return explainFn(this, query, ids, limit, filters, options);
+		return explainFn(this, query, ids, limit, filters, options, destinationBoundary);
 	}
 
 	// buildMemoryPack
@@ -1814,8 +2047,18 @@ export class MemoryStore {
 		limit?: number,
 		tokenBudget?: number | null,
 		filters?: MemoryFilters,
+		destinationBoundary?: DestinationBoundaryV1,
 	): PackResponse {
-		return buildMemoryPack(this, context, limit, tokenBudget ?? null, filters);
+		return buildMemoryPack(
+			this,
+			context,
+			limit,
+			tokenBudget ?? null,
+			filters,
+			undefined,
+			undefined,
+			this.readBoundary(destinationBoundary, "daemon_pack"),
+		);
 	}
 
 	buildMemoryPackTrace(
@@ -1823,8 +2066,18 @@ export class MemoryStore {
 		limit?: number,
 		tokenBudget?: number | null,
 		filters?: MemoryFilters,
+		destinationBoundary?: DestinationBoundaryV1,
 	): PackTrace {
-		return buildMemoryPackTrace(this, context, limit, tokenBudget ?? null, filters);
+		return buildMemoryPackTrace(
+			this,
+			context,
+			limit,
+			tokenBudget ?? null,
+			filters,
+			undefined,
+			undefined,
+			this.readBoundary(destinationBoundary, "daemon_pack"),
+		);
 	}
 
 	buildMemoryPackWithTrace(
@@ -1833,6 +2086,7 @@ export class MemoryStore {
 		tokenBudget?: number | null,
 		filters?: MemoryFilters,
 		renderOptions?: PackRenderOptions,
+		destinationBoundary?: DestinationBoundaryV1,
 	): PackArtifacts {
 		return buildMemoryPackWithTrace(
 			this,
@@ -1842,6 +2096,7 @@ export class MemoryStore {
 			filters,
 			undefined,
 			renderOptions,
+			this.readBoundary(destinationBoundary, "daemon_pack"),
 		);
 	}
 
@@ -1858,8 +2113,17 @@ export class MemoryStore {
 		tokenBudget?: number | null,
 		filters?: MemoryFilters,
 		renderOptions?: PackRenderOptions,
+		destinationBoundary?: DestinationBoundaryV1,
 	): Promise<PackResponse> {
-		return buildMemoryPackAsync(this, context, limit, tokenBudget ?? null, filters, renderOptions);
+		return buildMemoryPackAsync(
+			this,
+			context,
+			limit,
+			tokenBudget ?? null,
+			filters,
+			renderOptions,
+			this.readBoundary(destinationBoundary, "daemon_pack"),
+		);
 	}
 
 	async buildMemoryPackWithTraceAsync(
@@ -1868,6 +2132,7 @@ export class MemoryStore {
 		tokenBudget?: number | null,
 		filters?: MemoryFilters,
 		renderOptions?: PackRenderOptions,
+		destinationBoundary?: DestinationBoundaryV1,
 	): Promise<PackArtifacts> {
 		return buildMemoryPackWithTraceAsync(
 			this,
@@ -1876,6 +2141,7 @@ export class MemoryStore {
 			tokenBudget ?? null,
 			filters,
 			renderOptions,
+			this.readBoundary(destinationBoundary, "daemon_pack"),
 		);
 	}
 
@@ -1885,6 +2151,7 @@ export class MemoryStore {
 		tokenBudget?: number | null,
 		filters?: MemoryFilters,
 		renderOptions?: PackRenderOptions,
+		destinationBoundary?: DestinationBoundaryV1,
 	): Promise<PackTrace> {
 		return buildMemoryPackTraceAsync(
 			this,
@@ -1893,6 +2160,7 @@ export class MemoryStore {
 			tokenBudget ?? null,
 			filters,
 			renderOptions,
+			this.readBoundary(destinationBoundary, "daemon_pack"),
 		);
 	}
 
@@ -2359,12 +2627,108 @@ export class MemoryStore {
 		})();
 	}
 
+	private loadBoundRawEventSources(input: {
+		source: string;
+		streamId: string;
+		startEventSeq: number;
+		endEventSeq: number;
+	}): BoundRawEventSource[] {
+		const rows = this.db
+			.prepare(
+				`SELECT event_id, event_seq, event_type, ts_wall_ms, ts_mono_ms, payload_json,
+					sensitivity, repository_identity, capture_state, safe_error_code,
+					payload_digest_version, payload_digest
+				 FROM raw_events
+				 WHERE source = ? AND stream_id = ? AND event_seq BETWEEN ? AND ?
+				 ORDER BY event_seq`,
+			)
+			.all(input.source, input.streamId, input.startEventSeq, input.endEventSeq) as Array<{
+			event_id: string;
+			event_seq: number;
+			event_type: string;
+			ts_wall_ms: number | null;
+			ts_mono_ms: number | null;
+			payload_json: string;
+			sensitivity: SensitivityV1;
+			repository_identity: string | null;
+			capture_state: RawEventCaptureState;
+			safe_error_code: string | null;
+			payload_digest_version: "event-payload-digest-v1";
+			payload_digest: string;
+		}>;
+		return rows.map((row) => ({
+			eventId: row.event_id,
+			eventSeq: Number(row.event_seq),
+			eventType: row.event_type,
+			tsWallMs: row.ts_wall_ms,
+			tsMonoMs: row.ts_mono_ms,
+			payloadJson: row.payload_json,
+			sensitivity: row.sensitivity,
+			repositoryIdentity: row.repository_identity,
+			captureState: row.capture_state,
+			safeErrorCode: row.safe_error_code,
+			payloadDigestVersion: row.payload_digest_version,
+			payloadDigest: row.payload_digest,
+		}));
+	}
+
+	private projectBoundRawEventSources(
+		boundary: DestinationBoundaryV1,
+		allSources: readonly BoundRawEventSource[],
+	): BoundRawEventSource[] {
+		const acceptedRepositories = new Set(
+			allSources
+				.filter((source) => source.captureState === "accepted")
+				.map((source) => source.repositoryIdentity),
+		);
+		if (
+			boundary.executionLocation === "local" &&
+			(boundary.repositoryIdentity === null ||
+				acceptedRepositories.size !== 1 ||
+				!acceptedRepositories.has(boundary.repositoryIdentity))
+		) {
+			return [];
+		}
+		return allSources.filter((source) =>
+			isDestinationEligible(boundary, {
+				sensitivity: source.sensitivity,
+				repositoryIdentity: source.repositoryIdentity,
+				captureState: source.captureState,
+			}),
+		);
+	}
+
+	rawEventFlushJobRepositoryIdentity(jobId: number): string | null {
+		if (!Number.isInteger(jobId) || jobId <= 0) throw new Error("jobId is invalid");
+		const batch = this.db
+			.prepare(
+				`SELECT source, stream_id, start_event_seq, end_event_seq
+				 FROM raw_event_flush_batches WHERE id = ?`,
+			)
+			.get(jobId) as
+			| { source: string; stream_id: string; start_event_seq: number; end_event_seq: number }
+			| undefined;
+		if (!batch) return null;
+		const repositories = new Set(
+			this.loadBoundRawEventSources({
+				source: batch.source,
+				streamId: batch.stream_id,
+				startEventSeq: Number(batch.start_event_seq),
+				endEventSeq: Number(batch.end_event_seq),
+			})
+				.filter((source) => source.captureState === "accepted")
+				.map((source) => source.repositoryIdentity),
+		);
+		return repositories.size === 1 ? ([...repositories][0] ?? null) : null;
+	}
+
 	claimRawEventFlushJob(input: {
 		jobId: number;
 		manifestFingerprint: string;
 		providerFingerprint: string;
 		maxMemoryItemsPerDerivation?: number;
 		manifest?: EffectiveCapabilityManifestV1;
+		boundary?: DestinationBoundaryV1;
 	}): RawEventJobClaim | null {
 		if (!Number.isInteger(input.jobId) || input.jobId <= 0) throw new Error("jobId is invalid");
 		const manifestFingerprint = requiredFingerprint(
@@ -2375,6 +2739,9 @@ export class MemoryStore {
 			input.providerFingerprint,
 			"attempt_provider_fingerprint",
 		);
+		if (!input.boundary) throw new Error("destination boundary is required");
+		const boundary = input.boundary;
+		const boundaryFingerprint = destinationBoundaryFingerprint(boundary);
 		const manifest = input.manifest ? validateCapabilityManifest(input.manifest) : null;
 		if (
 			manifest &&
@@ -2382,6 +2749,16 @@ export class MemoryStore {
 				manifest.summaryProvider.providerFingerprint !== providerFingerprint)
 		) {
 			throw new Error("claim manifest identity is invalid");
+		}
+		if (
+			boundary.consumer !== "summary_provider" ||
+			boundary.configurationFingerprint !== manifestFingerprint ||
+			boundary.providerFingerprint !== providerFingerprint ||
+			(manifest !== null &&
+				(boundary.executionLocation !== manifest.summaryProvider.executionLocation ||
+					boundary.targetModel !== manifest.summaryProvider.modelId))
+		) {
+			throw new Error("claim destination boundary is invalid");
 		}
 		const maxMemoryItemsPerDerivation =
 			input.maxMemoryItemsPerDerivation ??
@@ -2514,7 +2891,7 @@ export class MemoryStore {
 					row.claim_generation,
 				);
 			if (result.changes !== 1) return null;
-			return {
+			const claim: RawEventJobClaim = {
 				jobId: Number(row.id),
 				source: row.source,
 				streamId: row.stream_id,
@@ -2528,6 +2905,47 @@ export class MemoryStore {
 				maxMemoryItemsPerDerivation,
 				usedResumeGrant,
 			};
+			const allSources = this.loadBoundRawEventSources({
+				source: row.source,
+				streamId: row.stream_id,
+				startEventSeq: Number(row.start_event_seq),
+				endEventSeq: Number(row.end_event_seq),
+			});
+			const projectedSources = this.projectBoundRawEventSources(boundary, allSources);
+			const projectedRepositories = new Set(
+				projectedSources.map((source) => source.repositoryIdentity),
+			);
+			const set: ProjectedSourceSetV1 = Object.freeze({
+				version: 1,
+				jobId: claim.jobId,
+				claimGeneration: claim.claimGeneration,
+				attemptFingerprint: claim.attemptFingerprint,
+				destinationBoundaryFingerprint: boundaryFingerprint,
+				repositoryIdentity:
+					projectedRepositories.size === 1 ? ([...projectedRepositories][0] ?? null) : null,
+				sources: Object.freeze(
+					projectedSources.map((source, ordinal) =>
+						Object.freeze({
+							ordinal,
+							eventId: source.eventId,
+							sensitivity: source.sensitivity,
+							repositoryIdentity: source.repositoryIdentity,
+							redactedPayload: canonicalMutationJson(
+								providerRedactedPayload(fromJson(source.payloadJson)),
+							),
+							payloadDigest: source.payloadDigest,
+							payloadDigestVersion: source.payloadDigestVersion,
+						}),
+					),
+				),
+			});
+			this.rawEventClaimProjections.set(claim, {
+				boundary,
+				set,
+				allSources: Object.freeze(allSources),
+				projectedSources: Object.freeze(projectedSources),
+			});
+			return claim;
 		})();
 	}
 
@@ -2606,42 +3024,36 @@ export class MemoryStore {
 	}
 
 	loadRawEventFlushJobEvents(claim: RawEventJobClaim): Record<string, unknown>[] {
-		const rows = this.db
-			.prepare(
-				`SELECT event_id, event_seq, event_type, ts_wall_ms, ts_mono_ms, payload_json,
-					sensitivity, repository_identity, capture_state, safe_error_code
-				 FROM raw_events
-				 WHERE source = ? AND stream_id = ? AND event_seq BETWEEN ? AND ?
-				 ORDER BY event_seq`,
-			)
-			.all(claim.source, claim.streamId, claim.startEventSeq, claim.endEventSeq) as Array<{
-			event_id: string;
-			event_seq: number;
-			event_type: string;
-			ts_wall_ms: number | null;
-			ts_mono_ms: number | null;
-			payload_json: string;
-			sensitivity: SensitivityV1;
-			repository_identity: string | null;
-			capture_state: RawEventCaptureState;
-			safe_error_code: string | null;
-		}>;
-		return rows.map((row) => ({
-			...fromJson(row.payload_json),
-			event_id: row.event_id,
-			event_seq: Number(row.event_seq),
-			event_type: row.event_type,
-			timestamp_wall_ms: row.ts_wall_ms,
-			timestamp_mono_ms: row.ts_mono_ms,
-			sensitivity: row.sensitivity,
-			repository_identity: row.repository_identity,
-			capture_state: row.capture_state,
-			safe_error_code: row.safe_error_code,
+		const projection = this.rawEventClaimProjections.get(claim);
+		if (!projection) throw new StaleRawEventClaimError();
+		return projection.projectedSources.map((source) => ({
+			...fromJson(source.payloadJson),
+			event_id: source.eventId,
+			event_seq: source.eventSeq,
+			event_type: source.eventType,
+			timestamp_wall_ms: source.tsWallMs,
+			timestamp_mono_ms: source.tsMonoMs,
+			sensitivity: source.sensitivity,
+			repository_identity: source.repositoryIdentity,
+			capture_state: source.captureState,
+			safe_error_code: source.safeErrorCode,
 		}));
 	}
 
+	rawEventFlushClaimSourceEventIds(claim: RawEventJobClaim): string[] {
+		const projection = this.rawEventClaimProjections.get(claim);
+		if (!projection) throw new StaleRawEventClaimError();
+		return projection.allSources.map((source) => source.eventId);
+	}
+
+	rawEventFlushClaimProjectedSourceSet(claim: RawEventJobClaim): ProjectedSourceSetV1 {
+		const projection = this.rawEventClaimProjections.get(claim);
+		if (!projection) throw new StaleRawEventClaimError();
+		return projection.set;
+	}
+
 	private validateRawEventFlushCompletion(input: {
-		claim: RawEventJobCompletionClaim;
+		claim: RawEventJobClaim;
 		sourceEventIds: string[];
 	}): {
 		source: string;
@@ -2659,6 +3071,13 @@ export class MemoryStore {
 			captureState: RawEventCaptureState;
 		}>;
 	} {
+		const bound = this.rawEventClaimProjections.get(input.claim);
+		if (
+			!bound ||
+			destinationBoundaryFingerprint(bound.boundary) !== bound.set.destinationBoundaryFingerprint
+		) {
+			throw new StaleRawEventClaimError();
+		}
 		const row = this.db
 			.prepare(
 				`SELECT source, stream_id, start_event_seq, end_event_seq, frontier_already_advanced,
@@ -2680,22 +3099,38 @@ export class MemoryStore {
 			  }
 			| undefined;
 		if (!row) throw new StaleRawEventClaimError();
-		const sources = this.db
-			.prepare(
-				`SELECT event_id, sensitivity, repository_identity, capture_state FROM raw_events
-				 WHERE source = ? AND stream_id = ? AND event_seq BETWEEN ? AND ? ORDER BY event_seq`,
-			)
-			.all(row.source, row.stream_id, row.start_event_seq, row.end_event_seq) as Array<{
-			event_id: string;
-			sensitivity: SensitivityV1;
-			repository_identity: string | null;
-			capture_state: RawEventCaptureState;
-		}>;
-		const expected = sources.map((source) => source.event_id);
+		const currentSources = this.loadBoundRawEventSources({
+			source: row.source,
+			streamId: row.stream_id,
+			startEventSeq: Number(row.start_event_seq),
+			endEventSeq: Number(row.end_event_seq),
+		});
+		const sameSource = (left: BoundRawEventSource, right: BoundRawEventSource) =>
+			left.eventId === right.eventId &&
+			left.eventSeq === right.eventSeq &&
+			left.eventType === right.eventType &&
+			left.payloadJson === right.payloadJson &&
+			left.sensitivity === right.sensitivity &&
+			left.repositoryIdentity === right.repositoryIdentity &&
+			left.captureState === right.captureState &&
+			left.safeErrorCode === right.safeErrorCode &&
+			left.payloadDigestVersion === right.payloadDigestVersion &&
+			left.payloadDigest === right.payloadDigest;
+		const currentProjected = this.projectBoundRawEventSources(bound.boundary, currentSources);
+		const expected = currentSources.map((source) => source.eventId);
 		if (
 			expected.length !== Number(row.end_event_seq) - Number(row.start_event_seq) + 1 ||
 			expected.length !== input.sourceEventIds.length ||
-			expected.some((eventId, index) => eventId !== input.sourceEventIds[index])
+			expected.some((eventId, index) => eventId !== input.sourceEventIds[index]) ||
+			currentSources.length !== bound.allSources.length ||
+			currentSources.some(
+				(source, index) => !sameSource(source, bound.allSources[index] as BoundRawEventSource),
+			) ||
+			currentProjected.length !== bound.projectedSources.length ||
+			currentProjected.some(
+				(source, index) =>
+					!sameSource(source, bound.projectedSources[index] as BoundRawEventSource),
+			)
 		) {
 			throw new Error("source set mismatch");
 		}
@@ -2719,17 +3154,17 @@ export class MemoryStore {
 			attemptManifestFingerprint,
 			attemptProviderFingerprint,
 			attemptMaxMemoryItems: row.attempt_max_memory_items,
-			sources: sources.map((source) => ({
-				eventId: source.event_id,
+			sources: currentSources.map((source) => ({
+				eventId: source.eventId,
 				sensitivity: source.sensitivity,
-				repositoryIdentity: source.repository_identity,
-				captureState: source.capture_state,
+				repositoryIdentity: source.repositoryIdentity,
+				captureState: source.captureState,
 			})),
 		};
 	}
 
 	private completeRawEventFlushJob(input: {
-		claim: RawEventJobCompletionClaim;
+		claim: RawEventJobClaim;
 		sourceEventIds: string[];
 		completionDisposition: "memory_committed" | "privacy_skip";
 		outputCount: number;
@@ -2771,15 +3206,16 @@ export class MemoryStore {
 	}
 
 	completeRawEventFlushJobPrivacySkip(input: {
-		claim: RawEventJobCompletionClaim;
+		claim: RawEventJobClaim;
 		sourceEventIds: string[];
 		projection: RawEventPrivacyProjection;
 		diagnostic: Record<string, unknown>;
 	}): { frontierChanged: boolean } {
 		return this.db.transaction(() => {
-			const validated = this.validateRawEventFlushCompletion(input);
+			this.validateRawEventFlushCompletion(input);
+			const bound = this.rawEventClaimProjections.get(input.claim);
 			if (
-				validated.sources.some((source) => source.captureState !== "quarantined") ||
+				bound?.projectedSources.length !== 0 ||
 				input.projection.eligibleSourceEventIds.length !== 0 ||
 				input.projection.omittedSourceEventIds.length !== input.sourceEventIds.length ||
 				input.projection.omittedSourceEventIds.some(
@@ -2821,6 +3257,8 @@ export class MemoryStore {
 		}
 		return this.db.transaction(() => {
 			const validated = this.validateRawEventFlushCompletion(input);
+			const boundProjection = this.rawEventClaimProjections.get(input.claim);
+			if (!boundProjection) throw new StaleRawEventClaimError();
 			if (
 				input.claim.manifestFingerprint !== validated.attemptManifestFingerprint ||
 				input.claim.providerFingerprint !== validated.attemptProviderFingerprint ||
@@ -2828,28 +3266,45 @@ export class MemoryStore {
 			) {
 				throw new Error("attempt binding mismatch");
 			}
-			const sourceIndex = new Map(
-				validated.sources.map((source, index) => [source.eventId, { ...source, index }]),
-			);
 			const resolveDerivedProvenance = (
-				citedSourceEventIds: readonly string[],
+				citations: readonly SourceCitationV1[],
 			): DerivedMemoryProvenance => {
 				if (
-					citedSourceEventIds.length === 0 ||
-					citedSourceEventIds.length > input.sourceEventIds.length ||
-					new Set(citedSourceEventIds).size !== citedSourceEventIds.length
+					citations.length === 0 ||
+					citations.length > boundProjection.set.sources.length ||
+					citations.some(
+						(citation, index) =>
+							!Number.isSafeInteger(citation.source) ||
+							citation.source < 0 ||
+							(index > 0 && citation.source <= (citations[index - 1]?.source ?? -1)) ||
+							(citation.start === null) !== (citation.end === null),
+					)
 				) {
 					throw new Error("memory citation set is invalid");
 				}
 				const cited = [];
-				let previousSourceIndex = -1;
-				for (const eventId of citedSourceEventIds) {
-					const source = sourceIndex.get(eventId);
-					if (source?.captureState !== "accepted" || source.index <= previousSourceIndex) {
+				const sourceSpans: SourceSpanV1[] = [];
+				for (const citation of citations) {
+					const source = boundProjection.set.sources[citation.source];
+					if (!source || source.ordinal !== citation.source) {
 						throw new Error("memory citation set is invalid");
 					}
 					cited.push(source);
-					previousSourceIndex = source.index;
+					const byteLength = Buffer.byteLength(source.redactedPayload, "utf8");
+					const startByte = citation.start ?? 0;
+					const endByte = citation.end ?? byteLength;
+					if (
+						!Number.isSafeInteger(startByte) ||
+						!Number.isSafeInteger(endByte) ||
+						startByte < 0 ||
+						startByte >= endByte ||
+						endByte > byteLength ||
+						!isUtf8Boundary(source.redactedPayload, startByte) ||
+						!isUtf8Boundary(source.redactedPayload, endByte)
+					) {
+						throw new Error("memory citation span is invalid");
+					}
+					sourceSpans.push({ eventId: source.eventId, startByte, endByte });
 				}
 				const repositoryIdentity = cited[0]?.repositoryIdentity ?? null;
 				if (
@@ -2858,7 +3313,29 @@ export class MemoryStore {
 				) {
 					throw new Error("memory citations require one repository identity");
 				}
+				const canonicalSpans = [...sourceSpans].sort(
+					(a, b) =>
+						a.eventId.localeCompare(b.eventId) ||
+						a.startByte - b.startByte ||
+						a.endByte - b.endByte,
+				);
+				const sourceEventIds = cited.map((source) => source.eventId);
+				const lineageId = sha256(
+					`free-mem:memory-lineage:v1\0${canonicalMutationJson({
+						repositoryScope: repositoryIdentity,
+						sourceSpans: canonicalSpans,
+					})}`,
+				);
+				const derivationKey = sha256(
+					`free-mem:memory-derivation:v1\0${canonicalMutationJson({
+						lineageId,
+						manifestFingerprint: validated.attemptManifestFingerprint,
+						providerFingerprint: validated.attemptProviderFingerprint,
+					})}`,
+				);
 				return {
+					source: validated.source,
+					streamId: validated.streamId,
 					repositoryIdentity,
 					sensitivity: cited.reduce<SensitivityV1>(
 						(strongest, source) => strongestSensitivity(strongest, source.sensitivity),
@@ -2868,9 +3345,13 @@ export class MemoryStore {
 						`free-mem:derived-memory-source:v1\0${canonicalMutationJson({
 							source: validated.source,
 							streamId: validated.streamId,
-							eventIds: citedSourceEventIds,
+							derivationKey,
 						})}`,
 					),
+					sourceEventIds,
+					sourceSpans: canonicalSpans,
+					lineageId,
+					derivationKey,
 				};
 			};
 			const maxMemoryIdBefore = Number(
@@ -2880,12 +3361,79 @@ export class MemoryStore {
 					}
 				).id,
 			);
-			const sameCitations = (left: readonly string[], right: readonly string[]) =>
-				left.length === right.length && left.every((eventId, index) => eventId === right[index]);
-			const boundCitations = new Map<number, readonly string[]>();
+			const issuedResults = new Set<RawEventMemoryCompletion>();
+			const responseAnchors = new Set<string>();
 			const completions = persist(maxMemoryIdBefore, {
-				remember: ({ citedSourceEventIds, ...memory }) => {
-					const citations = Object.freeze([...citedSourceEventIds]);
+				remember: ({ sourceCitations, ...memory }) => {
+					const provenance = resolveDerivedProvenance(sourceCitations);
+					const anchorKey = toJson(provenance.sourceSpans);
+					if (responseAnchors.has(anchorKey)) {
+						throw new Error("provider response contains a duplicate source anchor");
+					}
+					responseAnchors.add(anchorKey);
+					const anchors = this.db
+						.prepare(
+							`SELECT memory_items.id, memory_items.active, memory_items.deleted_at,
+								memory_items.source_spans_json, memory_items.derivation_key,
+								memory_items.revision_ordinal
+							 FROM memory_items
+							 WHERE memory_items.repository_identity = ?
+								AND memory_items.source_spans_json IS NOT NULL
+								AND json_extract(memory_items.metadata_json, '$.derived_source') = ?
+								AND json_extract(memory_items.metadata_json, '$.derived_stream_id') = ?`,
+						)
+						.all(provenance.repositoryIdentity, validated.source, validated.streamId) as Array<{
+						id: number;
+						active: number;
+						deleted_at: string | null;
+						source_spans_json: string;
+						derivation_key: string | null;
+						revision_ordinal: number | null;
+					}>;
+					const parsedAnchors = anchors.flatMap((anchor) => {
+						try {
+							const spans = JSON.parse(anchor.source_spans_json) as SourceSpanV1[];
+							return Array.isArray(spans) ? [{ ...anchor, spans }] : [];
+						} catch {
+							return [];
+						}
+					});
+					const exact = parsedAnchors.find((anchor) =>
+						sourceSpansEqual(anchor.spans, provenance.sourceSpans),
+					);
+					if (
+						parsedAnchors.some(
+							(anchor) =>
+								anchor.deleted_at !== null &&
+								sourceSpansOverlap(anchor.spans, provenance.sourceSpans),
+						)
+					) {
+						const result = Object.freeze({
+							memoryId: null,
+							disposition: "suppressed" as const,
+						});
+						issuedResults.add(result);
+						return result;
+					}
+					if (
+						parsedAnchors.some(
+							(anchor) =>
+								anchor.active === 1 &&
+								!sourceSpansEqual(anchor.spans, provenance.sourceSpans) &&
+								sourceSpansOverlap(anchor.spans, provenance.sourceSpans),
+						)
+					) {
+						throw new Error("provider response source anchor overlaps an active memory");
+					}
+					if (exact?.active === 1 && exact.derivation_key === provenance.derivationKey) {
+						this.strengthenDerivedDuplicate(exact.id, provenance);
+						const result = Object.freeze({
+							memoryId: exact.id,
+							disposition: "deduplicated" as const,
+						});
+						issuedResults.add(result);
+						return result;
+					}
 					const memoryId = this.rememberInternal(
 						memory.sessionId,
 						memory.kind,
@@ -2894,81 +3442,76 @@ export class MemoryStore {
 						memory.confidence ?? 0.5,
 						memory.tags,
 						memory.metadata,
-						resolveDerivedProvenance(citations),
+						provenance,
 					);
-					const existing = boundCitations.get(memoryId);
-					if (existing && !sameCitations(existing, citations)) {
-						throw new Error("memory citation binding is invalid");
+					if (memoryId <= maxMemoryIdBefore) {
+						throw new Error("derived memory insertion unexpectedly deduplicated");
 					}
-					boundCitations.set(memoryId, citations);
-					return memoryId;
+					const revisionOrdinal =
+						Math.max(0, ...parsedAnchors.map((anchor) => Number(anchor.revision_ordinal ?? 0))) + 1;
+					const stored = this.db
+						.prepare("SELECT title, body_text FROM memory_items WHERE id = ?")
+						.get(memoryId) as { title: string; body_text: string } | undefined;
+					if (!stored) throw new Error("derived memory insert is missing");
+					const revisionId = `revision:${sha256(
+						`free-mem:memory-revision:v1\0${canonicalMutationJson({
+							lineageId: provenance.lineageId,
+							derivationKey: provenance.derivationKey,
+							title: stored.title,
+							bodyText: stored.body_text,
+						})}`,
+					)}`;
+					const supersededId = exact?.active === 1 ? exact.id : null;
+					this.db
+						.prepare(
+							`UPDATE memory_items
+							 SET lineage_id = ?, revision_id = ?, revision_ordinal = ?,
+								supersedes_memory_id = ?, derivation_key = ?, source_event_ids_json = ?,
+								source_spans_json = ?, manifest_fingerprint = ?, provider_fingerprint = ?,
+								attempt_fingerprint = ?
+							 WHERE id = ?`,
+						)
+						.run(
+							provenance.lineageId,
+							revisionId,
+							revisionOrdinal,
+							supersededId,
+							provenance.derivationKey,
+							toJson(provenance.sourceEventIds),
+							toJson(provenance.sourceSpans),
+							validated.attemptManifestFingerprint,
+							validated.attemptProviderFingerprint,
+							input.claim.attemptFingerprint,
+							memoryId,
+						);
+					if (supersededId !== null) {
+						this.db
+							.prepare("UPDATE memory_items SET active = 0 WHERE id = ? AND active = 1")
+							.run(supersededId);
+					}
+					const result = Object.freeze({
+						memoryId,
+						disposition: "inserted" as const,
+					});
+					issuedResults.add(result);
+					return result;
 				},
 			});
-			if (completions.length > input.observedOutputCount) throw new Error("output count mismatch");
+			if (
+				completions.length !== issuedResults.size ||
+				completions.length > input.observedOutputCount ||
+				completions.some((completion) => !issuedResults.has(completion))
+			) {
+				throw new Error("output count mismatch");
+			}
 			const memoryIds = new Set<number>();
 			let outputCount = 0;
 			for (const completion of completions) {
-				if (
-					(completion.disposition !== "inserted" && completion.disposition !== "deduplicated") ||
-					!Number.isInteger(completion.memoryId) ||
-					completion.memoryId <= 0 ||
-					(completion.disposition === "inserted") !== completion.memoryId > maxMemoryIdBefore ||
-					memoryIds.has(completion.memoryId)
-				) {
-					throw new Error("memory completion is invalid");
+				if (completion.memoryId !== null) {
+					if (memoryIds.has(completion.memoryId)) throw new Error("memory completion is invalid");
+					memoryIds.add(completion.memoryId);
 				}
-				memoryIds.add(completion.memoryId);
-				const bound = boundCitations.get(completion.memoryId);
-				if (completion.disposition === "deduplicated" && !bound) {
-					throw new Error("memory citation binding is invalid");
-				}
-				if (bound && !sameCitations(bound, completion.citedSourceEventIds)) {
-					throw new Error("memory citation binding is invalid");
-				}
-				const { repositoryIdentity, sensitivity } = resolveDerivedProvenance(
-					completion.citedSourceEventIds,
-				);
-				const memory = this.db
-					.prepare(
-						"SELECT sensitivity, repository_identity, active, deleted_at FROM memory_items WHERE id = ?",
-					)
-					.get(completion.memoryId) as
-					| {
-							sensitivity: SensitivityV1;
-							repository_identity: string | null;
-							active: number;
-							deleted_at: string | null;
-					  }
-					| undefined;
-				if (!memory) throw new Error("memory completion is invalid");
-				if (completion.disposition === "deduplicated") {
-					if (
-						memory.repository_identity !== repositoryIdentity ||
-						SENSITIVITY_RANK[memory.sensitivity] < SENSITIVITY_RANK[sensitivity] ||
-						memory.active !== 1 ||
-						memory.deleted_at !== null
-					) {
-						throw new Error("deduplicated memory provenance is invalid");
-					}
-					continue;
-				}
-				outputCount++;
-				this.db
-					.prepare(
-						`UPDATE memory_items
-						 SET sensitivity = ?, repository_identity = ?, source_event_ids_json = ?,
-							manifest_fingerprint = ?, provider_fingerprint = ?, attempt_fingerprint = ?
-						 WHERE id = ?`,
-					)
-					.run(
-						sensitivity,
-						repositoryIdentity,
-						toJson(completion.citedSourceEventIds),
-						validated.attemptManifestFingerprint,
-						validated.attemptProviderFingerprint,
-						input.claim.attemptFingerprint,
-						completion.memoryId,
-					);
+				if (completion.disposition === "inserted") outputCount++;
 			}
 			const completion = this.completeRawEventFlushJob({
 				...input,
@@ -4457,13 +5000,21 @@ export class MemoryStore {
 	// ref queries
 
 	/** Find memories associated with a file path via the junction table index. */
-	findByFile(filePath: string, options?: RefQueryOptions): RefQueryResult[] {
-		return findByFileFn(this.db, filePath, options);
+	findByFile(
+		filePath: string,
+		options?: RefQueryOptions,
+		destinationBoundary?: DestinationBoundaryV1,
+	): RefQueryResult[] {
+		return findByFileFn(this.db, filePath, options, destinationBoundary);
 	}
 
 	/** Find memories associated with a concept via the junction table index. */
-	findByConcept(concept: string, options?: RefQueryOptions): RefQueryResult[] {
-		return findByConceptFn(this.db, concept, options);
+	findByConcept(
+		concept: string,
+		options?: RefQueryOptions,
+		destinationBoundary?: DestinationBoundaryV1,
+	): RefQueryResult[] {
+		return findByConceptFn(this.db, concept, options, destinationBoundary);
 	}
 
 	// close

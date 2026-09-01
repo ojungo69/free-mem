@@ -11,6 +11,10 @@ import { drizzle } from "drizzle-orm/better-sqlite3";
 import type { Database } from "./db.js";
 import { fromJson } from "./db.js";
 import {
+	type DestinationBoundaryV1,
+	memoryDestinationBoundarySql,
+} from "./destination-boundary.js";
+import {
 	buildFilterClausesWithContext,
 	normalizeFilterStrings,
 	normalizeVisibilityValues,
@@ -34,7 +38,9 @@ import type {
 	MemoryItem,
 	MemoryItemResponse,
 	MemoryResult,
+	PackOmissionAggregate,
 	PackTraceCandidateScores,
+	SensitivityV1,
 	TimelineItemResponse,
 } from "./types.js";
 
@@ -54,16 +60,22 @@ export interface StoreHandle {
 	readonly db: import("better-sqlite3").Database;
 	readonly actorId: string;
 	readonly deviceId: string;
-	get(memoryId: number): MemoryItemResponse | null;
+	get(memoryId: number, destinationBoundary?: DestinationBoundaryV1): MemoryItemResponse | null;
 	memoryOwnedBySelf(item: OwnershipCandidate): boolean;
 	sameActorPeerIds?(): string[];
 	buildOwnershipPredicate?(): (item: OwnershipCandidate) => boolean;
-	recent(limit?: number, filters?: MemoryFilters | null, offset?: number): MemoryItemResponse[];
+	recent(
+		limit?: number,
+		filters?: MemoryFilters | null,
+		offset?: number,
+		destinationBoundary?: DestinationBoundaryV1,
+	): MemoryItemResponse[];
 	recentByKinds(
 		kinds: string[],
 		limit?: number,
 		filters?: MemoryFilters | null,
 		offset?: number,
+		destinationBoundary?: DestinationBoundaryV1,
 	): MemoryItemResponse[];
 }
 
@@ -81,7 +93,10 @@ const MEMORY_KIND_BONUS: Record<string, number> = {
 	entities: 0.05,
 };
 
-export function ownershipFilterContext(store: StoreHandle): OwnershipFilterContext {
+export function ownershipFilterContext(
+	store: StoreHandle,
+	destinationBoundary?: DestinationBoundaryV1,
+): OwnershipFilterContext {
 	const claimedDeviceIds = store.sameActorPeerIds?.() ?? [];
 	return {
 		actorId: store.actorId,
@@ -90,6 +105,7 @@ export function ownershipFilterContext(store: StoreHandle): OwnershipFilterConte
 		legacyActorIds: claimedDeviceIds.map((peerId) => `legacy-sync:${peerId}`),
 		enforceScopeVisibility: true,
 		visibleScopeIds: resolveVisibleScopeIds(store.db, store.deviceId),
+		destinationBoundary,
 	};
 }
 
@@ -712,12 +728,16 @@ function fetchResultsByIds(
 	ids: number[],
 	filters: MemoryFilters | undefined,
 	preserveFilteredKind: boolean,
+	destinationBoundary?: DestinationBoundaryV1,
 ): MemoryResult[] {
 	if (ids.length === 0) return [];
 	const placeholders = ids.map(() => "?").join(", ");
 	const params: unknown[] = [...ids];
 	const whereClauses = [`memory_items.id IN (${placeholders})`, "memory_items.active = 1"];
-	const filterResult = buildFilterClausesWithContext(filters, ownershipFilterContext(store));
+	const filterResult = buildFilterClausesWithContext(
+		filters,
+		ownershipFilterContext(store, destinationBoundary),
+	);
 	whereClauses.push(...filterResult.clauses);
 	params.push(...filterResult.params);
 	const joinClause = filterResult.joinSessions
@@ -887,11 +907,69 @@ export function search(
 	query: string,
 	limit = 10,
 	filters?: MemoryFilters,
+	destinationBoundary?: DestinationBoundaryV1,
 ): MemoryResult[] {
 	const effectiveQuery = sanitizeSearchQuery(query).clean_query;
-	const primary = searchOnce(store, effectiveQuery, limit, filters);
-	const withShared = applySharedWidening(store, primary, effectiveQuery, filters);
-	return applyProjectWidening(store, withShared, effectiveQuery, filters);
+	const primary = searchOnce(store, effectiveQuery, limit, filters, destinationBoundary);
+	const withShared = applySharedWidening(
+		store,
+		primary,
+		effectiveQuery,
+		filters,
+		destinationBoundary,
+	);
+	return applyProjectWidening(store, withShared, effectiveQuery, filters, destinationBoundary);
+}
+
+/** Count omitted FTS matches without loading any content-bearing columns. */
+export function countIneligibleSearchCandidates(
+	store: StoreHandle,
+	query: string,
+	filters: MemoryFilters | undefined,
+	destinationBoundary: DestinationBoundaryV1,
+): PackOmissionAggregate | null {
+	const expanded = expandQuery(query);
+	if (!expanded) return null;
+	const filterResult = buildFilterClausesWithContext(filters, ownershipFilterContext(store));
+	const destination = memoryDestinationBoundarySql(destinationBoundary);
+	const joinClause = filterResult.joinSessions
+		? "JOIN sessions ON sessions.id = memory_items.session_id"
+		: "";
+	const rows = store.db
+		.prepare(
+			`SELECT memory_items.sensitivity, COUNT(*) AS count
+			 FROM memory_fts
+			 JOIN memory_items ON memory_items.id = memory_fts.rowid
+			 ${joinClause}
+			 WHERE memory_items.active = 1 AND memory_fts MATCH ?
+				AND ${filterResult.clauses.length > 0 ? filterResult.clauses.join(" AND ") : "1 = 1"}
+				AND NOT COALESCE(${destination.clause}, 0)
+			 GROUP BY memory_items.sensitivity`,
+		)
+		.all(expanded, ...filterResult.params, ...destination.params) as Array<{
+		sensitivity: SensitivityV1;
+		count: number;
+	}>;
+	const bySensitivity: Record<SensitivityV1, number> = {
+		eligible: 0,
+		local_only: 0,
+		private: 0,
+		secret: 0,
+	};
+	for (const row of rows) {
+		if (Object.hasOwn(bySensitivity, row.sensitivity)) {
+			bySensitivity[row.sensitivity] += Number(row.count);
+		}
+	}
+	const count = Object.values(bySensitivity).reduce((total, value) => total + value, 0);
+	return count === 0
+		? null
+		: {
+				reason: "omitted_ineligible",
+				count,
+				by_source: { fts: count },
+				by_sensitivity: bySensitivity,
+			};
 }
 
 function applySharedWidening(
@@ -899,6 +977,7 @@ function applySharedWidening(
 	primary: MemoryResult[],
 	effectiveQuery: string,
 	filters: MemoryFilters | undefined,
+	destinationBoundary?: DestinationBoundaryV1,
 ): MemoryResult[] {
 	if (
 		!widenSharedWhenWeakEnabled(filters) ||
@@ -925,6 +1004,7 @@ function applySharedWidening(
 			effectiveQuery,
 			WIDEN_SHARED_MAX_SHARED_RESULTS,
 			sharedWideningFilters(filters),
+			destinationBoundary,
 		).filter((item) => !ownedByOwner(item)),
 	);
 	const seen = new Set(primary.map((item) => item.id));
@@ -945,6 +1025,7 @@ function applyProjectWidening(
 	primary: MemoryResult[],
 	effectiveQuery: string,
 	filters: MemoryFilters | undefined,
+	destinationBoundary?: DestinationBoundaryV1,
 ): MemoryResult[] {
 	const projectFilter = filters?.project?.trim();
 	if (!projectFilter) return primary;
@@ -971,6 +1052,7 @@ function applyProjectWidening(
 		effectiveQuery,
 		maxToAdd * 4,
 		projectWideningFilters(filters),
+		destinationBoundary,
 	);
 	const seen = new Set(primary.map((item) => item.id));
 	const candidateSessionIds = new Set(
@@ -997,6 +1079,7 @@ function searchOnce(
 	query: string,
 	limit = 10,
 	filters?: MemoryFilters,
+	destinationBoundary?: DestinationBoundaryV1,
 ): MemoryResult[] {
 	const effectiveLimit = Math.max(1, Math.trunc(limit));
 	const expanded = expandQuery(query);
@@ -1009,7 +1092,10 @@ function searchOnce(
 	const params: unknown[] = [expanded];
 	const whereClauses = ["memory_items.active = 1", "memory_fts MATCH ?"];
 
-	const filterResult = buildFilterClausesWithContext(filters, ownershipFilterContext(store));
+	const filterResult = buildFilterClausesWithContext(
+		filters,
+		ownershipFilterContext(store, destinationBoundary),
+	);
 	whereClauses.push(...filterResult.clauses);
 	params.push(...filterResult.params);
 
@@ -1036,19 +1122,29 @@ function searchOnce(
 	const results = rows.map((row) => rowToMemoryResult(row, preserveFilteredKind));
 	const indexedCandidateIds = [
 		...queryPathHints(query).flatMap((path) =>
-			findByFile(store.db, path, {
-				limit: queryLimit,
-				project: filters?.project,
-				relation: "modified",
-			}).map((row) => row.id),
+			findByFile(
+				store.db,
+				path,
+				{
+					limit: queryLimit,
+					project: filters?.project,
+					relation: "modified",
+				},
+				destinationBoundary,
+			).map((row) => row.id),
 		),
 		...queryConceptHints(query).flatMap((concept) =>
-			findByConcept(store.db, concept, {
-				limit: queryLimit,
-				project: filters?.project,
-				since: filters?.since,
-				kind: filters?.kind,
-			}).map((row) => row.id),
+			findByConcept(
+				store.db,
+				concept,
+				{
+					limit: queryLimit,
+					project: filters?.project,
+					since: filters?.since,
+					kind: filters?.kind,
+				},
+				destinationBoundary,
+			).map((row) => row.id),
 		),
 	];
 	const seenIds = new Set(results.map((item) => item.id));
@@ -1059,7 +1155,10 @@ function searchOnce(
 	});
 	const widened =
 		newIds.length > 0
-			? [...results, ...fetchResultsByIds(store, newIds, filters, preserveFilteredKind)]
+			? [
+					...results,
+					...fetchResultsByIds(store, newIds, filters, preserveFilteredKind, destinationBoundary),
+				]
 			: results;
 
 	return rerankResults(store, widened, effectiveLimit, filters, query);
@@ -1078,17 +1177,18 @@ export function timeline(
 	depthBefore = 3,
 	depthAfter = 3,
 	filters?: MemoryFilters | null,
+	destinationBoundary?: DestinationBoundaryV1,
 ): TimelineItemResponse[] {
 	// Find anchor: prefer explicit memoryId, fall back to search
 	let anchorRef: { id: number; session_id: number; created_at: string } | null = null;
 	if (memoryId != null) {
-		const row = store.get(memoryId);
+		const row = store.get(memoryId, destinationBoundary);
 		if (row) {
 			anchorRef = { id: row.id, session_id: row.session_id, created_at: row.created_at };
 		}
 	}
 	if (anchorRef == null && query) {
-		const matches = search(store, query, 1, filters ?? undefined);
+		const matches = search(store, query, 1, filters ?? undefined, destinationBoundary);
 		if (matches.length > 0) {
 			const m = matches[0] as MemoryResult;
 			anchorRef = {
@@ -1102,7 +1202,7 @@ export function timeline(
 		return [];
 	}
 
-	return timelineAround(store, anchorRef, depthBefore, depthAfter, filters);
+	return timelineAround(store, anchorRef, depthBefore, depthAfter, filters, destinationBoundary);
 }
 
 /** Fetch memories before/after an anchor within the same session. */
@@ -1112,6 +1212,7 @@ function timelineAround(
 	depthBefore: number,
 	depthAfter: number,
 	filters?: MemoryFilters | null,
+	destinationBoundary?: DestinationBoundaryV1,
 ): TimelineItemResponse[] {
 	const anchorId = anchor.id;
 	const anchorCreatedAt = anchor.created_at;
@@ -1123,7 +1224,10 @@ function timelineAround(
 		return [];
 	}
 
-	const filterResult = buildFilterClausesWithContext(filters, ownershipFilterContext(store));
+	const filterResult = buildFilterClausesWithContext(
+		filters,
+		ownershipFilterContext(store, destinationBoundary),
+	);
 	const whereParts = ["memory_items.active = 1", ...filterResult.clauses];
 	const baseParams = [...filterResult.params];
 
@@ -1299,6 +1403,7 @@ function loadItemsByIdsForExplain(
 	store: StoreHandle,
 	ids: number[],
 	filters: MemoryFilters,
+	destinationBoundary?: DestinationBoundaryV1,
 ): {
 	items: MemoryResult[];
 	missingNotFound: number[];
@@ -1316,7 +1421,7 @@ function loadItemsByIdsForExplain(
 
 	// Placeholders for the dynamic-filter raw SQL queries below
 	const placeholders = ids.map(() => "?").join(", ");
-	const scopeContext = ownershipFilterContext(store);
+	const scopeContext = ownershipFilterContext(store, destinationBoundary);
 	const visibilityFilter = buildFilterClausesWithContext(null, scopeContext);
 	const visibilityWhereClause = [
 		"memory_items.active = 1",
@@ -1430,6 +1535,7 @@ export function explain(
 	limit = 10,
 	filters?: MemoryFilters | null,
 	options?: ExplainOptions,
+	destinationBoundary?: DestinationBoundaryV1,
 ): ExplainResponse {
 	const includePackContext = options?.includePackContext ?? false;
 	const normalizedQuery = (query ?? "").trim();
@@ -1476,6 +1582,7 @@ export function explain(
 			normalizedQuery,
 			Math.max(1, Math.trunc(limit)),
 			filters ?? undefined,
+			destinationBoundary,
 		);
 	}
 
@@ -1490,7 +1597,7 @@ export function explain(
 		missingNotFound,
 		missingProjectMismatch,
 		missingFilterMismatch,
-	} = loadItemsByIdsForExplain(store, orderedIds, filters ?? {});
+	} = loadItemsByIdsForExplain(store, orderedIds, filters ?? {}, destinationBoundary);
 	const idLookup = new Map(idRows.map((item) => [item.id, item]));
 
 	// Merge: query results first, then id-lookup results not already seen

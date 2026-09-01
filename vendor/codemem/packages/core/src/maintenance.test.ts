@@ -5,6 +5,10 @@ import Database from "better-sqlite3";
 import { describe, expect, it } from "vitest";
 import { rawEventPayloadDigest } from "./db.js";
 import {
+	CAPTURE_ONLY_DESTINATION_FINGERPRINT,
+	compileUntrustedDestinationBoundary,
+} from "./destination-boundary.js";
+import {
 	aiBackfillStructuredContent,
 	applyRawEventRelinkPlanWithDb,
 	backfillMemoryDedupKeys,
@@ -496,6 +500,43 @@ describe("maintenance", { timeout: 15_000 }, () => {
 		}
 	});
 
+	it("keeps restricted memories out of the role report and its probes", () => {
+		const dbPath = createDbPath("memory-role-report-boundary");
+		const db = new Database(dbPath);
+		try {
+			initTestSchema(db);
+			db.exec(`
+				INSERT INTO sessions(id, started_at, ended_at, cwd, project, user, tool_version) VALUES
+				  (1, '2026-03-01T10:00:00Z', '2026-03-01T10:10:00Z', '/tmp/repo', 'codemem', 'adam', 'test');
+				INSERT INTO opencode_sessions(source, stream_id, opencode_session_id, session_id, created_at) VALUES
+				  ('opencode', 'ses-1', 'ses-1', 1, '2026-03-01T10:00:00Z');
+				INSERT INTO memory_items(
+					id, session_id, kind, title, body_text, active, created_at, updated_at, metadata_json, import_key, scope_id, sensitivity
+				) VALUES
+				  (1, 1, 'decision', 'Eligible boundary probe fixture', 'boundaryprobe eligible body', 1, '2026-03-01T10:10:01Z', '2026-03-01T10:10:01Z', '{}', 'k1', 'local-default', 'eligible'),
+				  (2, 1, 'decision', 'local-only-role-report-sentinel', 'boundaryprobe local only body', 1, '2026-03-01T10:10:02Z', '2026-03-01T10:10:02Z', '{}', 'k2', 'local-default', 'local_only'),
+				  (3, 1, 'decision', 'private-role-report-sentinel', 'boundaryprobe private body', 1, '2026-03-01T10:10:03Z', '2026-03-01T10:10:03Z', '{}', 'k3', 'local-default', 'private'),
+				  (4, 1, 'decision', 'secret-role-report-sentinel', 'boundaryprobe secret body', 1, '2026-03-01T10:10:04Z', '2026-03-01T10:10:04Z', '{}', 'k4', 'local-default', 'secret');
+			`);
+		} finally {
+			db.close();
+		}
+
+		const report = getMemoryRoleReport(dbPath, {
+			probes: ["boundaryprobe"],
+		});
+
+		// The default (untrusted) destination boundary admits eligible rows only:
+		// restricted rows are absent from totals, role counts, and probe packs.
+		expect(report.totals.memories).toBe(1);
+		expect(report.counts_by_kind.decision).toBe(1);
+		const serialized = JSON.stringify(report);
+		expect(serialized).toContain("Eligible boundary probe fixture");
+		expect(serialized).not.toContain("local-only-role-report-sentinel");
+		expect(serialized).not.toContain("private-role-report-sentinel");
+		expect(serialized).not.toContain("secret-role-report-sentinel");
+	});
+
 	it("reports inferred memory roles and summary lineages", () => {
 		const dbPath = createDbPath("memory-role-report");
 		const db = new Database(dbPath);
@@ -514,6 +555,7 @@ describe("maintenance", { timeout: 15_000 }, () => {
 				  (4, 2, 'change', 'Micro change', 'small procedural update', 1, '2026-03-01T10:20:21Z', '2026-03-01T10:20:21Z', '{}', 'k4');
 				INSERT INTO opencode_sessions(source, stream_id, opencode_session_id, session_id, created_at) VALUES
 				  ('opencode', 'ses-1', 'ses-1', 1, '2026-03-01T10:00:00Z');
+				UPDATE memory_items SET sensitivity = 'eligible';
 			`);
 		} finally {
 			db.close();
@@ -572,6 +614,7 @@ describe("maintenance", { timeout: 15_000 }, () => {
 					  (9, 9, 'change', 'Negative duration', 'Invalid session', 1, '2026-03-01T09:50:00Z', '2026-03-01T09:50:00Z', 'duration-9'),
 					  (10, 10, 'change', 'Subsecond under one minute', 'Short session', 1, '2026-03-01T10:01:00.450Z', '2026-03-01T10:01:00.450Z', 'duration-10'),
 					  (11, 11, 'change', 'Zero duration', 'Same-instant session', 1, '2026-03-01T10:00:00Z', '2026-03-01T10:00:00Z', 'duration-11');
+					UPDATE memory_items SET sensitivity = 'eligible';
 				`);
 		} finally {
 			db.close();
@@ -600,6 +643,7 @@ describe("maintenance", { timeout: 15_000 }, () => {
 					id, session_id, kind, title, body_text, active, created_at, updated_at, import_key
 				) VALUES
 				  (1, 1, 'change', 'Negative duration', 'Invalid session', 1, '2026-03-01T09:50:00Z', '2026-03-01T09:50:00Z', 'negative-role-1');
+				UPDATE memory_items SET sensitivity = 'eligible';
 			`);
 		} finally {
 			db.close();
@@ -633,6 +677,7 @@ describe("maintenance", { timeout: 15_000 }, () => {
 					id, session_id, kind, title, body_text, active, created_at, updated_at, metadata_json, import_key
 				) VALUES
 				  (1, 1, 'change', 'Broken metadata row', 'Still should not crash the report', 1, '2026-03-01T10:10:00Z', '2026-03-01T10:10:00Z', '{not-json', 'k1');
+				UPDATE memory_items SET sensitivity = 'eligible';
 			`);
 		} finally {
 			db.close();
@@ -659,6 +704,7 @@ describe("maintenance", { timeout: 15_000 }, () => {
 					) VALUES
 					  (1, 1, 'session_summary', 'Session recap', 'Summary body', 1, '2026-03-01T10:10:00Z', '2026-03-01T10:10:00Z', '{}', 'k1', 'local-default'),
 					  (2, 1, 'decision', 'OAuth callback fix', 'Patched callback validation', 1, '2026-03-01T10:10:01Z', '2026-03-01T10:10:01Z', '{}', 'k2', 'local-default');
+					UPDATE memory_items SET sensitivity = 'eligible';
 				`);
 		} finally {
 			db.close();
@@ -740,6 +786,7 @@ describe("maintenance", { timeout: 15_000 }, () => {
 				  (2, 1, 'session_summary', 'Memory extraction recap', 'Summary of future memory extraction preserve work.', 1, '2026-03-01T10:10:02Z', '2026-03-01T10:10:02Z', '{}', NULL, 'k2', 'local-default'),
 				  (3, 1, 'change', 'Future memory extraction tsc passed', 'pnpm run tsc passed for future memory extraction preserve work.', 1, '2026-03-01T10:10:03Z', '2026-03-01T10:10:03Z', '{}', NULL, 'k3', 'local-default'),
 				  (4, 1, 'discovery', 'Future memory extraction overview', 'Overview of the future memory extraction preserve work area and its components.', 1, '2026-03-01T10:10:04Z', '2026-03-01T10:10:04Z', '{}', NULL, 'k4', 'local-default');
+				UPDATE memory_items SET sensitivity = 'eligible';
 			`);
 		} finally {
 			db.close();
@@ -967,6 +1014,7 @@ describe("maintenance", { timeout: 15_000 }, () => {
 				) VALUES
 				  (1, 1, 'decision', 'Micro decision', 'body', 1, '2026-03-01T10:00:20Z', '2026-03-01T10:00:20Z', '{}', 'k1'),
 				  (2, 2, 'session_summary', 'Durable summary', 'body', 1, '2026-03-01T10:40:00Z', '2026-03-01T10:40:00Z', '{}', 'k2');
+				UPDATE memory_items SET sensitivity = 'eligible';
 			`);
 		} finally {
 			db.close();
@@ -1003,6 +1051,7 @@ describe("maintenance", { timeout: 15_000 }, () => {
 					  (1, 1, 'session_summary', 'Session recap', 'Summary body', 1, '2026-03-01T10:10:00Z', '2026-03-01T10:10:00Z', '{}', 'k1', 'local-default'),
 					  (2, 2, 'change', 'Legacy recap', '## Request\nfoo\n\n## Completed\nbar', 1, '2026-03-01T10:20:20Z', '2026-03-01T10:20:20Z', '{"is_summary":true}', 'k2', 'local-default'),
 					  (3, 2, 'decision', 'OAuth callback fix', 'Patched callback validation', 1, '2026-03-01T10:20:21Z', '2026-03-01T10:20:21Z', '{}', 'k3', 'local-default');
+					UPDATE memory_items SET sensitivity = 'eligible';
 				`);
 		} finally {
 			baselineDb.close();
@@ -1020,6 +1069,7 @@ describe("maintenance", { timeout: 15_000 }, () => {
 					) VALUES
 					  (20, 1, 'decision', 'OAuth callback fix', 'Patched callback validation', 1, '2026-03-01T10:20:21Z', '2026-03-01T10:20:21Z', '{}', 'k3', 'local-default'),
 					  (21, 1, 'session_summary', 'Session recap', 'Summary body', 1, '2026-03-01T10:10:00Z', '2026-03-01T10:10:00Z', '{}', 'k1', 'local-default');
+					UPDATE memory_items SET sensitivity = 'eligible';
 				`);
 		} finally {
 			candidateDb.close();
@@ -2015,6 +2065,11 @@ describe("backfillMemoryDedupKeys", () => {
 // ---------------------------------------------------------------------------
 
 describe("aiBackfillStructuredContent", () => {
+	const backfillBoundary = compileUntrustedDestinationBoundary({
+		consumer: "maintenance",
+		configurationFingerprint: CAPTURE_ONLY_DESTINATION_FINGERPRINT,
+	});
+
 	function seedMemory(
 		db: Database,
 		sessionId: number,
@@ -2030,8 +2085,8 @@ describe("aiBackfillStructuredContent", () => {
 			.prepare(
 				`INSERT INTO memory_items(session_id, kind, title, body_text, confidence,
 				 tags_text, active, created_at, updated_at, metadata_json, rev, visibility,
-				 narrative, facts, concepts)
-				 VALUES (?, ?, ?, ?, 0.5, '', 1, ?, ?, '{}', 1, 'shared', ?, ?, ?)`,
+				 narrative, facts, concepts, sensitivity)
+				 VALUES (?, ?, ?, ?, 0.5, '', 1, ?, ?, '{}', 1, 'shared', ?, ?, ?, 'eligible')`,
 			)
 			.run(sessionId, kind, title, body, now, now, narrative, facts, concepts);
 		return Number(info.lastInsertRowid);
@@ -2087,7 +2142,11 @@ describe("aiBackfillStructuredContent", () => {
 				}),
 			);
 
-			const result = await aiBackfillStructuredContent(db, { observer, runtimeReason: "ready" });
+			const result = await aiBackfillStructuredContent(db, {
+				observer,
+				runtimeReason: "ready",
+				destinationBoundary: backfillBoundary,
+			});
 
 			expect(result).toMatchObject({ checked: 1, updated: 1, skipped: 0, failed: 0 });
 			const row = db
@@ -2129,7 +2188,11 @@ describe("aiBackfillStructuredContent", () => {
 				}),
 			);
 
-			const result = await aiBackfillStructuredContent(db, { observer, runtimeReason: "ready" });
+			const result = await aiBackfillStructuredContent(db, {
+				observer,
+				runtimeReason: "ready",
+				destinationBoundary: backfillBoundary,
+			});
 			expect(result).toMatchObject({ updated: 1 });
 
 			const row = db.prepare("SELECT narrative, facts FROM memory_items WHERE id = ?").get(id) as {
@@ -2173,7 +2236,11 @@ describe("aiBackfillStructuredContent", () => {
 				}),
 			);
 
-			const result = await aiBackfillStructuredContent(db, { observer, runtimeReason: "ready" });
+			const result = await aiBackfillStructuredContent(db, {
+				observer,
+				runtimeReason: "ready",
+				destinationBoundary: backfillBoundary,
+			});
 
 			expect(result).toMatchObject({ checked: 1, updated: 1, skipped: 0, failed: 0 });
 			const row = db
@@ -2219,6 +2286,7 @@ describe("aiBackfillStructuredContent", () => {
 				observer,
 				overwrite: true,
 				runtimeReason: "ready",
+				destinationBoundary: backfillBoundary,
 			});
 
 			const row = db
@@ -2244,7 +2312,11 @@ describe("aiBackfillStructuredContent", () => {
 			seedMemory(db, sessionId, "feature", "Bad JSON", "Body text");
 
 			const observer = makeObserver("not json at all");
-			const result = await aiBackfillStructuredContent(db, { observer, runtimeReason: "ready" });
+			const result = await aiBackfillStructuredContent(db, {
+				observer,
+				runtimeReason: "ready",
+				destinationBoundary: backfillBoundary,
+			});
 
 			expect(result).toMatchObject({ checked: 1, updated: 0, skipped: 0, failed: 1 });
 			const job = getMaintenanceJob(db, "ai_structured_backfill");
@@ -2270,7 +2342,11 @@ describe("aiBackfillStructuredContent", () => {
 			seedMemory(db, sessionId, "feature", "Schema invalid", "Body text");
 
 			const observer = makeObserver(JSON.stringify({ foo: "bar" }));
-			const result = await aiBackfillStructuredContent(db, { observer, runtimeReason: "ready" });
+			const result = await aiBackfillStructuredContent(db, {
+				observer,
+				runtimeReason: "ready",
+				destinationBoundary: backfillBoundary,
+			});
 
 			expect(result).toMatchObject({ checked: 1, updated: 0, skipped: 0, failed: 1 });
 		} finally {
@@ -2290,8 +2366,8 @@ describe("aiBackfillStructuredContent", () => {
 			const now = new Date().toISOString();
 			db.prepare(
 				`INSERT INTO memory_items(session_id, kind, title, body_text, confidence,
-				 tags_text, active, created_at, updated_at, metadata_json, rev, visibility)
-				 VALUES (?, 'change', 'Legacy recap', 'Summary body', 0.5, '', 1, ?, ?, ?, 1, 'shared')`,
+				 tags_text, active, created_at, updated_at, metadata_json, rev, visibility, sensitivity)
+				 VALUES (?, 'change', 'Legacy recap', 'Summary body', 0.5, '', 1, ?, ?, ?, 1, 'shared', 'eligible')`,
 			).run(sessionId, now, now, JSON.stringify({ is_summary: true, source: "observer_summary" }));
 
 			const observer = makeObserver(
@@ -2301,7 +2377,11 @@ describe("aiBackfillStructuredContent", () => {
 					concepts: ["what-changed"],
 				}),
 			);
-			const result = await aiBackfillStructuredContent(db, { observer, runtimeReason: "ready" });
+			const result = await aiBackfillStructuredContent(db, {
+				observer,
+				runtimeReason: "ready",
+				destinationBoundary: backfillBoundary,
+			});
 
 			expect(result).toMatchObject({ checked: 0, updated: 0, skipped: 0, failed: 0 });
 		} finally {
@@ -2339,6 +2419,7 @@ describe("aiBackfillStructuredContent", () => {
 				observer,
 				overwrite: true,
 				runtimeReason: "ready",
+				destinationBoundary: backfillBoundary,
 			});
 
 			const row = db
@@ -2374,6 +2455,7 @@ describe("aiBackfillStructuredContent", () => {
 				observer,
 				dryRun: true,
 				runtimeReason: "ready",
+				destinationBoundary: backfillBoundary,
 			});
 
 			expect(result).toMatchObject({ checked: 1, updated: 1, skipped: 0, failed: 0 });

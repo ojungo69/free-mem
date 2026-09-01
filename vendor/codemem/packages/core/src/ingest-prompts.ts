@@ -92,6 +92,11 @@ const OUTPUT_GUIDANCE =
 	"Do not collapse a rich batch into only the final or most recent thread when earlier threads produced durable decisions, learnings, or outcomes.\n\n" +
 	"Prefer fewer, more comprehensive observations over many small ones.";
 
+const CITATION_GUIDANCE = `Every <observation> and <summary> must contain exactly one direct, non-empty <citations> child.
+Use one or more self-closing cites in strictly increasing source order: <cite source="N"/>.
+An exact excerpt may use <cite source="N" start="START" end="END"/>; start and end are optional half-open UTF-8 byte offsets into that source's canonical redactedPayload.
+Never emit event IDs, repository identities, or payload digests.`;
+
 const OBSERVATION_SCHEMA = `<observation>
   <type>[ ${OBSERVATION_TYPES} ]</type>
   <!--
@@ -294,10 +299,20 @@ export function buildObserverPrompt(context: ObserverContext): {
 	if (context.includeSummary) {
 		systemBlocks.push("", "Summary XML schema:", SUMMARY_SCHEMA);
 	}
+	if (context.projectedSources !== undefined) {
+		systemBlocks.push("", CITATION_GUIDANCE);
+	}
 	const system = systemBlocks.join("\n\n").trim();
 
 	// User prompt: observed session context
 	const userBlocks: string[] = ["Observed session context:"];
+	if (context.projectedSources !== undefined) {
+		const sources = context.projectedSources.map(
+			(source) =>
+				`  <source ordinal="${source.ordinal}">${escapeXml(source.redactedPayload)}</source>`,
+		);
+		userBlocks.push(`<projected_sources>\n${sources.join("\n")}\n</projected_sources>`);
+	}
 
 	if (context.userPrompt) {
 		const promptBlock = ["<observed_from_primary_session>"];

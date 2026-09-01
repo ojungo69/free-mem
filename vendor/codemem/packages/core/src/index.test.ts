@@ -34,4 +34,21 @@ describe("core", () => {
 	it("does not expose injectable AI maintenance", () => {
 		expect(Reflect.has(core, "aiBackfillStructuredContent")).toBe(false);
 	});
+
+	it("T032 keeps unrestricted provider and pack constructors out of the public barrel", () => {
+		for (const name of [
+			"replayBatchExtraction",
+			"selectDistillCorpus",
+			"buildDistillReport",
+			"buildMemoryPack",
+			"buildMemoryPackAsync",
+			"buildMemoryPackTrace",
+			"buildMemoryPackTraceAsync",
+			"buildMemoryPackWithTrace",
+			"buildMemoryPackWithTraceAsync",
+			"estimateTokens",
+		]) {
+			expect(Reflect.has(core, name), name).toBe(false);
+		}
+	});
 });

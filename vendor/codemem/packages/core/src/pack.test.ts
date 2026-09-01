@@ -4,6 +4,10 @@ import { join } from "node:path";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import { connect } from "./db.js";
 import {
+	compileRunnerLocalDestinationBoundary,
+	compileUntrustedDestinationBoundary,
+} from "./destination-boundary.js";
+import {
 	buildMemoryPack,
 	buildMemoryPackTrace,
 	buildMemoryPackWithTrace,
@@ -11,7 +15,11 @@ import {
 } from "./pack.js";
 import type { MemoryStore } from "./store.js";
 import { initTestSchema, insertTestSession, openTestMemoryStore } from "./test-utils.js";
-import type { MemoryResult } from "./types.js";
+import type { MemoryResult, SensitivityV1 } from "./types.js";
+
+const CONFIGURATION_FINGERPRINT = `sha256:${"a".repeat(64)}`;
+const REPOSITORY_A = `repo-v1:sha256:${"1".repeat(64)}`;
+const REPOSITORY_B = `repo-v1:sha256:${"2".repeat(64)}`;
 
 // ---------------------------------------------------------------------------
 // Unit tests: estimateTokens
@@ -45,6 +53,16 @@ describe("buildMemoryPack", () => {
 		initTestSchema(db);
 		db.close();
 		store = openTestMemoryStore(dbPath);
+		const remember = store.remember.bind(store);
+		store.remember = ((...args: Parameters<MemoryStore["remember"]>) => {
+			const memoryId = remember(...args);
+			store.db
+				.prepare(
+					"UPDATE memory_items SET sensitivity = 'eligible', repository_identity = ? WHERE id = ?",
+				)
+				.run(REPOSITORY_A, memoryId);
+			return memoryId;
+		}) as MemoryStore["remember"];
 		sessionId = insertTestSession(store.db);
 	});
 
@@ -111,6 +129,218 @@ describe("buildMemoryPack", () => {
 			facts: null,
 		};
 	}
+
+	function insertBoundaryMemory(
+		sensitivity: SensitivityV1,
+		repositoryIdentity: string | null,
+		sentinel: string,
+	): number {
+		const memoryId = store.remember(
+			sessionId,
+			"discovery",
+			`${sentinel} boundarypack`,
+			`${sentinel} boundarypack body`,
+			0.9,
+		);
+		store.db
+			.prepare("UPDATE memory_items SET sensitivity = ?, repository_identity = ? WHERE id = ?")
+			.run(sensitivity, repositoryIdentity, memoryId);
+		return memoryId;
+	}
+
+	function remotePackBoundary() {
+		return compileUntrustedDestinationBoundary({
+			consumer: "daemon_pack",
+			configurationFingerprint: CONFIGURATION_FINGERPRINT,
+			targetAgent: "codex",
+		});
+	}
+
+	function localPackBoundary() {
+		return compileRunnerLocalDestinationBoundary({
+			consumer: "daemon_pack",
+			configurationFingerprint: CONFIGURATION_FINGERPRINT,
+			repositoryIdentity: REPOSITORY_A,
+			targetAgent: "codex",
+		});
+	}
+
+	it("applies destination eligibility before rendering, measurement, and trace construction", () => {
+		const eligibleId = insertBoundaryMemory("eligible", REPOSITORY_A, "ELIGIBLE_PACK_SENTINEL");
+		const localOnlyId = insertBoundaryMemory(
+			"local_only",
+			REPOSITORY_A,
+			"LOCAL_ONLY_PACK_SENTINEL",
+		);
+		const privateId = insertBoundaryMemory("private", REPOSITORY_A, "PRIVATE_PACK_SENTINEL");
+		const secretId = insertBoundaryMemory("secret", REPOSITORY_A, "SECRET_PACK_SENTINEL");
+		const crossRepoId = insertBoundaryMemory("private", REPOSITORY_B, "CROSS_REPO_PACK_SENTINEL");
+		const unknownRepoId = insertBoundaryMemory("local_only", null, "UNKNOWN_REPO_PACK_SENTINEL");
+		const remote = remotePackBoundary();
+		const remotePack = store.buildMemoryPack("boundarypack", 10, null, undefined, remote);
+		const remoteTrace = store.buildMemoryPackTrace("boundarypack", 10, null, undefined, remote);
+		const remoteArtifacts = store.buildMemoryPackWithTrace(
+			"boundarypack",
+			10,
+			null,
+			undefined,
+			undefined,
+			remote,
+		);
+		const remoteOmission = {
+			reason: "omitted_ineligible",
+			count: 5,
+			by_source: { fts: 5 },
+			by_sensitivity: { eligible: 0, local_only: 2, private: 2, secret: 1 },
+		};
+
+		expect(remotePack.item_ids).toEqual([eligibleId]);
+		expect(remotePack.metrics.omissions).toEqual([remoteOmission]);
+		expect(remoteTrace.retrieval.omissions).toEqual([remoteOmission]);
+		expect(remoteArtifacts.response.metrics.omissions).toEqual([remoteOmission]);
+		expect(remoteArtifacts.trace.retrieval.omissions).toEqual([remoteOmission]);
+		expect(remotePack.metrics.pack_tokens).toBe(estimateTokens(remotePack.pack_text));
+		expect(remoteTrace.output.estimated_tokens).toBe(estimateTokens(remoteTrace.output.pack_text));
+		expect(remoteTrace.retrieval.candidates.map((candidate) => candidate.id)).toEqual([eligibleId]);
+
+		const restrictedIds = [localOnlyId, privateId, secretId, crossRepoId, unknownRepoId];
+		const remoteJson = JSON.stringify({ remotePack, remoteTrace, remoteArtifacts });
+		for (const sentinel of [
+			"LOCAL_ONLY_PACK_SENTINEL",
+			"PRIVATE_PACK_SENTINEL",
+			"SECRET_PACK_SENTINEL",
+			"CROSS_REPO_PACK_SENTINEL",
+			"UNKNOWN_REPO_PACK_SENTINEL",
+		]) {
+			expect(remoteJson).not.toContain(sentinel);
+		}
+
+		store.db
+			.prepare(
+				`UPDATE memory_items SET active = 0 WHERE id IN (${restrictedIds.map(() => "?").join(", ")})`,
+			)
+			.run(...restrictedIds);
+		const eligibleOnlyTrace = store.buildMemoryPackTrace(
+			"boundarypack",
+			10,
+			null,
+			undefined,
+			remote,
+		);
+		expect(remoteTrace.output).toEqual(eligibleOnlyTrace.output);
+		expect(Buffer.byteLength(remoteTrace.output.pack_text, "utf8")).toBe(
+			Buffer.byteLength(eligibleOnlyTrace.output.pack_text, "utf8"),
+		);
+		store.db
+			.prepare(
+				`UPDATE memory_items SET active = 1 WHERE id IN (${restrictedIds.map(() => "?").join(", ")})`,
+			)
+			.run(...restrictedIds);
+
+		const localArtifacts = store.buildMemoryPackWithTrace(
+			"boundarypack",
+			10,
+			null,
+			undefined,
+			undefined,
+			localPackBoundary(),
+		);
+		expect(localArtifacts.response.item_ids).toEqual(
+			expect.arrayContaining([eligibleId, localOnlyId, privateId]),
+		);
+		for (const memoryId of [secretId, crossRepoId, unknownRepoId]) {
+			expect(localArtifacts.response.item_ids).not.toContain(memoryId);
+		}
+		expect(localArtifacts.response.metrics.omissions).toEqual([
+			{
+				reason: "omitted_ineligible",
+				count: 3,
+				by_source: { fts: 3 },
+				by_sensitivity: { eligible: 0, local_only: 1, private: 1, secret: 1 },
+			},
+		]);
+	});
+
+	it("rehydrates forged semantic candidates before destination eligibility", () => {
+		const privateId = insertBoundaryMemory(
+			"private",
+			REPOSITORY_A,
+			"PRIVATE_DATABASE_SEMANTIC_SENTINEL",
+		);
+		const forged = semanticCandidate(
+			privateId,
+			"FORGED_ELIGIBLE_SEMANTIC_TITLE",
+			"FORGED_ELIGIBLE_SEMANTIC_BODY",
+			1,
+		);
+
+		const artifacts = buildMemoryPackWithTrace(
+			store,
+			"zzz_nomatch_zzz",
+			10,
+			null,
+			undefined,
+			[forged],
+			undefined,
+			remotePackBoundary(),
+		);
+
+		expect(artifacts.response.item_ids).not.toContain(privateId);
+		expect(artifacts.response.metrics.omissions).toEqual([
+			{
+				reason: "omitted_ineligible",
+				count: 1,
+				by_source: { semantic: 1 },
+				by_sensitivity: { eligible: 0, local_only: 0, private: 1, secret: 0 },
+			},
+		]);
+		expect(artifacts.trace.retrieval.omissions).toEqual(artifacts.response.metrics.omissions);
+		expect(JSON.stringify(artifacts)).not.toContain("FORGED_ELIGIBLE_SEMANTIC");
+		expect(JSON.stringify(artifacts)).not.toContain("PRIVATE_DATABASE_SEMANTIC_SENTINEL");
+	});
+
+	it("reports semantic-disabled degradation through every async pack seam", async () => {
+		const eligibleId = insertBoundaryMemory("eligible", REPOSITORY_A, "SEMANTIC_DISABLED_ELIGIBLE");
+		const previous = process.env.CODEMEM_EMBEDDING_DISABLED;
+		process.env.CODEMEM_EMBEDDING_DISABLED = "1";
+		try {
+			const response = await store.buildMemoryPackAsync(
+				"SEMANTIC_DISABLED_ELIGIBLE",
+				10,
+				null,
+				undefined,
+				undefined,
+				remotePackBoundary(),
+			);
+			const trace = await store.buildMemoryPackTraceAsync(
+				"SEMANTIC_DISABLED_ELIGIBLE",
+				10,
+				null,
+				undefined,
+				undefined,
+				remotePackBoundary(),
+			);
+			const artifacts = await store.buildMemoryPackWithTraceAsync(
+				"SEMANTIC_DISABLED_ELIGIBLE",
+				10,
+				null,
+				undefined,
+				undefined,
+				remotePackBoundary(),
+			);
+
+			expect(response.item_ids).toContain(eligibleId);
+			expect(response.metrics.degradations).toEqual(["semantic_disabled"]);
+			expect(trace.retrieval.candidates.map((candidate) => candidate.id)).toContain(eligibleId);
+			expect(artifacts.response.metrics.degradations).toEqual(["semantic_disabled"]);
+			expect(artifacts.trace.retrieval.candidates.map((candidate) => candidate.id)).toContain(
+				eligibleId,
+			);
+		} finally {
+			if (previous === undefined) delete process.env.CODEMEM_EMBEDDING_DISABLED;
+			else process.env.CODEMEM_EMBEDDING_DISABLED = previous;
+		}
+	});
 
 	it("returns items and pack_text for matching context", () => {
 		store.remember(sessionId, "discovery", "Found database issue", "The DB was slow", 0.8);

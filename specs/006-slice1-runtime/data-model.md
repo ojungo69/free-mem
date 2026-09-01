@@ -446,6 +446,36 @@ source/stream/sequence range. No second queue or generic job framework is added.
 | `legacy_recovery_state` | `not_legacy`, `complete_range`, or `missing_or_ambiguous_range` |
 | `frontier_already_advanced` | Marks exact legacy recovery that must not lower/advance twice |
 
+### Claim-bound ProjectedSourceSetV1
+
+The Store claim transaction consumes one compiler-created `DestinationBoundaryV1`, loads the exact
+immutable job range, applies eligibility, and returns a `ProjectedSourceSetV1` bound to that exact
+claim object. Raw caller objects are not accepted as compiled boundaries. The Store keeps the
+association privately and in memory for the lifetime of the claim; it is not a second durable queue
+or a new schema column. A crash invalidates the association, and normal stale-claim recovery must
+issue a new claim and projection before another provider request.
+
+```text
+ProjectedSourceSetV1 {
+  version: 1
+  jobId, claimGeneration, attemptFingerprint
+  destinationBoundaryFingerprint
+  repositoryIdentity
+  sources[]: {
+    ordinal, eventId, sensitivity,
+    redactedPayload, payloadDigest, payloadDigestVersion
+  }
+}
+```
+
+The Store derives the set and its fingerprint from the active claim, closed destination boundary,
+and current raw rows. Provider prompt/context/transcript construction and response citation
+resolution use this exact object. Completion re-loads the claimed rows, re-evaluates the boundary,
+and compares the ordered source identities/digests before any write. A caller-forged set, changed
+sensitivity/quarantine/repository, source drift, stale claim, or boundary mismatch rejects the whole
+completion. The persisted `attempt_fingerprint` remains the durable stale-worker fence; the private
+claim association prevents a caller from attaching a different projection to that attempt.
+
 ### States and capacity
 
 ```text
@@ -488,7 +518,9 @@ A claim transaction:
 5. computes `attempt_fingerprint` from domain
    `free-mem:processing-attempt:v1\0` plus job ID, immutable source range, new attempt count, claim
    generation, and attempt manifest/provider fingerprints;
-6. enters `processing` atomically.
+6. validates a compiler-created destination boundary, projects the exact source rows, and binds the
+   resulting `ProjectedSourceSetV1` privately to the returned claim;
+7. enters `processing` atomically.
 
 Changed valid configuration changes only the attempt fields/fingerprint. Admission fingerprints,
 source range, retry limit, and prior attempt count remain unchanged. A resumed attempt that fails
@@ -697,6 +729,49 @@ confirm_retry | restart_daemon | upgrade_runtime
 | `provider_fingerprint` | Attempt provider that produced the revision |
 | `attempt_fingerprint` | Processing attempt that committed the revision |
 
+### Provider citation wire v1
+
+Every new PR3 provider-produced `<observation>` and `<summary>` contains exactly one direct
+`<citations>` child with one or more self-closing cites:
+
+```xml
+<citations>
+  <cite source="0"/>
+  <cite source="3" start="12" end="31"/>
+</citations>
+```
+
+`source` is the canonical zero-based decimal ordinal in the exact ordered projected source set shown
+to the provider. The active processing claim maps that ordinal to the exact raw-event ID and trusted
+repository identity; provider output never supplies either authority value. Each source ordinal may
+appear at most once per item. `start` and `end` are optional as a pair, use canonical non-negative
+decimal integers with `start < end`, and form a half-open UTF-8 byte range within the canonical
+`redactedPayload` itself as defined by the Product Reset source model. Omitting both normalizes to the
+complete `[0, utf8ByteLength(redactedPayload))` span. Offsets must fall on UTF-8 scalar boundaries. Cites
+are strictly ordered by source ordinal, so the count is bounded by the projected source count.
+
+After claim resolution, `source_event_ids_json` preserves strictly increasing cited source-ordinal
+order and deduplicates by first cited ordinal. `source_spans_json` stores the Product Reset canonical
+shape `[{eventId,startByte,endByte}]`, independently deduplicated and sorted by event ID then numeric
+offsets for anchor/lineage identity. Lineage, source-fact anchor matching, tombstone coverage, and
+derived dedup identity include the normalized spans, not event IDs alone. Duplicate anchors within
+one provider response reject that response atomically. On a later retry, an exact active-anchor match
+deduplicates to the existing anchor; ambiguous overlap with an active anchor is quarantined, overlap
+with a tombstoned anchor is suppressed, and only disjoint spans may become sibling facts.
+
+Missing, empty, multiple, or nested citation blocks; non-self-closing cites; forbidden provider
+event-ID/repository/digest authority; duplicate or noncanonical ordinals; one-sided, malformed, or
+out-of-bounds spans; offsets that split a UTF-8 code point; claim/source drift; and any out-of-set or
+mixed-repository resolution reject the whole output atomically. Parse/repair preserves the citation
+child unchanged. Historical stored records remain readable without this provider wire child; no
+legacy record is upgraded by inference.
+
+The citation child is mandatory only for a provider response attached to a durable PR3 raw-event
+claim. The legacy no-claim `ingest` parser remains readable for compatibility, but PR3 MUST NOT issue
+a provider request or create remotely eligible derived provenance through that path. Existing rows
+with NULL citation/span provenance remain secret/unknown at read/export boundaries and are never
+upgraded by inferred batch-wide citations.
+
 The fixed fixture adds `summary`, `failed_approach`, and `next_action` while retaining existing
 compatible kinds.
 
@@ -708,9 +783,9 @@ Derivation rules:
 3. Each item inherits the strongest cited sensitivity and one exact repository identity.
 4. Unknown/out-of-set citations, mixed repository identities, partial parse, or output count above
    the active attempt manifest's `maxMemoryItemsPerDerivation` reject the whole result.
-5. Derived-memory dedup requires the same repository plus the exact source, stream, and ordered cited
-   event IDs, uses the stronger sensitivity, and never reactivates a tombstone. Different citation
-   provenance produces a separate memory because one memory stores only one attempt provenance.
+5. Derived-memory dedup requires the same repository plus the exact normalized source spans, uses the
+   stronger sensitivity, and never reactivates a tombstone. Different span provenance produces a
+   separate memory because one memory stores only one attempt provenance.
    Derived matching never falls back to legacy title-only or NULL dedup keys. Unknown identity cannot
    merge into a known repository item.
 

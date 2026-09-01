@@ -3,6 +3,10 @@ import { readFileSync } from "node:fs";
 import { fileURLToPath } from "node:url";
 import { describe, expect, it, vi } from "vitest";
 import { ProviderTlsPreflightError } from "./capability-manifest.js";
+import {
+	compileProviderDestinationBoundary,
+	isDestinationEligible,
+} from "./destination-boundary.js";
 import * as core from "./index.js";
 
 const nativeTlsConnect = vi.hoisted(() => ({
@@ -273,30 +277,79 @@ describe("Slice 1 capability manifest compiler", () => {
 		).toThrow();
 	});
 
-	it("reports later-owned schema and pack readiness without claiming them ready", () => {
+	it("keeps provider work disabled until receipt and schema readiness are validated", () => {
 		expect(core.safeManifestProjection(fixture.effectiveConfiguration as never)).toMatchObject({
 			configurationFingerprint: fixture.effectiveConfiguration.configurationFingerprint,
-			runtimeReason: "pending_privacy_boundary",
+			runtimeReason: "pending_schema_v21",
 			schemaReadiness: "pending_schema_v21",
 			packReadiness: "pending_pack_boundary",
 			providerEnabled: false,
+			sweeperEnabled: false,
 		});
 	});
 
-	it("keeps privacy pending after the successfully opened v21 schema reports ready", () => {
+	it("enables the provider, AI maintenance gate, and sweeper only at the ready projection", () => {
+		const projection = core.safeManifestProjection(
+			fixture.effectiveConfiguration as never,
+			"available",
+			"validated",
+			"ready",
+		);
+
+		expect(projection).toMatchObject({
+			runtimeReason: "ready",
+			schemaReadiness: "ready",
+			packReadiness: "ready",
+			providerEnabled: true,
+			sweeperEnabled: true,
+			resourceProfile: {
+				workerWarmLifetimeMs: 30_000,
+				periodicSweepIntervalMs: 30_000,
+				idleFlushMs: 120_000,
+				eventDebounceMs: 1_000,
+			},
+		});
+	});
+
+	it.each([
+		"provider_unavailable",
+		"provider_tls_rejected",
+	] as const)("keeps provider, AI maintenance, and sweeper disabled on %s", (providerHealth) => {
 		expect(
 			core.safeManifestProjection(
 				fixture.effectiveConfiguration as never,
-				"available",
+				providerHealth,
 				"validated",
 				"ready",
 			),
 		).toMatchObject({
-			runtimeReason: "pending_privacy_boundary",
-			schemaReadiness: "ready",
+			runtimeReason: providerHealth,
+			providerHealth,
 			providerEnabled: false,
 			sweeperEnabled: false,
 		});
+	});
+
+	it("keeps capture-only and unvalidated activation states disabled", () => {
+		expect(core.captureOnlyCapabilityProjection("ready")).toMatchObject({
+			mode: "capture_only",
+			providerEnabled: false,
+			sweeperEnabled: false,
+		});
+		for (const activationReceipt of ["absent", "rejected"] as const) {
+			expect(
+				core.safeManifestProjection(
+					fixture.effectiveConfiguration as never,
+					"available",
+					activationReceipt,
+					"ready",
+				),
+			).toMatchObject({
+				activationReceipt,
+				providerEnabled: false,
+				sweeperEnabled: false,
+			});
+		}
 	});
 });
 
@@ -502,5 +555,52 @@ describe("Slice 1 provider TLS preflight", () => {
 			}),
 		).resolves.toEqual({ skipped: "local_http" });
 		expect(connectCalls).toBe(0);
+	});
+
+	it("derives unverified HTTP and verified HTTPS provider trust from preflight evidence", async () => {
+		const compileProviderChoice = publicFunction<CompileProviderChoice>("compileProviderChoice");
+		const preflightProviderTls = publicFunction<PreflightProviderTls>("preflightProviderTls");
+		const repository = `repo-v1:sha256:${"e".repeat(64)}`;
+		const localHttp = compileProviderChoice({
+			...providerProposal(localProvider),
+			endpointUrl: "http://127.0.0.1:1234/v1/chat/completions",
+			credentialRef: { kind: "none" },
+		});
+		const httpPreflight = await preflightProviderTls(localHttp, { environment: {} });
+		const httpsPreflight = await preflightProviderTls(localProvider, {
+			environment: {},
+			connect: async () => ({
+				chainVerified: true,
+				hostnameVerified: true,
+				peerCertificateSha256: `sha256:${"f".repeat(64)}`,
+			}),
+		});
+		const httpBoundary = compileProviderDestinationBoundary(
+			core.compileDefaultCapabilityManifest(providerProposal(localHttp) as never),
+			{ repositoryIdentity: repository, tlsPeerVerified: false },
+		);
+		const httpsBoundary = compileProviderDestinationBoundary(
+			fixture.localDerivationManifest as never,
+			{
+				repositoryIdentity: repository,
+				tlsPeerVerified: "peerCertificateSha256" in httpsPreflight,
+			},
+		);
+
+		expect(httpPreflight).toEqual({ skipped: "local_http" });
+		expect(httpBoundary.providerPeerTrust).toBe("unverified");
+		expect(
+			isDestinationEligible(httpBoundary, {
+				sensitivity: "private",
+				repositoryIdentity: repository,
+			}),
+		).toBe(false);
+		expect(httpsBoundary.providerPeerTrust).toBe("verified");
+		expect(
+			isDestinationEligible(httpsBoundary, {
+				sensitivity: "private",
+				repositoryIdentity: repository,
+			}),
+		).toBe(true);
 	});
 });

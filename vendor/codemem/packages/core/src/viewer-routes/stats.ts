@@ -5,6 +5,12 @@
  */
 
 import { Hono } from "hono";
+import {
+	CAPTURE_ONLY_DESTINATION_FINGERPRINT,
+	compileUntrustedDestinationBoundary,
+	type DestinationBoundaryV1,
+	destinationBoundaryFingerprint,
+} from "../destination-boundary.js";
 import { buildFilterClausesWithContext } from "../filters.js";
 import { listMaintenanceJobs } from "../maintenance-jobs.js";
 import type { MemoryStore } from "../store.js";
@@ -78,13 +84,16 @@ function chunkNumbers(values: number[], chunkSize = 500): number[][] {
 	return chunks;
 }
 
-function visibleMemoryIdSet(store: MemoryStore, memoryIds: Set<number>): Set<number> {
+function visibleMemoryIdSet(
+	store: MemoryStore,
+	memoryIds: Set<number>,
+	destinationBoundary: DestinationBoundaryV1,
+): Set<number> {
 	if (memoryIds.size === 0) return new Set();
-	const filterResult = buildFilterClausesWithContext(null, {
-		actorId: store.actorId,
-		deviceId: store.deviceId,
-		enforceScopeVisibility: true,
-	});
+	const filterResult = buildFilterClausesWithContext(
+		null,
+		store.ownershipFilterContext(destinationBoundary),
+	);
 	const visibleIds = new Set<number>();
 	for (const chunk of chunkNumbers([...memoryIds])) {
 		const placeholders = chunk.map(() => "?").join(", ");
@@ -101,13 +110,16 @@ function visibleMemoryIdSet(store: MemoryStore, memoryIds: Set<number>): Set<num
 	return visibleIds;
 }
 
-function visibleSessionIdSet(store: MemoryStore, sessionIds: Set<number>): Set<number> {
+function visibleSessionIdSet(
+	store: MemoryStore,
+	sessionIds: Set<number>,
+	destinationBoundary: DestinationBoundaryV1,
+): Set<number> {
 	if (sessionIds.size === 0) return new Set();
-	const filterResult = buildFilterClausesWithContext(null, {
-		actorId: store.actorId,
-		deviceId: store.deviceId,
-		enforceScopeVisibility: true,
-	});
+	const filterResult = buildFilterClausesWithContext(
+		null,
+		store.ownershipFilterContext(destinationBoundary),
+	);
 	const visibleIds = new Set<number>();
 	for (const chunk of chunkNumbers([...sessionIds])) {
 		const placeholders = chunk.map(() => "?").join(", ");
@@ -130,7 +142,11 @@ function visibleSessionIdSet(store: MemoryStore, sessionIds: Set<number>): Set<n
 	return visibleIds;
 }
 
-function buildUsageVisibility(store: MemoryStore, rows: UsageRow[]): UsageVisibility {
+function buildUsageVisibility(
+	store: MemoryStore,
+	rows: UsageRow[],
+	destinationBoundary: DestinationBoundaryV1,
+): UsageVisibility {
 	const memoryIds = new Set<number>();
 	const sessionIds = new Set<number>();
 	for (const row of rows) {
@@ -142,8 +158,8 @@ function buildUsageVisibility(store: MemoryStore, rows: UsageRow[]): UsageVisibi
 		}
 	}
 	return {
-		visibleMemoryIds: visibleMemoryIdSet(store, memoryIds),
-		visibleSessionIds: visibleSessionIdSet(store, sessionIds),
+		visibleMemoryIds: visibleMemoryIdSet(store, memoryIds, destinationBoundary),
+		visibleSessionIds: visibleSessionIdSet(store, sessionIds, destinationBoundary),
 	};
 }
 
@@ -326,17 +342,30 @@ function scopeVisibilityGeneration(store: MemoryStore): string {
 	}
 }
 
-function usageCacheKey(store: MemoryStore, projectFilter: string | null): string {
+function usageCacheKey(
+	store: MemoryStore,
+	projectFilter: string | null,
+	destinationBoundary: DestinationBoundaryV1,
+): string {
 	const visibilityGeneration = scopeVisibilityGeneration(store);
-	return `${store.dbPath}|${store.actorId}|${store.deviceId}|${projectFilter ?? ""}|${visibilityGeneration}`;
+	return `${store.dbPath}|${store.actorId}|${store.deviceId}|${projectFilter ?? ""}|${visibilityGeneration}|${destinationBoundaryFingerprint(destinationBoundary)}`;
 }
 
 /**
  * Create stats routes. The store factory is called per-request to get a
  * fresh connection (matching the Python viewer pattern).
  */
-export function statsRoutes(getStore: () => MemoryStore) {
+export function statsRoutes(
+	getStore: () => MemoryStore,
+	destinationBoundary?: DestinationBoundaryV1,
+) {
 	const app = new Hono();
+	const boundary =
+		destinationBoundary ??
+		compileUntrustedDestinationBoundary({
+			consumer: "viewer",
+			configurationFingerprint: CAPTURE_ONLY_DESTINATION_FINGERPRINT,
+		});
 
 	const parseMetadataJson = (value: unknown): Record<string, unknown> | null => {
 		if (typeof value !== "string" || !value.trim()) return null;
@@ -379,7 +408,7 @@ export function statsRoutes(getStore: () => MemoryStore) {
 			error: job.error,
 		}));
 		return c.json({
-			...store.stats(),
+			...store.stats(boundary),
 			viewer_pid: process.pid,
 			maintenance_jobs: surfacedJobs,
 		});
@@ -395,7 +424,7 @@ export function statsRoutes(getStore: () => MemoryStore) {
 		const store = getStore();
 		{
 			const projectFilter = c.req.query("project") || null;
-			const cacheKey = usageCacheKey(store, projectFilter);
+			const cacheKey = usageCacheKey(store, projectFilter, boundary);
 			const nowMs = Date.now();
 			const cached = usagePayloadCache.get(cacheKey);
 			if (cached && nowMs < cached.expiresAtMs) {
@@ -406,10 +435,12 @@ export function statsRoutes(getStore: () => MemoryStore) {
 			// store.stats()), so they never load the full usage_events table
 			// into JS. Only the small surfaced recent_packs window below keeps
 			// per-row scope visibility + metadata sanitization.
-			const globalAggregate = store.usageAggregate();
+			const globalAggregate = store.usageAggregate(null, boundary);
 			const eventsGlobal = mapAggregateEvents(globalAggregate);
 			const totalsGlobal = totalsFromAggregate(globalAggregate);
-			const filteredAggregate = projectFilter ? store.usageAggregate(projectFilter) : null;
+			const filteredAggregate = projectFilter
+				? store.usageAggregate(projectFilter, boundary)
+				: null;
 			const eventsFiltered = filteredAggregate ? mapAggregateEvents(filteredAggregate) : null;
 			const totalsFiltered = filteredAggregate ? totalsFromAggregate(filteredAggregate) : null;
 
@@ -425,6 +456,12 @@ export function statsRoutes(getStore: () => MemoryStore) {
 			// bounded recompute on a 5s poll is the right call.
 			const RECENT_PACK_SCAN_LIMIT = 200;
 			const loadRecentPackWindow = (project?: string | null): UsageRow[] => {
+				const visible = buildFilterClausesWithContext(null, store.ownershipFilterContext(boundary));
+				const visibleSession = `EXISTS (
+					SELECT 1 FROM memory_items
+					WHERE memory_items.session_id = usage_events.session_id
+						AND memory_items.active = 1 AND ${visible.clauses.join(" AND ")}
+				)`;
 				const rows = project
 					? (store.db
 							.prepare(
@@ -434,24 +471,25 @@ export function statsRoutes(getStore: () => MemoryStore) {
 								 FROM usage_events
 								 JOIN sessions ON sessions.id = usage_events.session_id
 								 WHERE sessions.project = ? AND usage_events.event = 'pack'
+									AND ${visibleSession}
 								 ORDER BY usage_events.created_at DESC
 								 LIMIT ?`,
 							)
-							.all(project, RECENT_PACK_SCAN_LIMIT) as Record<string, unknown>[])
+							.all(project, ...visible.params, RECENT_PACK_SCAN_LIMIT) as Record<string, unknown>[])
 					: (store.db
 							.prepare(
 								`SELECT id, session_id, event, tokens_read, tokens_written, tokens_saved,
 									created_at, metadata_json
 								 FROM usage_events
-								 WHERE event = 'pack'
+								 WHERE event = 'pack' AND ${visibleSession}
 								 ORDER BY created_at DESC
 								 LIMIT ?`,
 							)
-							.all(RECENT_PACK_SCAN_LIMIT) as Record<string, unknown>[]);
+							.all(...visible.params, RECENT_PACK_SCAN_LIMIT) as Record<string, unknown>[]);
 				return rows.map((row) => toUsageRow(row, parseMetadataJson(row.metadata_json)));
 			};
 			const recentWindow = loadRecentPackWindow(projectFilter);
-			const recentVisibility = buildUsageVisibility(store, recentWindow);
+			const recentVisibility = buildUsageVisibility(store, recentWindow, boundary);
 			const recentPacks = recentWindow
 				.filter((row) => usageRowVisible(row, recentVisibility))
 				.slice(0, 10)

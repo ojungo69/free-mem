@@ -118,8 +118,8 @@ export function seedMixedScopeFixture(db: Database, deviceId = "local"): MixedSc
 			.prepare(
 				`INSERT INTO memory_items(
 					session_id, kind, title, body_text, confidence, tags_text, active,
-					created_at, updated_at, metadata_json, rev, visibility, scope_id, import_key
-				 ) VALUES (?, ?, ?, ?, 0.9, '', 1, ?, ?, '{}', 1, 'shared', ?, ?)`,
+					created_at, updated_at, metadata_json, rev, visibility, scope_id, import_key, sensitivity
+				 ) VALUES (?, ?, ?, ?, 0.9, '', 1, ?, ?, '{}', 1, 'shared', ?, ?, 'eligible')`,
 			)
 			.run(
 				sessionId,

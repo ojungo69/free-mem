@@ -2,6 +2,12 @@
  * the CLI's `bd memory role-report` and related tooling.
  */
 
+import {
+	CAPTURE_ONLY_DESTINATION_FINGERPRINT,
+	compileUntrustedDestinationBoundary,
+	type DestinationBoundaryV1,
+	memoryDestinationBoundarySql,
+} from "../destination-boundary.js";
 import { getInjectionEvalScenarioByPrompt } from "../eval-scenarios.js";
 import { inferMemoryRole } from "../memory-quality.js";
 import { buildMemoryPack } from "../pack.js";
@@ -50,12 +56,20 @@ function inferMemoryRoleForReport(row: {
 export function getMemoryRoleReportWithStore(
 	store: MemoryStore,
 	opts: MemoryRoleReportOptions = {},
+	destinationBoundary?: DestinationBoundaryV1,
 ): MemoryRoleReport {
 	const db = store.db;
 	const projectFilter = opts.allProjects ? null : opts.project?.trim() || null;
 	const activeClause = opts.includeInactive ? "" : "AND m.active = 1";
 	const projectClause = projectFilter ? "AND s.project = ?" : "";
-	const params = projectFilter ? [projectFilter] : [];
+	const boundary =
+		destinationBoundary ??
+		compileUntrustedDestinationBoundary({
+			consumer: "maintenance",
+			configurationFingerprint: CAPTURE_ONLY_DESTINATION_FINGERPRINT,
+		});
+	const destination = memoryDestinationBoundarySql(boundary, "m");
+	const params = [...(projectFilter ? [projectFilter] : []), ...destination.params];
 
 	const rows = db
 		.prepare(
@@ -84,7 +98,7 @@ export function getMemoryRoleReportWithStore(
 					FROM opencode_sessions
 					WHERE session_id IS NOT NULL
 				) os ON os.session_id = m.session_id
-				WHERE 1 = 1 ${activeClause} ${projectClause}`,
+				WHERE 1 = 1 ${activeClause} ${projectClause} AND ${destination.clause}`,
 		)
 		.all(...params) as Array<{
 		id: number;
@@ -196,7 +210,7 @@ export function getMemoryRoleReportWithStore(
 					COUNT(DISTINCT session_id) AS sessions
 				 FROM memory_items m
 				 JOIN sessions s ON s.id = m.session_id
-				 WHERE 1 = 1 ${projectClause}`,
+				 WHERE 1 = 1 ${projectClause} AND ${destination.clause}`,
 		)
 		.get(...params) as { memories: number; active: number; sessions: number };
 
@@ -210,6 +224,9 @@ export function getMemoryRoleReportWithStore(
 				10,
 				null,
 				projectFilter ? { project: projectFilter } : undefined,
+				undefined,
+				undefined,
+				boundary,
 			);
 			const probeItems = pack.items.map((item) => {
 				const source = rows.find((row) => row.id === item.id);

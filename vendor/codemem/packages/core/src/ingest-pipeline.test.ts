@@ -8,7 +8,9 @@ import { mkdtempSync, rmSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { afterEach, beforeEach, describe, expect, it } from "vitest";
+import { compileDefaultCapabilityManifest } from "./capability-manifest.js";
 import { connect } from "./db.js";
+import { compileProviderDestinationBoundary } from "./destination-boundary.js";
 import {
 	budgetToolEvents,
 	extractToolEvents,
@@ -34,7 +36,7 @@ import {
 	shouldRepairObserverResponse,
 } from "./ingest-xml-parser.js";
 import { flushRawEvents } from "./raw-event-flush.js";
-import type { MemoryStore } from "./store.js";
+import { type MemoryStore, ProcessingOutputLimitError } from "./store.js";
 import { initTestSchema, openTestMemoryStore } from "./test-utils.js";
 
 // ---------------------------------------------------------------------------
@@ -1961,10 +1963,12 @@ describe("ingest-sanitize", () => {
 describe("ingest() integration", { timeout: 15_000 }, () => {
 	let tmpDir: string;
 	let store: MemoryStore;
+	let claimSequence = 0;
 	let priorCaptureRouting: string | undefined;
 	let priorDebug: string | undefined;
 
 	beforeEach(() => {
+		claimSequence = 0;
 		priorCaptureRouting = process.env.CODEMEM_CAPTURE_ROUTING;
 		priorDebug = process.env.CODEMEM_DEBUG;
 		delete process.env.CODEMEM_CAPTURE_ROUTING;
@@ -1996,6 +2000,7 @@ describe("ingest() integration", { timeout: 15_000 }, () => {
 				<concepts><concept>concurrency</concept></concepts>
 				<files_read><file>src/auth.ts</file></files_read>
 				<files_modified></files_modified>
+				<citations><cite source="0"/></citations>
 			</observation>
 			<summary>
 				<request>Fix auth timeout</request>
@@ -2004,6 +2009,7 @@ describe("ingest() integration", { timeout: 15_000 }, () => {
 				<completed>Fixed the timeout</completed>
 				<next_steps>Add retry logic</next_steps>
 				<notes></notes>
+				<citations><cite source="1"/></citations>
 			</summary>`,
 			parsed: null,
 			provider: "test",
@@ -2016,6 +2022,92 @@ describe("ingest() integration", { timeout: 15_000 }, () => {
 			auth: { source: "none", type: "none", hasToken: false },
 		}),
 	};
+
+	const repositoryIdentity = `repo-v1:sha256:${"a".repeat(64)}`;
+	const providerManifest = compileDefaultCapabilityManifest({
+		version: 1,
+		role: "summary",
+		state: "enabled",
+		wireProtocol: "openai_chat_completions_v1",
+		modelId: "ingest-test-summary",
+		modelRevision: "1",
+		endpointUrl: "https://summary.stub.invalid/v1/chat/completions",
+		credentialRef: { kind: "environment", name: "FREE_MEM_SUMMARY_API_KEY" },
+	});
+
+	function claimBoundPayload(
+		payload: IngestPayload,
+		targetStore = store,
+	): {
+		payload: IngestPayload;
+		claim: NonNullable<ReturnType<MemoryStore["claimRawEventFlushJob"]>>;
+	} {
+		const events = payload.events ?? [];
+		const streamId = `ingest-test-${++claimSequence}`;
+		for (const [index, event] of events.entries()) {
+			targetStore.recordRawEvent({
+				opencodeSessionId: streamId,
+				source: "opencode",
+				eventId: `${streamId}-${index}`,
+				eventType: String(event.type ?? "unknown"),
+				payload: event,
+				tsWallMs: index + 1,
+				repositoryIdentity,
+				captureManifestFingerprint: providerManifest.configurationFingerprint,
+				sensitivity: "eligible",
+			});
+		}
+		const admission = targetStore.admitRawEventFlushJob({
+			source: "opencode",
+			streamId,
+			manifestFingerprint: providerManifest.configurationFingerprint,
+			providerFingerprint: providerManifest.summaryProvider.providerFingerprint,
+		});
+		if (admission.jobId === undefined) throw new Error("expected raw-event admission");
+		const claim = targetStore.claimRawEventFlushJob({
+			jobId: admission.jobId,
+			manifestFingerprint: providerManifest.configurationFingerprint,
+			providerFingerprint: providerManifest.summaryProvider.providerFingerprint,
+			manifest: providerManifest,
+			boundary: compileProviderDestinationBoundary(providerManifest, {
+				repositoryIdentity,
+				tlsPeerVerified: true,
+			}),
+		});
+		if (!claim) throw new Error("expected raw-event claim");
+		const sourceEventIds = targetStore.rawEventFlushClaimSourceEventIds(claim);
+		const projected = targetStore.rawEventFlushClaimProjectedSourceSet(claim);
+		const projectedEvents = targetStore.loadRawEventFlushJobEvents(claim);
+		return {
+			claim,
+			payload: {
+				...payload,
+				events: projectedEvents,
+				sessionContext: {
+					...payload.sessionContext,
+					opencodeSessionId: streamId,
+					flushBatch: {
+						claim,
+						source_event_ids: sourceEventIds,
+						projected_source_event_ids: projected.sources.map((source) => source.eventId),
+						projected_repository_identity: projected.repositoryIdentity,
+						projected_sources: projected.sources.map((source) => ({
+							ordinal: source.ordinal,
+							redacted_payload: source.redactedPayload,
+						})),
+					},
+				},
+			},
+		};
+	}
+
+	function ingestClaimed(
+		payload: IngestPayload,
+		options: IngestOptions,
+		targetStore = store,
+	): Promise<void> {
+		return ingest(claimBoundPayload(payload, targetStore).payload, targetStore, options);
+	}
 
 	function buildPayload(overrides?: Partial<IngestPayload>): IngestPayload {
 		return {
@@ -2079,9 +2171,175 @@ describe("ingest() integration", { timeout: 15_000 }, () => {
 		return JSON.parse(row.metadata_json) as Record<string, unknown>;
 	}
 
+	it("rejects provider-backed ingest without a claim before calling the observer or writing", async () => {
+		let calls = 0;
+		const observer = {
+			...mockObserver,
+			observe: async () => {
+				calls += 1;
+				return mockObserver.observe();
+			},
+		};
+
+		await expect(
+			ingest(buildPayload(), store, { observer } as unknown as IngestOptions),
+		).rejects.toThrow("provider-backed ingest requires a durable raw-event claim");
+		expect(calls).toBe(0);
+		expect(store.db.prepare("SELECT COUNT(*) AS count FROM sessions").get()).toEqual({ count: 0 });
+		expect(store.db.prepare("SELECT COUNT(*) AS count FROM memory_items").get()).toEqual({
+			count: 0,
+		});
+	});
+
+	it("rejects a cloned claim without committing provider output", async () => {
+		const bound = claimBoundPayload(buildPayload());
+		const flushBatch = bound.payload.sessionContext?.flushBatch as Record<string, unknown>;
+		const payload = {
+			...bound.payload,
+			sessionContext: {
+				...bound.payload.sessionContext,
+				flushBatch: { ...flushBatch, claim: { ...bound.claim } },
+			},
+		};
+
+		await expect(
+			ingest(payload, store, { observer: mockObserver } as unknown as IngestOptions),
+		).rejects.toThrow("stale claim");
+		expect(store.db.prepare("SELECT COUNT(*) AS count FROM memory_items").get()).toEqual({
+			count: 0,
+		});
+		expect(store.db.prepare("SELECT COUNT(*) AS count FROM usage_events").get()).toEqual({
+			count: 0,
+		});
+	});
+
+	it("rejects a caller-forged projected source without committing provider output", async () => {
+		const bound = claimBoundPayload(buildPayload());
+		const flushBatch = bound.payload.sessionContext?.flushBatch as Record<string, unknown>;
+		const projectedSources = flushBatch.projected_sources as Array<Record<string, unknown>>;
+		const payload = {
+			...bound.payload,
+			sessionContext: {
+				...bound.payload.sessionContext,
+				flushBatch: {
+					...flushBatch,
+					projected_sources: [
+						{ ...projectedSources[0], redacted_payload: '{"forged":true}' },
+						...projectedSources.slice(1),
+					],
+				},
+			},
+		};
+
+		await expect(
+			ingest(payload, store, { observer: mockObserver } as unknown as IngestOptions),
+		).rejects.toThrow(/projected source|stale claim/i);
+		expect(store.db.prepare("SELECT COUNT(*) AS count FROM memory_items").get()).toEqual({
+			count: 0,
+		});
+		expect(store.db.prepare("SELECT COUNT(*) AS count FROM usage_events").get()).toEqual({
+			count: 0,
+		});
+	});
+
+	it("rejects source drift without committing provider output", async () => {
+		const bound = claimBoundPayload(buildPayload());
+		store.db
+			.prepare("UPDATE raw_events SET sensitivity = 'private' WHERE event_id = ?")
+			.run("ingest-test-1-0");
+
+		await expect(
+			ingest(bound.payload, store, { observer: mockObserver } as unknown as IngestOptions),
+		).rejects.toThrow(/source set mismatch|stale claim/i);
+		expect(store.db.prepare("SELECT COUNT(*) AS count FROM memory_items").get()).toEqual({
+			count: 0,
+		});
+		expect(store.db.prepare("SELECT COUNT(*) AS count FROM usage_events").get()).toEqual({
+			count: 0,
+		});
+	});
+
+	it("persists each output against its cited source ID and span", async () => {
+		const bound = claimBoundPayload(buildPayload());
+		const projected = store.rawEventFlushClaimProjectedSourceSet(bound.claim);
+		const explicitSource = projected.sources[1];
+		if (!explicitSource) throw new Error("expected second projected source");
+		const needle = "bash";
+		const charStart = explicitSource.redactedPayload.indexOf(needle);
+		if (charStart < 0) throw new Error("expected citation fixture text");
+		const start = Buffer.byteLength(explicitSource.redactedPayload.slice(0, charStart), "utf8");
+		const end = start + Buffer.byteLength(needle, "utf8");
+		const observer = observerWithRaw(`<observation>
+			<type>discovery</type><title>Whole event citation</title>
+			<narrative>The first output cites its whole source.</narrative>
+			<citations><cite source="0"/></citations>
+		</observation>
+		<summary><request>Span citation</request><completed>The second output cites one span.</completed>
+			<citations><cite source="1" start="${start}" end="${end}"/></citations>
+		</summary>`);
+
+		await ingest(bound.payload, store, { observer } as unknown as IngestOptions);
+
+		const rows = store.db
+			.prepare(
+				"SELECT title, source_event_ids_json, source_spans_json FROM memory_items ORDER BY id",
+			)
+			.all() as Array<{
+			title: string;
+			source_event_ids_json: string;
+			source_spans_json: string;
+		}>;
+		expect(rows).toEqual([
+			{
+				title: "Whole event citation",
+				source_event_ids_json: '["ingest-test-1-0"]',
+				source_spans_json: JSON.stringify([
+					{
+						eventId: "ingest-test-1-0",
+						startByte: 0,
+						endByte: Buffer.byteLength(projected.sources[0]?.redactedPayload ?? "", "utf8"),
+					},
+				]),
+			},
+			{
+				title: "Span citation",
+				source_event_ids_json: '["ingest-test-1-1"]',
+				source_spans_json: JSON.stringify([
+					{ eventId: "ingest-test-1-1", startByte: start, endByte: end },
+				]),
+			},
+		]);
+	});
+
+	it("rejects output above the active claim limit atomically", async () => {
+		const payload = buildPayload({
+			events: Array.from({ length: 17 }, (_, index) => ({
+				type: "user_prompt",
+				prompt_text: `Durable source ${index}`,
+				timestamp: new Date().toISOString(),
+			})),
+		});
+		const raw = Array.from(
+			{ length: 17 },
+			(_, index) => `<observation><type>discovery</type><title>Output ${index}</title>
+				<narrative>Durable output ${index}.</narrative>
+				<citations><cite source="${index}"/></citations></observation>`,
+		).join("\n");
+
+		await expect(
+			ingestClaimed(payload, { observer: observerWithRaw(raw) } as unknown as IngestOptions),
+		).rejects.toBeInstanceOf(ProcessingOutputLimitError);
+		expect(store.db.prepare("SELECT COUNT(*) AS count FROM memory_items").get()).toEqual({
+			count: 0,
+		});
+		expect(store.db.prepare("SELECT COUNT(*) AS count FROM usage_events").get()).toEqual({
+			count: 0,
+		});
+	});
+
 	it("creates memories from observer response", async () => {
 		const payload = buildPayload();
-		await ingest(payload, store, { observer: mockObserver } as unknown as IngestOptions);
+		await ingestClaimed(payload, { observer: mockObserver } as unknown as IngestOptions);
 
 		const memories = store.recent(10);
 		expect(memories.length).toBeGreaterThan(0);
@@ -2117,6 +2375,7 @@ describe("ingest() integration", { timeout: 15_000 }, () => {
 		const lossy = `<summary>
 			<request>Preserve the parser fix</request>
 			<learned>The parser detected discarded durable content.</learned>
+			<citations><cite source="1"/></citations>
 		</summary>
 		<observation>
 				<type>discovery</type>
@@ -2124,7 +2383,8 @@ describe("ingest() integration", { timeout: 15_000 }, () => {
 				<narrative>A one-shot repair preserves durable observer content that malformed XML would discard.</narrative>
 				<facts><fact>Parser-confirmed data loss triggers one XML repair call.</fact></facts>
 				<concepts><concept>problem-solution</concept></concepts>
-				<files_read></files_read><files_modified></files_modified>`;
+				<files_read></files_read><files_modified></files_modified>
+				<citations><cite source="0"/></citations>`;
 		const repaired = `<observation>
 			<type>discovery</type>
 			<title>Parser data loss now triggers repair</title>
@@ -2132,8 +2392,9 @@ describe("ingest() integration", { timeout: 15_000 }, () => {
 			<facts><fact>Parser-confirmed data loss triggers one XML repair call.</fact></facts>
 			<concepts><concept>problem-solution</concept></concepts>
 			<files_read></files_read><files_modified></files_modified>
+			<citations><cite source="0"/></citations>
 		</observation>
-		<summary><request>Preserve the parser fix</request><learned>The parser detected discarded durable content.</learned></summary>`;
+		<summary><request>Preserve the parser fix</request><learned>The parser detected discarded durable content.</learned><citations><cite source="1"/></citations></summary>`;
 		const observer = {
 			observe: async (system: string, user: string) => {
 				calls.push({ system, user });
@@ -2152,7 +2413,7 @@ describe("ingest() integration", { timeout: 15_000 }, () => {
 			}),
 		};
 
-		await ingest(buildPayload(), store, { observer } as unknown as IngestOptions);
+		await ingestClaimed(buildPayload(), { observer } as unknown as IngestOptions);
 
 		expect(calls).toHaveLength(2);
 		expect(calls[1]?.system).toContain("previous reply was invalid");
@@ -2160,6 +2421,12 @@ describe("ingest() integration", { timeout: 15_000 }, () => {
 		expect(
 			store.recent(10).some((memory) => memory.title === "Parser data loss now triggers repair"),
 		).toBe(true);
+		expect(
+			store.db
+				.prepare("SELECT source_event_ids_json FROM memory_items ORDER BY id")
+				.all()
+				.map((row) => (row as { source_event_ids_json: string }).source_event_ids_json),
+		).toEqual(['["ingest-test-1-0"]', '["ingest-test-1-1"]']);
 	});
 
 	it("retains valid initial content when the parser repair returns no output", async () => {
@@ -2168,6 +2435,7 @@ describe("ingest() integration", { timeout: 15_000 }, () => {
 			<type>discovery</type>
 			<title>Initial valid lesson survives repair failure</title>
 			<narrative>The parser retained this valid observation before detecting another malformed block.</narrative>
+			<citations><cite source="0"/></citations>
 		</observation>
 		<summary>
 			<request>Keep valid initial content</request>
@@ -2191,7 +2459,7 @@ describe("ingest() integration", { timeout: 15_000 }, () => {
 			}),
 		};
 
-		await ingest(buildPayload(), store, { observer } as unknown as IngestOptions);
+		await ingestClaimed(buildPayload(), { observer } as unknown as IngestOptions);
 
 		expect(calls).toHaveLength(2);
 		expect(
@@ -2207,6 +2475,7 @@ describe("ingest() integration", { timeout: 15_000 }, () => {
 			<type>discovery</type>
 			<title>Initial valid lesson survives repair exception</title>
 			<narrative>The parser retained this valid observation before repair failed.</narrative>
+			<citations><cite source="0"/></citations>
 		</observation><observation><type>bugfix</type><title>Truncated`;
 		const observer = {
 			observe: async () => {
@@ -2227,7 +2496,7 @@ describe("ingest() integration", { timeout: 15_000 }, () => {
 			}),
 		};
 
-		await ingest(buildPayload(), store, { observer } as unknown as IngestOptions);
+		await ingestClaimed(buildPayload(), { observer } as unknown as IngestOptions);
 
 		expect(callCount).toBe(2);
 		expect(
@@ -2243,12 +2512,14 @@ describe("ingest() integration", { timeout: 15_000 }, () => {
 			<type>discovery</type>
 			<title>Session ownership prevents stale refresh races</title>
 			<narrative>The active session must own the refresh result before replacing authentication state.</narrative>
+			<citations><cite source="0"/></citations>
 		</observation>
 		<observation><type>discovery</type><title>Truncated replacement`;
 		const disjointRepair = `<observation>
 			<type>discovery</type>
 			<title>Cache eviction uses bounded batches</title>
 			<narrative>The clean response describes a different durable outcome.</narrative>
+			<citations><cite source="0"/></citations>
 		</observation>`;
 		const observer = {
 			observe: async () => {
@@ -2268,7 +2539,7 @@ describe("ingest() integration", { timeout: 15_000 }, () => {
 			}),
 		};
 
-		await ingest(buildPayload(), store, { observer } as unknown as IngestOptions);
+		await ingestClaimed(buildPayload(), { observer } as unknown as IngestOptions);
 
 		expect(calls).toHaveLength(2);
 		expect(store.recent(10).map((memory) => memory.title)).toContain(
@@ -2285,9 +2556,10 @@ describe("ingest() integration", { timeout: 15_000 }, () => {
 			<type>change</type>
 			<title>Validation passed</title>
 			<narrative>CI passed and lint was green.</narrative>
+			<citations><cite source="0"/></citations>
 		</observation>`);
 
-		await ingest(buildPayload(), store, { observer } as unknown as IngestOptions);
+		await ingestClaimed(buildPayload(), { observer } as unknown as IngestOptions);
 
 		expect(store.recent(10)).toHaveLength(0);
 		expect(latestObserverUsageMetadata()).toEqual(
@@ -2305,9 +2577,10 @@ describe("ingest() integration", { timeout: 15_000 }, () => {
 			<type>discovery</type>
 			<title>Handlers must return structured errors instead of throwing</title>
 			<narrative>Handlers must return structured errors instead of throwing.</narrative>
+			<citations><cite source="0"/></citations>
 		</observation>`);
 
-		await ingest(buildPayload(), store, { observer } as unknown as IngestOptions);
+		await ingestClaimed(buildPayload(), { observer } as unknown as IngestOptions);
 
 		const metadata = observerMemoryMetadata(
 			"Handlers must return structured errors instead of throwing",
@@ -2329,9 +2602,10 @@ describe("ingest() integration", { timeout: 15_000 }, () => {
 			<type>discovery</type>
 			<title>CI passed after confirming handlers must return structured errors</title>
 			<narrative>CI passed after confirming handlers must return structured errors.</narrative>
+			<citations><cite source="0"/></citations>
 		</observation>`);
 
-		await ingest(buildPayload(), store, { observer } as unknown as IngestOptions);
+		await ingestClaimed(buildPayload(), { observer } as unknown as IngestOptions);
 
 		const metadata = observerMemoryMetadata(
 			"CI passed after confirming handlers must return structured errors",
@@ -2350,9 +2624,10 @@ describe("ingest() integration", { timeout: 15_000 }, () => {
 			<type>change</type>
 			<title>Review pass is pending</title>
 			<narrative>The review pass is pending.</narrative>
+			<citations><cite source="0"/></citations>
 		</observation>`);
 
-		await ingest(buildPayload(), store, { observer } as unknown as IngestOptions);
+		await ingestClaimed(buildPayload(), { observer } as unknown as IngestOptions);
 
 		const metadata = observerMemoryMetadata("Review pass is pending");
 		expect(metadata.derivation).toEqual({
@@ -2367,13 +2642,15 @@ describe("ingest() integration", { timeout: 15_000 }, () => {
 			<type>change</type>
 			<title>Validation passed</title>
 			<narrative>CI passed and lint was green.</narrative>
+			<citations><cite source="0"/></citations>
 		</observation>
 		<summary>
 			<request>Validate routing</request>
 			<completed>CI passed and lint was green.</completed>
+			<citations><cite source="1"/></citations>
 		</summary>`);
 
-		await ingest(buildPayload(), store, { observer } as unknown as IngestOptions);
+		await ingestClaimed(buildPayload(), { observer } as unknown as IngestOptions);
 
 		const summaryMemory = store.db
 			.prepare(
@@ -2407,6 +2684,9 @@ describe("ingest() integration", { timeout: 15_000 }, () => {
 			eventType: "user_prompt",
 			payload: { type: "user_prompt", prompt_text: "run validation" },
 			tsWallMs: 100,
+			repositoryIdentity,
+			captureManifestFingerprint: providerManifest.configurationFingerprint,
+			sensitivity: "eligible",
 		});
 		store.recordRawEvent({
 			opencodeSessionId: "sess-capture-suppressed",
@@ -2414,12 +2694,16 @@ describe("ingest() integration", { timeout: 15_000 }, () => {
 			eventType: "tool.execute.after",
 			payload: { type: "tool.execute.after", tool: "bash", args: {}, result: "ci passed" },
 			tsWallMs: 200,
+			repositoryIdentity,
+			captureManifestFingerprint: providerManifest.configurationFingerprint,
+			sensitivity: "eligible",
 		});
 
 		const observer = observerWithRaw(`<observation>
 			<type>change</type>
 			<title>Validation passed</title>
 			<narrative>CI passed and lint was green.</narrative>
+			<citations><cite source="0"/></citations>
 		</observation>`);
 
 		await expect(
@@ -2427,8 +2711,10 @@ describe("ingest() integration", { timeout: 15_000 }, () => {
 				store,
 				{
 					observer,
-					configurationFingerprint: `sha256:${"a".repeat(64)}`,
-					providerFingerprint: `sha256:${"b".repeat(64)}`,
+					capabilityManifest: providerManifest,
+					configurationFingerprint: providerManifest.configurationFingerprint,
+					providerFingerprint: providerManifest.summaryProvider.providerFingerprint,
+					providerTlsPeerVerified: true,
 				} as unknown as IngestOptions,
 				{
 					opencodeSessionId: "sess-capture-suppressed",
@@ -2454,9 +2740,10 @@ describe("ingest() integration", { timeout: 15_000 }, () => {
 			<type>change</type>
 			<title>Validation passed</title>
 			<narrative>CI passed and lint was green.</narrative>
+			<citations><cite source="0"/></citations>
 		</observation>`);
 
-		await ingest(buildPayload(), store, { observer } as unknown as IngestOptions);
+		await ingestClaimed(buildPayload(), { observer } as unknown as IngestOptions);
 
 		const metadata = observerMemoryMetadata("Validation passed");
 		expect(metadata.derivation).toBeUndefined();
@@ -2472,19 +2759,22 @@ describe("ingest() integration", { timeout: 15_000 }, () => {
 			<type>discovery</type>
 			<title>Handlers must return structured errors</title>
 			<narrative>Handlers must return structured errors instead of throwing.</narrative>
+			<citations><cite source="0"/></citations>
 		</observation>
 		<observation>
 			<type>change</type>
 			<title>CI passed</title>
 			<narrative>CI passed and lint was green.</narrative>
+			<citations><cite source="1"/></citations>
 		</observation>
 		<observation>
 			<type>change</type>
 			<title>Review approved</title>
 			<narrative>The review was approved with no blockers.</narrative>
+			<citations><cite source="2"/></citations>
 		</observation>`;
 
-		await ingest(buildPayload(), store, {
+		await ingestClaimed(buildPayload(), {
 			observer: observerWithRaw(raw),
 		} as unknown as IngestOptions);
 		expect(store.recent(10).filter((memory) => memory.kind !== "session_summary")).toHaveLength(3);
@@ -2497,9 +2787,13 @@ describe("ingest() integration", { timeout: 15_000 }, () => {
 		const routingStore = openTestMemoryStore(dbPathOn);
 		try {
 			process.env.CODEMEM_CAPTURE_ROUTING = "1";
-			await ingest(buildPayload(), routingStore, {
-				observer: observerWithRaw(raw),
-			} as unknown as IngestOptions);
+			await ingestClaimed(
+				buildPayload(),
+				{
+					observer: observerWithRaw(raw),
+				} as unknown as IngestOptions,
+				routingStore,
+			);
 			expect(
 				routingStore.recent(10).filter((memory) => memory.kind !== "session_summary"),
 			).toHaveLength(1);
@@ -2526,6 +2820,7 @@ describe("ingest() integration", { timeout: 15_000 }, () => {
 					<completed>Reviewed the current ranking behavior</completed>
 					<next_steps>Tighten recap weighting</next_steps>
 					<notes></notes>
+					<citations><cite source="0"/></citations>
 				</summary>`,
 				parsed: null,
 				provider: "test",
@@ -2562,7 +2857,7 @@ describe("ingest() integration", { timeout: 15_000 }, () => {
 			},
 		});
 
-		await ingest(payload, store, { observer: summaryOnlyObserver } as unknown as IngestOptions);
+		await ingestClaimed(payload, { observer: summaryOnlyObserver } as unknown as IngestOptions);
 
 		expect(store.recent(10)).toHaveLength(0);
 		const sessionMeta = store.db
@@ -2586,6 +2881,7 @@ describe("ingest() integration", { timeout: 15_000 }, () => {
 					<files_read>
 						<file>src/session-policy.ts</file>
 					</files_read>
+					<citations><cite source="0"/></citations>
 				</observation>`,
 				parsed: null,
 				provider: "test",
@@ -2623,7 +2919,7 @@ describe("ingest() integration", { timeout: 15_000 }, () => {
 			},
 		});
 
-		await ingest(payload, store, { observer: typedObserver } as unknown as IngestOptions);
+		await ingestClaimed(payload, { observer: typedObserver } as unknown as IngestOptions);
 
 		const memory = store.db
 			.prepare(
@@ -2644,6 +2940,7 @@ describe("ingest() integration", { timeout: 15_000 }, () => {
 					<completed>Reviewed the current ranking behavior</completed>
 					<next_steps>Tighten recap weighting</next_steps>
 					<notes></notes>
+					<citations><cite source="0"/></citations>
 				</summary>`,
 				parsed: null,
 				provider: "test",
@@ -2680,7 +2977,7 @@ describe("ingest() integration", { timeout: 15_000 }, () => {
 			},
 		});
 
-		await ingest(payload, store, { observer: summaryOnlyObserver } as unknown as IngestOptions);
+		await ingestClaimed(payload, { observer: summaryOnlyObserver } as unknown as IngestOptions);
 
 		const summaryMemory = store.db
 			.prepare(
@@ -2702,7 +2999,7 @@ describe("ingest() integration", { timeout: 15_000 }, () => {
 
 	it("falls back to cwd basename when payload project is missing", async () => {
 		const payload = buildPayload({ cwd: "/tmp/workspaces/codemem" });
-		await ingest(payload, store, { observer: mockObserver } as unknown as IngestOptions);
+		await ingestClaimed(payload, { observer: mockObserver } as unknown as IngestOptions);
 
 		const session = store.db
 			.prepare("SELECT * FROM sessions ORDER BY id DESC LIMIT 1")
@@ -2715,7 +3012,7 @@ describe("ingest() integration", { timeout: 15_000 }, () => {
 			cwd: "/tmp/workspaces/other-repo",
 			project: "C:\\work\\codemem\\",
 		});
-		await ingest(payload, store, { observer: mockObserver } as unknown as IngestOptions);
+		await ingestClaimed(payload, { observer: mockObserver } as unknown as IngestOptions);
 
 		const session = store.db
 			.prepare("SELECT * FROM sessions ORDER BY id DESC LIMIT 1")
@@ -2741,7 +3038,7 @@ describe("ingest() integration", { timeout: 15_000 }, () => {
 
 		const payload = buildPayload();
 		// Should not throw
-		await ingest(payload, store, { observer: nullObserver } as unknown as IngestOptions);
+		await ingestClaimed(payload, { observer: nullObserver } as unknown as IngestOptions);
 
 		// No memories created
 		const memories = store.recent(10);
@@ -2781,7 +3078,7 @@ describe("ingest() integration", { timeout: 15_000 }, () => {
 			},
 		});
 
-		await ingest(payload, store, { observer: lowSignalObserver } as unknown as IngestOptions);
+		await ingestClaimed(payload, { observer: lowSignalObserver } as unknown as IngestOptions);
 
 		expect(store.recent(10)).toHaveLength(0);
 		const session = store.db
@@ -2822,7 +3119,7 @@ describe("ingest() integration", { timeout: 15_000 }, () => {
 		});
 
 		await expect(
-			ingest(payload, store, { observer: oddSkipObserver } as unknown as IngestOptions),
+			ingestClaimed(payload, { observer: oddSkipObserver } as unknown as IngestOptions),
 		).rejects.toThrow("observer produced no storable output for raw-event flush");
 
 		expect(store.recent(10)).toHaveLength(0);
@@ -2856,7 +3153,7 @@ describe("ingest() integration", { timeout: 15_000 }, () => {
 		});
 
 		await expect(
-			ingest(payload, store, { observer: mixedObserver } as unknown as IngestOptions),
+			ingestClaimed(payload, { observer: mixedObserver } as unknown as IngestOptions),
 		).rejects.toThrow("observer repair remained lossy during raw-event flush");
 
 		expect(store.recent(10)).toHaveLength(0);
@@ -2872,6 +3169,7 @@ describe("ingest() integration", { timeout: 15_000 }, () => {
 					<completed>Reviewed the current ranking behavior</completed>
 					<next_steps>Tighten recap weighting</next_steps>
 					<notes></notes>
+					<citations><cite source="0"/></citations>
 				</summary>`,
 				parsed: null,
 				provider: "test",
@@ -2909,7 +3207,7 @@ describe("ingest() integration", { timeout: 15_000 }, () => {
 			},
 		});
 
-		await ingest(payload, store, { observer: summaryOnlyObserver } as unknown as IngestOptions);
+		await ingestClaimed(payload, { observer: summaryOnlyObserver } as unknown as IngestOptions);
 
 		expect(store.recent(10)).toHaveLength(0);
 		const session = store.db
@@ -2924,6 +3222,7 @@ describe("ingest() integration", { timeout: 15_000 }, () => {
 				raw: `<summary>
 					<request>Check retrieval noise</request>
 					<completed>Reviewed the current ranking behavior</completed>
+					<citations><cite source="0"/></citations>
 				</summary>`,
 				parsed: null,
 				provider: "test",
@@ -2956,7 +3255,7 @@ describe("ingest() integration", { timeout: 15_000 }, () => {
 			},
 		});
 
-		await expect(ingest(payload, store, { observer } as unknown as IngestOptions)).rejects.toThrow(
+		await expect(ingestClaimed(payload, { observer } as unknown as IngestOptions)).rejects.toThrow(
 			"observer produced no storable output for raw-event flush",
 		);
 	});
@@ -2975,7 +3274,7 @@ describe("ingest() integration", { timeout: 15_000 }, () => {
 					};
 				}
 				return {
-					raw: `<observation><type>discovery</type><title>current pack stats and restart state</title><subtitle>current pack stats and restart state</subtitle><narrative>Got it — the session inspected current pack stats and restart state.</narrative><concepts><concept>how-it-works</concept></concepts></observation><summary><investigated>the session inspected current pack stats and restart state</investigated></summary>`,
+					raw: `<observation><type>discovery</type><title>current pack stats and restart state</title><subtitle>current pack stats and restart state</subtitle><narrative>Got it — the session inspected current pack stats and restart state.</narrative><concepts><concept>how-it-works</concept></concepts><citations><cite source="0"/></citations></observation><summary><investigated>the session inspected current pack stats and restart state</investigated><citations><cite source="1"/></citations></summary>`,
 					parsed: null,
 					provider: "test",
 					model: "test-model",
@@ -3000,7 +3299,7 @@ describe("ingest() integration", { timeout: 15_000 }, () => {
 			},
 		});
 
-		await ingest(payload, store, { observer: retryingObserver } as unknown as IngestOptions);
+		await ingestClaimed(payload, { observer: retryingObserver } as unknown as IngestOptions);
 
 		expect(calls).toBe(2);
 		const memories = store.recent(10);
@@ -3041,7 +3340,7 @@ describe("ingest() integration", { timeout: 15_000 }, () => {
 		});
 
 		await expect(
-			ingest(payload, store, { observer: invalidObserver } as unknown as IngestOptions),
+			ingestClaimed(payload, { observer: invalidObserver } as unknown as IngestOptions),
 		).rejects.toThrow("observer produced no storable output for raw-event flush");
 
 		expect(calls).toBe(2);
@@ -3067,7 +3366,7 @@ describe("ingest() integration", { timeout: 15_000 }, () => {
 			events: [{ type: "user_prompt", prompt_text: "yes", timestamp: new Date().toISOString() }],
 		});
 
-		await ingest(payload, store, { observer: trackingObserver } as unknown as IngestOptions);
+		await ingestClaimed(payload, { observer: trackingObserver } as unknown as IngestOptions);
 
 		expect(observerCalled).toBe(false);
 
@@ -3133,6 +3432,7 @@ describe("ingest() integration", { timeout: 15_000 }, () => {
 				  <concepts><concept>decision</concept></concepts>
 				  <files_read><file>docs/one.md</file></files_read>
 				  <files_modified><file>packages/core/src/x.ts</file></files_modified>
+				  <citations><cite source="0"/></citations>
 				</observation>
 				<summary>
 				  <request>Investigate qd7h and Track 3.</request>
@@ -3140,6 +3440,7 @@ describe("ingest() integration", { timeout: 15_000 }, () => {
 				  <notes>Selected rich routing path.</notes>
 				  <files_read><file>docs/one.md</file></files_read>
 				  <files_modified><file>packages/core/src/x.ts</file></files_modified>
+				  <citations><cite source="1"/></citations>
 				</summary>`,
 				parsed: null,
 				provider: "openai",
@@ -3185,7 +3486,7 @@ describe("ingest() integration", { timeout: 15_000 }, () => {
 			},
 		});
 
-		await ingest(payload, store, { observer } as IngestOptions);
+		await ingestClaimed(payload, { observer } as IngestOptions);
 
 		const memoryRow = store.db
 			.prepare(

@@ -3,6 +3,10 @@ import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { afterEach, beforeEach, describe, expect, it } from "vitest";
 import { connect } from "./db.js";
+import {
+	compileRunnerLocalDestinationBoundary,
+	compileUntrustedDestinationBoundary,
+} from "./destination-boundary.js";
 import { findByConcept, findByFile } from "./ref-queries.js";
 import type { MemoryStore } from "./store.js";
 import { initTestSchema, insertTestSession, openTestMemoryStore } from "./test-utils.js";
@@ -270,6 +274,57 @@ describe("ref-queries", () => {
 	// -- MemoryStore integration ----------------------------------------------
 
 	describe("MemoryStore integration", () => {
+		it("enforces destination sensitivity and repository authority for file and concept refs", () => {
+			const repositoryA = `repo-v1:sha256:${"a".repeat(64)}`;
+			const repositoryB = `repo-v1:sha256:${"b".repeat(64)}`;
+			for (const [title, sensitivity, repositoryIdentity] of [
+				["Eligible", "eligible", repositoryA],
+				["Same-repository private", "private", repositoryA],
+				["Same-repository local-only", "local_only", repositoryA],
+				["Cross-repository private", "private", repositoryB],
+				["Unknown-repository local-only", "local_only", null],
+				["Secret", "secret", repositoryA],
+			] as const) {
+				const memoryId = store.remember(sessionId, "discovery", title, "Body", 0.5, [], {
+					files_read: ["src/private.ts"],
+					concepts: ["privacy"],
+				});
+				store.db
+					.prepare("UPDATE memory_items SET sensitivity = ?, repository_identity = ? WHERE id = ?")
+					.run(sensitivity, repositoryIdentity, memoryId);
+			}
+
+			const remote = compileUntrustedDestinationBoundary({
+				consumer: "daemon_search",
+				configurationFingerprint: `sha256:${"c".repeat(64)}`,
+			});
+			const sameRepositoryLocal = compileRunnerLocalDestinationBoundary({
+				consumer: "daemon_search",
+				configurationFingerprint: `sha256:${"c".repeat(64)}`,
+				repositoryIdentity: repositoryA,
+			});
+			const titles = (results: { title: string }[]) => results.map(({ title }) => title).sort();
+
+			expect(titles(store.findByFile("src/private.ts", {}, remote))).toEqual(["Eligible"]);
+			expect(titles(store.findByConcept("privacy", {}, remote))).toEqual(["Eligible"]);
+			expect(titles(store.findByFile("src/private.ts", {}, sameRepositoryLocal))).toEqual([
+				"Eligible",
+				"Same-repository local-only",
+				"Same-repository private",
+			]);
+			expect(titles(store.findByConcept("privacy", {}, sameRepositoryLocal))).toEqual([
+				"Eligible",
+				"Same-repository local-only",
+				"Same-repository private",
+			]);
+			expect(
+				titles(store.findByFile("src/private.ts", { project: "test-project" }, remote)),
+			).toEqual(["Eligible"]);
+			expect(titles(store.findByConcept("privacy", { project: "test-project" }, remote))).toEqual([
+				"Eligible",
+			]);
+		});
+
 		it("store.findByFile delegates to the ref-queries function", () => {
 			store.remember(sessionId, "discovery", "Store file test", "Body", 0.5, [], {
 				files_read: ["src/store.ts"],

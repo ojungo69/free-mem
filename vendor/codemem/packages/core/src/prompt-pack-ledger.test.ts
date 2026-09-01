@@ -3,6 +3,7 @@ import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { afterEach, beforeEach, describe, expect, it } from "vitest";
 import { connect } from "./db.js";
+import { compileUntrustedDestinationBoundary } from "./destination-boundary.js";
 import { buildMemoryPackWithTrace } from "./pack.js";
 import {
 	clonePromptPackAttempt,
@@ -13,10 +14,12 @@ import {
 import { getRetrievalAttempt, updateRetrievalDelivery } from "./retrieval-ledger.js";
 import type { MemoryStore } from "./store.js";
 import { initTestSchema, insertTestSession, openTestMemoryStore } from "./test-utils.js";
-import type { MemoryResult } from "./types.js";
+import type { MemoryResult, SensitivityV1 } from "./types.js";
 
 const startedAt = "2026-08-03T10:00:00.000Z";
 const completedAt = "2026-08-03T10:00:00.025Z";
+const configurationFingerprint = `sha256:${"a".repeat(64)}`;
+const repositoryIdentity = `repo-v1:sha256:${"1".repeat(64)}`;
 
 function id(sequence: number): string {
 	return `018f2db4-f9d3-7a22-8d18-${sequence.toString(16).padStart(12, "0")}`;
@@ -35,12 +38,92 @@ describe("prompt-pack retrieval ledger", () => {
 		initTestSchema(db);
 		db.close();
 		store = openTestMemoryStore(storePath);
+		const remember = store.remember.bind(store);
+		store.remember = ((...args: Parameters<MemoryStore["remember"]>) => {
+			const memoryId = remember(...args);
+			store.db
+				.prepare(
+					"UPDATE memory_items SET sensitivity = 'eligible', repository_identity = ? WHERE id = ?",
+				)
+				.run(repositoryIdentity, memoryId);
+			return memoryId;
+		}) as MemoryStore["remember"];
 		sessionId = insertTestSession(store.db);
 	});
 
 	afterEach(() => {
 		store.close();
 		rmSync(directory, { recursive: true, force: true });
+	});
+
+	function insertBoundaryMemory(sensitivity: SensitivityV1, sentinel: string): number {
+		const memoryId = store.remember(
+			sessionId,
+			"decision",
+			`${sentinel} ledgerboundary`,
+			`${sentinel} ledgerboundary body`,
+			0.9,
+		);
+		store.db
+			.prepare("UPDATE memory_items SET sensitivity = ?, repository_identity = ? WHERE id = ?")
+			.run(sensitivity, repositoryIdentity, memoryId);
+		return memoryId;
+	}
+
+	it("records only eligible pack exposures and keeps restricted omissions aggregate", () => {
+		const eligibleId = insertBoundaryMemory("eligible", "ELIGIBLE_LEDGER_SENTINEL");
+		const privateId = insertBoundaryMemory("private", "PRIVATE_LEDGER_SENTINEL");
+		const boundary = compileUntrustedDestinationBoundary({
+			consumer: "daemon_pack",
+			configurationFingerprint,
+			targetAgent: "codex",
+		});
+		const artifacts = store.buildMemoryPackWithTrace(
+			"ledgerboundary",
+			10,
+			null,
+			undefined,
+			undefined,
+			boundary,
+		);
+
+		expect(artifacts.response.metrics.omissions).toEqual([
+			{
+				reason: "omitted_ineligible",
+				count: 1,
+				by_source: { fts: 1 },
+				by_sensitivity: { eligible: 0, local_only: 0, private: 1, secret: 0 },
+			},
+		]);
+		expect(artifacts.trace.retrieval.omissions).toEqual(artifacts.response.metrics.omissions);
+
+		const outcome = recordPromptPackArtifacts(
+			store.db,
+			{
+				attemptId: id(20),
+				startedAt,
+				completedAt,
+				source: "opencode",
+				requestId: "request-privacy-boundary",
+			},
+			"ledgerboundary",
+			undefined,
+			artifacts,
+		);
+
+		expect(outcome.ok).toBe(true);
+		const attempt = getRetrievalAttempt(store.db, id(20));
+		expect(attempt).toMatchObject({ candidateCount: 1, selectedCount: 1 });
+		expect(attempt?.exposures.map((exposure) => exposure.memoryId)).toContain(eligibleId);
+		expect(attempt?.exposures.map((exposure) => exposure.memoryId)).not.toContain(privateId);
+		expect(
+			attempt?.exposures.find((exposure) => exposure.memoryId === eligibleId)?.reasonCodes,
+		).toEqual(expect.arrayContaining(["disposition.selected", "match.text"]));
+		const persisted = JSON.stringify([
+			store.db.prepare("SELECT * FROM retrieval_attempts WHERE attempt_id = ?").get(id(20)),
+			store.db.prepare("SELECT * FROM retrieval_exposures WHERE attempt_id = ?").all(id(20)),
+		]);
+		expect(persisted).not.toContain("PRIVATE_LEDGER_SENTINEL");
 	});
 
 	it("persists trace-derived selected exposures with hydrated snapshots and no sensitive text", () => {

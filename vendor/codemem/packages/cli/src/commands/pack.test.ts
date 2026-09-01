@@ -84,6 +84,8 @@ const trace = {
 			{ ...candidate, id: 9, rank: 3, disposition: "deduped", section: null },
 			{ ...candidate, id: 10, rank: 4, disposition: "trimmed", section: null },
 		],
+		omissions: [],
+		degradations: [],
 	},
 	assembly: {
 		deduped_ids: [9],
@@ -113,6 +115,26 @@ async function parsePackCommand(args: string[]): Promise<void> {
 }
 
 describe("pack command", () => {
+	it("T031 keeps destination authority daemon-owned while project remains a filter", async () => {
+		request.mockResolvedValue({ ok: true, result: { pack } });
+		vi.spyOn(console, "log").mockImplementation(() => {});
+
+		await parsePackCommand(["continue work", "--json", "--project", "demo"]);
+		const body = request.mock.calls[0]?.[1] as Record<string, unknown>;
+		expect(body.filters).toEqual({ project: "demo" });
+		for (const key of [
+			"executionLocation",
+			"localTrust",
+			"modelLocal",
+			"providerPeerTrust",
+			"repository",
+			"repositoryIdentity",
+		]) {
+			expect(body, key).not.toHaveProperty(key);
+		}
+		expect(packCommand.options.map((option) => option.long)).not.toContain("--local-trust");
+	});
+
 	it("registers trace as a pack subcommand with shared options", () => {
 		const nested = packCommand.commands.find((command) => command.name() === "trace");
 		expect(nested?.options.map((option) => option.long)).toEqual(

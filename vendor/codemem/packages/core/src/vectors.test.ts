@@ -4,6 +4,7 @@ import { join } from "node:path";
 import Database from "better-sqlite3";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import * as dbModule from "./db.js";
+import { compileUntrustedDestinationBoundary } from "./destination-boundary.js";
 import * as embeddings from "./embeddings.js";
 import { startMaintenanceJob } from "./maintenance-jobs.js";
 import { ensureSchemaBootstrapped } from "./schema-bootstrap.js";
@@ -315,14 +316,37 @@ describe("vectors", () => {
 				'test-model'
 			)
 		`);
+		const beforeRows = db
+			.prepare(
+				"SELECT memory_id, chunk_index, content_hash, model FROM memory_vectors ORDER BY memory_id, chunk_index, model",
+			)
+			.all();
 		const previous = process.env.CODEMEM_EMBEDDING_DISABLED;
 		process.env.CODEMEM_EMBEDDING_DISABLED = "1";
-
-		const diagnostics = getSemanticIndexDiagnostics(db);
-		if (previous === undefined) {
-			delete process.env.CODEMEM_EMBEDDING_DISABLED;
-		} else {
-			process.env.CODEMEM_EMBEDDING_DISABLED = previous;
+		let diagnostics: ReturnType<typeof getSemanticIndexDiagnostics>;
+		try {
+			diagnostics = getSemanticIndexDiagnostics(db);
+			const results = await semanticSearch(db, "Has vectors", 10, null, {
+				actorId: "local:semantic-disabled-device",
+				deviceId: "semantic-disabled-device",
+				destinationBoundary: compileUntrustedDestinationBoundary({
+					consumer: "daemon_pack",
+					configurationFingerprint: `sha256:${"a".repeat(64)}`,
+					targetAgent: "codex",
+				}),
+			});
+			expect(results).toEqual([]);
+			expect(embeddings.embedTexts).not.toHaveBeenCalled();
+			expect(
+				db
+					.prepare(
+						"SELECT memory_id, chunk_index, content_hash, model FROM memory_vectors ORDER BY memory_id, chunk_index, model",
+					)
+					.all(),
+			).toEqual(beforeRows);
+		} finally {
+			if (previous === undefined) delete process.env.CODEMEM_EMBEDDING_DISABLED;
+			else process.env.CODEMEM_EMBEDDING_DISABLED = previous;
 		}
 
 		expect(diagnostics).toMatchObject({

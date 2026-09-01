@@ -476,7 +476,7 @@ describe("daemon class B operations", { timeout: 20_000 }, () => {
 			state: "committed",
 			result: { outputSha256: expect.stringMatching(/^[a-f0-9]{64}$/) },
 		});
-		expect(JSON.parse(readFileSync(outputPath, "utf8"))).toMatchObject({ version: "1.0" });
+		expect(JSON.parse(readFileSync(outputPath, "utf8"))).toMatchObject({ version: "2.0" });
 		expect(
 			await request(first, "POST /v1/operations/export", {
 				operationId,
@@ -786,8 +786,11 @@ describe("daemon class B operations", { timeout: 20_000 }, () => {
 		expect(
 			JSON.parse(readFileSync(join(handle.layout.backupsDir, `${backupId}.json`), "utf8")),
 		).toMatchObject({ manifest: { retention_class: "manual" } });
+		// The imported legacy row is normalized to sensitivity='secret', so the
+		// eligible-only viewer stats do not count it; the committed result above
+		// is the evidence that the import landed.
 		expect(await request(handle, "GET /v1/view", { collection: "stats" })).toMatchObject({
-			body: { database: { memory_items: 1 } },
+			body: { database: { memory_items: 0 } },
 		});
 
 		const exportFailureDataDir = tempDataDir();

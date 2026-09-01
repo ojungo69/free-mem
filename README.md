@@ -16,10 +16,15 @@ state when retrieval is degraded.
 
 ## Current status
 
-The **Product Reset M0** is the active work. It establishes product authority and routes the old
-continuity backlog before runtime changes begin.
+**Slice 1 implementation** ([#137](https://github.com/ojungo69/free-mem/issues/137)) is the active
+work, building on the Product Reset M0 authority. The frozen capability manifest, durable schema
+v21 processing jobs, and the privacy closure ([#130](https://github.com/ojungo69/free-mem/issues/130):
+a single destination boundary over every content read, and restricted content never reaching a
+remote summary provider) have landed; the bidirectional automatic memory flow, managed setup
+lifecycle, and the real-hook artifact gate are next.
 
-- Active specification: [`specs/005-product-reset/spec.md`](specs/005-product-reset/spec.md)
+- Slice 1 runtime specification: [`specs/006-slice1-runtime/spec.md`](specs/006-slice1-runtime/spec.md)
+- Product Reset specification: [`specs/005-product-reset/spec.md`](specs/005-product-reset/spec.md)
 - Foundation decision: [`evidence/adr-006-product-reset.md`](evidence/adr-006-product-reset.md)
 - Implementation plan: [`specs/005-product-reset/plan.md`](specs/005-product-reset/plan.md)
 - GitHub routing ledger:

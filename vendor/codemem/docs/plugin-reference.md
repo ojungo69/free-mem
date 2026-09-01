@@ -221,12 +221,13 @@ Stream contract:
 - Event streaming: `POST /api/raw-events`
 - Non-2xx and network failures are treated as stream failures.
 - Raw events are delivered through the viewer ingest API.
-- Raw-event batches accepted by the viewer are retained. Scheduled flush/retry workers remain disabled in this pre-release.
+- Raw-event batches accepted by the viewer are retained. With an activated Slice 1 capability manifest, the daemon processes them through the scheduled flush and sweeper; in capture-only mode (no activated manifest) they remain retained without processing.
 - If the direct CLI fallback reports an explicit SQLite busy/locked result or command timeout, the plugin retries it once with the same event ID. Other failures are reported and dropped rather than requeued or spooled, and logs retain only a bounded failure category rather than raw command output.
 
-Slice 1 fixes the future scheduler values in the manifest: 1 s debounce, 30 s sweep, 120 s idle,
+Slice 1 fixes the scheduler values in the manifest: 1 s debounce, 30 s sweep, 120 s idle,
 and retention disabled (`0`). These are not configurable through legacy `CODEMEM_RAW_EVENTS_*`
-settings, and no flush or sweeper execution starts in this pre-release.
+settings. Flush and sweeper execution start only when a validated Slice 1 capability manifest
+is activated; without one the daemon stays in capture-only mode.
 
 To monitor backlog:
 
@@ -234,12 +235,12 @@ To monitor backlog:
 node packages/cli/dist/index.js db raw-events-status
 ```
 
-`raw-events-status` can show retained backlog, but processing retries remain unavailable in this pre-release.
+`raw-events-status` can show retained backlog; processing and bounded retries run only under an activated Slice 1 capability manifest.
 
 ## Hook lifecycle and processing availability
 
 The plugin captures `tool.execute.after`, `session.idle`, `session.created`, `/new` prompt-boundary,
-and `session.error` events. Raw-event flush, retries, and sweeper processing are disabled in this pre-release.
+and `session.error` events. Raw-event flush, retries, and sweeper processing run only under an activated Slice 1 capability manifest; without one the daemon is capture-only.
 
 Failure semantics:
 - Stream POST failures are backoff-gated in plugin runtime (`CODEMEM_RAW_EVENTS_BACKOFF_MS`).

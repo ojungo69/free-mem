@@ -132,6 +132,44 @@ describe("buildObserverPrompt", () => {
 		expect(user).toContain("<assistant_response>Done.</assistant_response>");
 	});
 
+	it("shows only ordered projected source ordinals and requires citation children", () => {
+		const context = {
+			project: "codemem",
+			userPrompt: "Record the eligible work",
+			promptNumber: 4,
+			transcript: "",
+			toolEvents: [],
+			lastAssistantMessage: null,
+			diffSummary: "",
+			recentFiles: "",
+			includeSummary: true,
+			projectedSources: [
+				{ ordinal: 0, redactedPayload: "first <safe> source" },
+				{ ordinal: 1, redactedPayload: "second & safe source" },
+			],
+		} as Parameters<typeof buildObserverPrompt>[0] & {
+			projectedSources: Array<{ ordinal: number; redactedPayload: string }>;
+		};
+
+		const { system, user } = buildObserverPrompt(context);
+
+		expect(user).toContain("<projected_sources>");
+		expect(user).toContain('<source ordinal="0">first &lt;safe&gt; source</source>');
+		expect(user).toContain('<source ordinal="1">second &amp; safe source</source>');
+		expect(user.indexOf('ordinal="0"')).toBeLessThan(user.indexOf('ordinal="1"'));
+		expect(system).toContain(
+			"Every <observation> and <summary> must contain exactly one direct, non-empty <citations> child.",
+		);
+		expect(system).toContain('<cite source="N"/>');
+		expect(system).toContain('<cite source="N" start="START" end="END"/>');
+		expect(system).toContain(
+			"start and end are optional half-open UTF-8 byte offsets into that source's canonical redactedPayload",
+		);
+		expect(user).not.toMatch(
+			/raw[_ -]?event[_ -]?id|repository[_ -]?identity|(?:payload[_ -]?)?digest/i,
+		);
+	});
+
 	it("truncates long transcripts while preserving head, middle, and tail context", () => {
 		const transcript = `${"A".repeat(120)} middle context ${"Z".repeat(120)}`;
 		const truncated = truncateObserverTranscript(transcript, 80);

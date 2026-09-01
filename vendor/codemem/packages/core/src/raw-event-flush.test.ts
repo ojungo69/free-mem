@@ -2,6 +2,7 @@ import { mkdtempSync, rmSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
+import { compileDefaultCapabilityManifest } from "./capability-manifest.js";
 import { buildRawEventEnvelopeFromHook } from "./claude-hooks.js";
 import { connect } from "./db.js";
 import type { IngestOptions } from "./ingest-pipeline.js";
@@ -39,6 +40,7 @@ describe("flushRawEvents max retry", () => {
 			eventType: "user_prompt",
 			payload: { type: "user_prompt", prompt_text: "Hello" },
 			repositoryIdentity,
+			sensitivity: "eligible",
 			tsWallMs: 100,
 		});
 		store.recordRawEvent({
@@ -47,6 +49,7 @@ describe("flushRawEvents max retry", () => {
 			eventType: "tool.execute.after",
 			payload: { type: "tool.execute.after", tool: "read", args: { filePath: "/tmp/x.ts" } },
 			repositoryIdentity,
+			sensitivity: "eligible",
 			tsWallMs: 200,
 		});
 	}
@@ -75,6 +78,7 @@ describe("flushRawEvents max retry", () => {
 				<completed>Added callback validation</completed>
 				<next_steps>Add regression test</next_steps>
 				<notes></notes>
+				<citations><cite source="0"/></citations>
 			</summary>`,
 			parsed: null,
 			provider: "test",
@@ -87,15 +91,51 @@ describe("flushRawEvents max retry", () => {
 			auth: { source: "none", type: "none", hasToken: false },
 		}),
 	};
-	const manifestFingerprint = `sha256:${"a".repeat(64)}`;
-	const providerFingerprint = `sha256:${"b".repeat(64)}`;
 	const repositoryIdentity = `repo-v1:sha256:${"c".repeat(64)}`;
-	const ingestOptions = (observer: unknown): IngestOptions =>
+	const manifest = (endpointUrl: string) =>
+		compileDefaultCapabilityManifest({
+			version: 1,
+			role: "summary",
+			state: "enabled",
+			wireProtocol: "openai_chat_completions_v1",
+			modelId: "raw-event-flush-test",
+			modelRevision: "1",
+			endpointUrl,
+			credentialRef: { kind: "none" },
+		});
+	const remoteManifest = manifest("https://summary.stub.invalid/v1/chat/completions");
+	const localHttpManifest = manifest("http://127.0.0.1:1234/v1/chat/completions");
+	const localHttpsManifest = manifest("https://127.0.0.1:1234/v1/chat/completions");
+	const ingestOptions = (
+		observer: unknown,
+		capabilityManifest = remoteManifest,
+		providerTlsPeerVerified = true,
+	): IngestOptions =>
 		({
 			observer,
-			configurationFingerprint: manifestFingerprint,
-			providerFingerprint,
+			capabilityManifest,
+			resourceProfile: capabilityManifest.resourceProfile,
+			configurationFingerprint: capabilityManifest.configurationFingerprint,
+			providerFingerprint: capabilityManifest.summaryProvider.providerFingerprint,
+			providerTlsPeerVerified,
 		}) as IngestOptions;
+	const recordPrompt = (input: {
+		sessionId: string;
+		eventId: string;
+		prompt: string;
+		sensitivity: "eligible" | "private" | "local_only" | "secret";
+		repositoryIdentity: string | null;
+		tsWallMs: number;
+	}) =>
+		store.recordRawEvent({
+			opencodeSessionId: input.sessionId,
+			eventId: input.eventId,
+			eventType: "user_prompt",
+			payload: { type: "user_prompt", prompt_text: input.prompt },
+			repositoryIdentity: input.repositoryIdentity,
+			sensitivity: input.sensitivity,
+			tsWallMs: input.tsWallMs,
+		});
 
 	it("exhausts after three automatic attempts without advancing the flush cursor", async () => {
 		const sessionId = "ses_max_retry_test";
@@ -146,6 +186,7 @@ describe("flushRawEvents max retry", () => {
 			eventType: "user_prompt",
 			payload: { type: "user_prompt", prompt_text: "yes" },
 			repositoryIdentity,
+			sensitivity: "eligible",
 			tsWallMs: 100,
 		});
 		let observerCalls = 0;
@@ -210,6 +251,7 @@ describe("flushRawEvents max retry", () => {
 						eventType: type,
 						payload: { type },
 						repositoryIdentity,
+						sensitivity: "eligible",
 						tsWallMs: index * 1_000,
 					});
 					continue;
@@ -229,6 +271,7 @@ describe("flushRawEvents max retry", () => {
 					eventType: envelope.event_type,
 					payload: envelope.payload,
 					repositoryIdentity,
+					sensitivity: "eligible",
 					tsWallMs: envelope.ts_wall_ms,
 				});
 			}
@@ -295,6 +338,7 @@ describe("flushRawEvents max retry", () => {
 				},
 			},
 			repositoryIdentity,
+			sensitivity: "eligible",
 			tsWallMs: 100,
 		});
 
@@ -334,6 +378,7 @@ describe("flushRawEvents max retry", () => {
 				eventType: "user_prompt",
 				payload: { type: "user_prompt", prompt_text: promptText },
 				repositoryIdentity,
+				sensitivity: "eligible",
 				tsWallMs,
 			});
 		}
@@ -362,6 +407,7 @@ describe("flushRawEvents max retry", () => {
 			eventType: "unknown.event",
 			payload: { type: "unknown.event" },
 			repositoryIdentity,
+			sensitivity: "eligible",
 			tsWallMs: 100,
 		});
 
@@ -398,7 +444,7 @@ describe("flushRawEvents max retry", () => {
 				raw: Array.from(
 					{ length: 17 },
 					(_, index) =>
-						`<observation><type>discovery</type><title>Result ${index}</title><narrative>Distinct durable result ${index}.</narrative></observation>`,
+						`<observation><type>discovery</type><title>Result ${index}</title><narrative>Distinct durable result ${index}.</narrative><citations><cite source="0" start="${index}" end="${index + 1}"/></citations></observation>`,
 				).join(""),
 				parsed: null,
 				provider: "test",
@@ -604,8 +650,201 @@ describe("flushRawEvents max retry", () => {
 				)
 				.get(),
 		).toEqual({
-			source_event_ids_json: '["mixed-accepted","mixed-accepted-assistant"]',
+			source_event_ids_json: '["mixed-accepted"]',
 		});
+	});
+
+	it("projects only eligible events to a remote provider in source order", async () => {
+		const sessionId = "ses_remote_projection";
+		for (const [eventId, prompt, sensitivity, tsWallMs] of [
+			["remote-eligible-0", "VISIBLE_REMOTE_FIRST", "eligible", 100],
+			["remote-private", "FORBIDDEN_REMOTE_PRIVATE", "private", 200],
+			["remote-local-only", "FORBIDDEN_REMOTE_LOCAL_ONLY", "local_only", 300],
+			["remote-secret", "FORBIDDEN_REMOTE_SECRET", "secret", 400],
+			["remote-eligible-1", "VISIBLE_REMOTE_SECOND", "eligible", 500],
+		] as const) {
+			recordPrompt({
+				sessionId,
+				eventId,
+				prompt,
+				sensitivity,
+				repositoryIdentity,
+				tsWallMs,
+			});
+		}
+		let observerInput = "";
+		const observer = {
+			observe: async (system: string, user: string) => {
+				observerInput = `${system}\n${user}`;
+				return {
+					raw: `<observation>
+						<type>discovery</type><title>Retain eligible remote events</title>
+						<narrative>Restricted events never left the host.
+						The projected remote source set retained eligible work.
+						Stored the eligible result for later sessions.
+						</narrative>
+						<citations><cite source="0"/><cite source="1"/></citations>
+					</observation>`,
+					parsed: null,
+					provider: "test",
+					model: "test-model",
+				};
+			},
+			getStatus: summaryObserver.getStatus,
+		};
+
+		expect(
+			await flushRawEvents(store, ingestOptions(observer, remoteManifest), {
+				opencodeSessionId: sessionId,
+				source: "opencode",
+				cwd: null,
+				project: null,
+				startedAt: null,
+			}),
+		).toEqual({ flushed: 5, updatedState: 1 });
+		expect(observerInput).not.toContain("FORBIDDEN_REMOTE_PRIVATE");
+		expect(observerInput).not.toContain("FORBIDDEN_REMOTE_LOCAL_ONLY");
+		expect(observerInput).not.toContain("FORBIDDEN_REMOTE_SECRET");
+		expect(observerInput.indexOf("VISIBLE_REMOTE_FIRST")).toBeGreaterThanOrEqual(0);
+		expect(observerInput.indexOf("VISIBLE_REMOTE_SECOND")).toBeGreaterThan(
+			observerInput.indexOf("VISIBLE_REMOTE_FIRST"),
+		);
+	});
+
+	it.each([
+		[
+			"an all-restricted remote range",
+			remoteManifest,
+			true,
+			[
+				["private", repositoryIdentity, "FORBIDDEN_REMOTE_PRIVATE"],
+				["local_only", repositoryIdentity, "FORBIDDEN_REMOTE_LOCAL_ONLY"],
+				["secret", repositoryIdentity, "FORBIDDEN_REMOTE_SECRET"],
+			],
+		],
+		[
+			"an all-restricted unverified local HTTP range",
+			localHttpManifest,
+			false,
+			[
+				["private", repositoryIdentity, "FORBIDDEN_HTTP_PRIVATE"],
+				["local_only", repositoryIdentity, "FORBIDDEN_HTTP_LOCAL_ONLY"],
+				["secret", repositoryIdentity, "FORBIDDEN_HTTP_SECRET"],
+			],
+		],
+		[
+			"an unknown-repository verified local HTTPS range",
+			localHttpsManifest,
+			true,
+			[["private", null, "FORBIDDEN_UNKNOWN_REPO"]],
+		],
+	] as const)("atomically privacy-skips an all-restricted range for %s", async (_label, capabilityManifest, providerTlsPeerVerified, events) => {
+		const sessionId = "ses_destination_privacy_skip";
+		for (const [index, [sensitivity, eventRepositoryIdentity, prompt]] of events.entries()) {
+			recordPrompt({
+				sessionId,
+				eventId: `restricted-${index}`,
+				prompt,
+				sensitivity,
+				repositoryIdentity: eventRepositoryIdentity,
+				tsWallMs: index + 1,
+			});
+		}
+		let observerCalls = 0;
+		const observer = {
+			observe: async () => {
+				observerCalls++;
+				throw new Error("observer must not be called");
+			},
+			getStatus: nullObserver.getStatus,
+		};
+
+		expect(
+			await flushRawEvents(
+				store,
+				ingestOptions(observer, capabilityManifest, providerTlsPeerVerified),
+				{
+					opencodeSessionId: sessionId,
+					source: "opencode",
+					cwd: null,
+					project: null,
+					startedAt: null,
+				},
+			),
+		).toEqual({ flushed: events.length, updatedState: 1 });
+		expect(observerCalls).toBe(0);
+		expect(store.recent(10)).toHaveLength(0);
+		const batch = store.db
+			.prepare(
+				"SELECT status, completion_disposition, egress_diagnostic_json FROM raw_event_flush_batches WHERE stream_id = ?",
+			)
+			.get(sessionId) as {
+			status: string;
+			completion_disposition: string;
+			egress_diagnostic_json: string;
+		};
+		expect(batch).toMatchObject({
+			status: "completed",
+			completion_disposition: "privacy_skip",
+		});
+		for (const [, , prompt] of events) {
+			expect(batch.egress_diagnostic_json).not.toContain(prompt);
+		}
+	});
+
+	it("allows eligible, private, and local-only events only for verified local HTTPS in the same repository", async () => {
+		const sessionId = "ses_verified_local_projection";
+		for (const [eventId, prompt, sensitivity, tsWallMs] of [
+			["local-eligible", "VISIBLE_LOCAL_ELIGIBLE", "eligible", 100],
+			["local-private", "VISIBLE_LOCAL_PRIVATE", "private", 200],
+			["local-only", "VISIBLE_LOCAL_ONLY", "local_only", 300],
+			["local-secret", "FORBIDDEN_LOCAL_SECRET", "secret", 400],
+		] as const) {
+			recordPrompt({
+				sessionId,
+				eventId,
+				prompt,
+				sensitivity,
+				repositoryIdentity,
+				tsWallMs,
+			});
+		}
+		let observerInput = "";
+		const observer = {
+			observe: async (system: string, user: string) => {
+				observerInput = `${system}\n${user}`;
+				return {
+					raw: `<observation>
+						<type>discovery</type><title>Retain same-repository local events</title>
+						<narrative>The verified local projection excluded only the secret source.
+						Stored the local result for later sessions.
+						</narrative>
+						<citations><cite source="0"/><cite source="1"/><cite source="2"/></citations>
+					</observation>`,
+					parsed: null,
+					provider: "test",
+					model: "test-model",
+				};
+			},
+			getStatus: summaryObserver.getStatus,
+		};
+
+		expect(
+			await flushRawEvents(store, ingestOptions(observer, localHttpsManifest, true), {
+				opencodeSessionId: sessionId,
+				source: "opencode",
+				cwd: null,
+				project: null,
+				startedAt: null,
+			}),
+		).toEqual({ flushed: 4, updatedState: 1 });
+		const eligibleIndex = observerInput.indexOf("VISIBLE_LOCAL_ELIGIBLE");
+		const privateIndex = observerInput.indexOf("VISIBLE_LOCAL_PRIVATE");
+		const localOnlyIndex = observerInput.indexOf("VISIBLE_LOCAL_ONLY");
+		expect(eligibleIndex).toBeGreaterThanOrEqual(0);
+		expect(privateIndex).toBeGreaterThan(eligibleIndex);
+		expect(localOnlyIndex).toBeGreaterThan(privateIndex);
+		expect(observerInput).not.toContain("FORBIDDEN_LOCAL_SECRET");
 	});
 
 	it("does not give up when under the max attempts", async () => {
@@ -641,10 +880,12 @@ describe("flushRawEvents max retry", () => {
 		const lossy = `<observation>
 			<type>discovery</type><title>Retained result</title>
 			<narrative>Keep this valid observation.</narrative>
+			<citations><cite source="0"/></citations>
 		</observation><observation><type>bugfix</type><title>Truncated result`;
 		const unrelatedRepair = `<observation>
 			<type>discovery</type><title>Unrelated result</title>
 			<narrative>This does not recover the truncated block.</narrative>
+			<citations><cite source="0"/></citations>
 		</observation>`;
 		const observer = {
 			observe: async () => {
@@ -699,7 +940,7 @@ describe("flushRawEvents max retry", () => {
 					raw:
 						callCount === 1
 							? `<skip_summary reason="low-signal"/><observation><type>bugfix</type><title>Truncated durable result`
-							: `<summary><request>Unrelated repair</request></summary>`,
+							: `<summary><request>Unrelated repair</request><citations><cite source="0"/></citations></summary>`,
 					parsed: null,
 					provider: "test",
 					model: "test-model",
@@ -773,6 +1014,7 @@ describe("flushRawEvents max retry", () => {
 				eventType: "user_prompt",
 				payload: { type: "user_prompt", prompt_text: `event ${eventSeq}` },
 				repositoryIdentity,
+				sensitivity: "eligible",
 				tsWallMs: eventSeq,
 			});
 		}
@@ -792,11 +1034,7 @@ describe("flushRawEvents max retry", () => {
 			}),
 			getStatus: summaryObserver.getStatus,
 		};
-		const cappedIngestOptions = {
-			observer: cappedObserver,
-			configurationFingerprint: `sha256:${"a".repeat(64)}`,
-			providerFingerprint: `sha256:${"b".repeat(64)}`,
-		} as IngestOptions;
+		const cappedIngestOptions = ingestOptions(cappedObserver);
 		expect(await flushRawEvents(store, cappedIngestOptions, opts)).toEqual({
 			flushed: 100,
 			updatedState: 1,
@@ -831,6 +1069,7 @@ describe("flushRawEvents max retry", () => {
 			eventType: "assistant_message",
 			payload: { type: "assistant_message", assistant_text: "Added validation." },
 			repositoryIdentity,
+			sensitivity: "eligible",
 			tsWallMs: 300,
 		});
 		store.recordRawEvent({
@@ -843,6 +1082,7 @@ describe("flushRawEvents max retry", () => {
 				args: { filePath: "/tmp/y.ts" },
 			},
 			repositoryIdentity,
+			sensitivity: "eligible",
 			tsWallMs: 400,
 		});
 
@@ -915,6 +1155,7 @@ describe("flushRawEvents max retry", () => {
 				eventType: envelope.event_type,
 				payload: envelope.payload,
 				repositoryIdentity,
+				sensitivity: "eligible",
 				tsWallMs: envelope.ts_wall_ms,
 			});
 		}
@@ -928,6 +1169,7 @@ describe("flushRawEvents max retry", () => {
 					<completed>Added normalization step</completed>
 					<next_steps>Add regression test</next_steps>
 					<notes></notes>
+					<citations><cite source="0"/></citations>
 				</summary>`,
 				parsed: null,
 				provider: "test",
@@ -1030,6 +1272,7 @@ describe("flushRawEvents max retry", () => {
 				timestamp: "2026-04-11T12:00:00Z",
 			},
 			repositoryIdentity,
+			sensitivity: "eligible",
 			tsWallMs: Date.parse("2026-04-11T12:00:00Z"),
 		});
 		store.recordRawEvent({
@@ -1039,6 +1282,7 @@ describe("flushRawEvents max retry", () => {
 			eventType: "tool.execute.after",
 			payload: { _adapter: adapterEvent },
 			repositoryIdentity,
+			sensitivity: "eligible",
 			tsWallMs: Date.parse(adapterEvent.ts),
 		});
 
@@ -1051,6 +1295,7 @@ describe("flushRawEvents max retry", () => {
 					<completed>Added handling</completed>
 					<next_steps></next_steps>
 					<notes></notes>
+					<citations><cite source="0"/></citations>
 				</summary>`,
 				parsed: null,
 				provider: "test",

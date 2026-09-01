@@ -5,6 +5,10 @@
  * Builds WHERE clause fragments and parameter arrays from a MemoryFilters object.
  */
 
+import {
+	type DestinationBoundaryV1,
+	memoryDestinationBoundarySql,
+} from "./destination-boundary.js";
 import { projectClause } from "./project.js";
 import {
 	LEGACY_SHARED_REVIEW_SCOPE_ID,
@@ -36,6 +40,8 @@ export interface OwnershipFilterContext {
 	 * EXISTS predicate, which is semantically identical.
 	 */
 	visibleScopeIds?: readonly string[];
+	/** Trusted content destination; never sourced from MemoryFilters. */
+	destinationBoundary?: DestinationBoundaryV1;
 }
 
 export interface FilterResult {
@@ -230,6 +236,17 @@ function addScopeVisibilityFilter(
 	params.push("", LOCAL_DEFAULT_SCOPE_ID, LEGACY_SHARED_REVIEW_SCOPE_ID, deviceId);
 }
 
+function addDestinationBoundaryFilter(
+	clauses: string[],
+	params: unknown[],
+	context: OwnershipFilterContext | undefined,
+): void {
+	if (!context?.destinationBoundary) return;
+	const predicate = memoryDestinationBoundarySql(context.destinationBoundary);
+	clauses.push(predicate.clause);
+	params.push(...predicate.params);
+}
+
 /**
  * Build WHERE clause fragments from a MemoryFilters object.
  *
@@ -248,6 +265,7 @@ export function buildFilterClausesWithContext(
 	const result: FilterResult = { clauses: [], params: [], joinSessions: false };
 	const { clauses, params } = result;
 	addScopeVisibilityFilter(clauses, params, ownership);
+	addDestinationBoundaryFilter(clauses, params, ownership);
 	if (!filters) return result;
 
 	// Single kind filter
