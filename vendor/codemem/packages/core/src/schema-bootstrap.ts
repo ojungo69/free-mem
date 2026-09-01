@@ -297,6 +297,19 @@ const SCHEMA_AUX_DDL = `
 ${RETRIEVAL_LEDGER_DDL}
 ${DAEMON_JOBS_DDL}
 
+CREATE UNIQUE INDEX IF NOT EXISTS idx_raw_events_repository_source_stream_event_id
+	ON raw_events(COALESCE(repository_identity, 'repo-v1:unknown'), source, stream_id, event_id);
+CREATE UNIQUE INDEX IF NOT EXISTS idx_raw_event_identity_conflicts_pair
+	ON raw_event_identity_conflicts(
+		COALESCE(repository_identity, 'repo-v1:unknown'), source, stream_id, event_id,
+		payload_digest_version, canonical_payload_digest, conflicting_payload_digest
+	);
+CREATE UNIQUE INDEX IF NOT EXISTS idx_raw_event_quarantine_identity_digest
+	ON raw_event_quarantine(
+		COALESCE(repository_identity, 'repo-v1:unknown'), source, stream_id, event_id,
+		payload_digest_version, payload_digest
+	);
+
 CREATE INDEX IF NOT EXISTS idx_sync_peers_actor_id ON sync_peers(actor_id);
 
 CREATE TABLE IF NOT EXISTS coordinator_enrollment_reconciliation_issues (

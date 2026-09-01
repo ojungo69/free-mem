@@ -1,10 +1,11 @@
 import { mkdtempSync, rmSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
-import { afterEach, beforeEach, describe, expect, it } from "vitest";
+import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import { buildRawEventEnvelopeFromHook } from "./claude-hooks.js";
 import { connect } from "./db.js";
 import type { IngestOptions } from "./ingest-pipeline.js";
+import { ObserverAuthError } from "./observer-client.js";
 import { flushRawEvents } from "./raw-event-flush.js";
 import type { MemoryStore } from "./store.js";
 import { initTestSchema, openTestMemoryStore } from "./test-utils.js";
@@ -37,6 +38,7 @@ describe("flushRawEvents max retry", () => {
 			eventId: "evt-1",
 			eventType: "user_prompt",
 			payload: { type: "user_prompt", prompt_text: "Hello" },
+			repositoryIdentity,
 			tsWallMs: 100,
 		});
 		store.recordRawEvent({
@@ -44,6 +46,7 @@ describe("flushRawEvents max retry", () => {
 			eventId: "evt-2",
 			eventType: "tool.execute.after",
 			payload: { type: "tool.execute.after", tool: "read", args: { filePath: "/tmp/x.ts" } },
+			repositoryIdentity,
 			tsWallMs: 200,
 		});
 	}
@@ -84,59 +87,538 @@ describe("flushRawEvents max retry", () => {
 			auth: { source: "none", type: "none", hasToken: false },
 		}),
 	};
+	const manifestFingerprint = `sha256:${"a".repeat(64)}`;
+	const providerFingerprint = `sha256:${"b".repeat(64)}`;
+	const repositoryIdentity = `repo-v1:sha256:${"c".repeat(64)}`;
+	const ingestOptions = (observer: unknown): IngestOptions =>
+		({
+			observer,
+			configurationFingerprint: manifestFingerprint,
+			providerFingerprint,
+		}) as IngestOptions;
 
-	it("gives up after max attempts and advances flush cursor", async () => {
+	it("exhausts after three automatic attempts without advancing the flush cursor", async () => {
 		const sessionId = "ses_max_retry_test";
 		seedEvents(sessionId);
 
-		const ingestOpts = { observer: nullObserver } as unknown as IngestOptions;
+		const ingestOpts = ingestOptions(nullObserver);
 		const flushOpts = {
 			opencodeSessionId: sessionId,
 			source: "opencode",
 			cwd: null,
 			project: null,
 			startedAt: null,
-			maxEvents: null,
 		};
 
-		// Fail five times — each attempt claims the batch and increments attempt_count.
-		for (let i = 0; i < 5; i++) {
+		for (let i = 0; i < 3; i++) {
 			await expect(flushRawEvents(store, ingestOpts, flushOpts)).rejects.toThrow(
 				"observer failed during raw-event flush",
 			);
 		}
 
-		// The next pass should give up instead of retrying.
+		// Timer passage never resumes retry-exhausted work.
 		const result = await flushRawEvents(store, ingestOpts, flushOpts);
-		expect(result.updatedState).toBe(1);
-		expect(result.flushed).toBe(0);
+		expect(result).toEqual({ flushed: 0, updatedState: 0 });
 
-		// Batch should be marked gave_up
 		const batch = store.db
 			.prepare(
 				"SELECT status, attempt_count FROM raw_event_flush_batches WHERE opencode_session_id = ?",
 			)
 			.get(sessionId) as { status: string; attempt_count: number };
-		expect(batch.status).toBe("gave_up");
-		expect(batch.attempt_count).toBe(5);
+		expect(batch.status).toBe("retry_exhausted");
+		expect(batch.attempt_count).toBe(3);
+		expect(store.latestRawEventFlushFailure("opencode")).toMatchObject({
+			stream_id: sessionId,
+			status: "error",
+		});
 
-		// Flush state should be advanced so the session isn't retried
-		const flushState = store.rawEventFlushState(sessionId, "opencode");
-		expect(flushState).toBeGreaterThanOrEqual(0);
+		expect(store.rawEventFlushState(sessionId, "opencode")).toBe(-1);
+		expect(
+			store.db.prepare("SELECT ended_at FROM sessions ORDER BY id DESC LIMIT 1").get(),
+		).toEqual({ ended_at: null });
+	});
+
+	it("completes an accepted trivial prompt without retrying or consuming capacity", async () => {
+		const sessionId = "ses_trivial_prompt";
+		store.recordRawEvent({
+			opencodeSessionId: sessionId,
+			eventId: "evt-yes",
+			eventType: "user_prompt",
+			payload: { type: "user_prompt", prompt_text: "yes" },
+			repositoryIdentity,
+			tsWallMs: 100,
+		});
+		let observerCalls = 0;
+		const observer = {
+			observe: async () => {
+				observerCalls++;
+				throw new Error("observer must not be called");
+			},
+			getStatus: nullObserver.getStatus,
+		};
+
+		await expect(
+			flushRawEvents(store, ingestOptions(observer), {
+				opencodeSessionId: sessionId,
+				source: "opencode",
+				cwd: null,
+				project: null,
+				startedAt: null,
+			}),
+		).resolves.toEqual({ flushed: 1, updatedState: 1 });
+
+		expect(observerCalls).toBe(0);
+		expect(store.rawEventFlushState(sessionId, "opencode")).toBe(0);
+		expect(
+			store.db
+				.prepare(
+					`SELECT status, attempt_count, completion_disposition, output_count,
+						observed_output_count, safe_error_code
+					 FROM raw_event_flush_batches WHERE stream_id = ?`,
+				)
+				.get(sessionId),
+		).toEqual({
+			status: "completed",
+			attempt_count: 1,
+			completion_disposition: "memory_committed",
+			output_count: 0,
+			observed_output_count: 0,
+			safe_error_code: null,
+		});
+		expect(
+			store.db
+				.prepare(
+					"SELECT COUNT(*) AS count FROM raw_event_flush_batches WHERE status IN ('queued','processing','failed','retry_exhausted')",
+				)
+				.get(),
+		).toEqual({ count: 0 });
+		expect(store.latestRawEventFlushFailure("opencode")).toBeNull();
+	});
+
+	it("completes long lifecycle-only ranges without calling the observer", async () => {
+		for (const [source, sessionId] of [
+			["opencode", "ses_lifecycle_top_level"],
+			["claude", "ses_lifecycle_adapter"],
+		] as const) {
+			for (let index = 0; index < 5; index++) {
+				if (source === "opencode") {
+					const type = ["session.started", "session.idle", "session.ended"][index % 3] ?? "";
+					store.recordRawEvent({
+						opencodeSessionId: sessionId,
+						source,
+						eventId: `${sessionId}-${index}`,
+						eventType: type,
+						payload: { type },
+						repositoryIdentity,
+						tsWallMs: index * 1_000,
+					});
+					continue;
+				}
+				const envelope = buildRawEventEnvelopeFromHook({
+					hook_event_name: index % 2 === 0 ? "SessionStart" : "SessionEnd",
+					session_id: sessionId,
+					source: `startup-${index}`,
+					reason: `reason-${index}`,
+					ts: new Date(index * 1_000).toISOString(),
+				});
+				if (!envelope) throw new Error("expected lifecycle adapter envelope");
+				store.recordRawEvent({
+					opencodeSessionId: envelope.opencode_session_id,
+					source: envelope.source,
+					eventId: envelope.event_id,
+					eventType: envelope.event_type,
+					payload: envelope.payload,
+					repositoryIdentity,
+					tsWallMs: envelope.ts_wall_ms,
+				});
+			}
+			let observerCalls = 0;
+			const observer = {
+				observe: async () => {
+					observerCalls++;
+					throw new Error("observer must not be called");
+				},
+				getStatus: nullObserver.getStatus,
+			};
+
+			await expect(
+				flushRawEvents(store, ingestOptions(observer), {
+					opencodeSessionId: sessionId,
+					source,
+					cwd: null,
+					project: null,
+					startedAt: null,
+				}),
+			).resolves.toEqual({ flushed: 5, updatedState: 1 });
+			expect(observerCalls).toBe(0);
+			expect(store.rawEventFlushState(sessionId, source)).toBe(4);
+			expect(
+				store.db
+					.prepare(
+						`SELECT status, attempt_count, completion_disposition, egress_diagnostic_json
+						 FROM raw_event_flush_batches WHERE source = ? AND stream_id = ?`,
+					)
+					.get(source, sessionId),
+			).toMatchObject({
+				status: "completed",
+				attempt_count: 1,
+				completion_disposition: "memory_committed",
+				egress_diagnostic_json: expect.stringContaining('"reason":"eligible_only"'),
+			});
+		}
+		expect(
+			store.db
+				.prepare(
+					"SELECT COUNT(*) AS count FROM raw_event_flush_batches WHERE status IN ('queued','processing','failed','retry_exhausted')",
+				)
+				.get(),
+		).toEqual({ count: 0 });
+	});
+
+	it("keeps adapter errors retryable instead of terminal low-signal", async () => {
+		const sessionId = "ses_adapter_error";
+		store.recordRawEvent({
+			opencodeSessionId: sessionId,
+			source: "claude",
+			eventId: "adapter-error-0",
+			eventType: "claude.hook",
+			payload: {
+				type: "claude.hook",
+				_adapter: {
+					schema_version: "1.0",
+					source: "claude",
+					session_id: sessionId,
+					event_id: "adapter-error-0",
+					event_type: "error",
+					payload: { message: "adapter failed" },
+					ts: "2026-03-04T10:00:00.000Z",
+				},
+			},
+			repositoryIdentity,
+			tsWallMs: 100,
+		});
+
+		await expect(
+			flushRawEvents(store, ingestOptions(nullObserver), {
+				opencodeSessionId: sessionId,
+				source: "claude",
+				cwd: null,
+				project: null,
+				startedAt: null,
+			}),
+		).rejects.toThrow("observer produced no storable output for raw-event flush");
+		expect(
+			store.db
+				.prepare(
+					`SELECT status, attempt_count, completion_disposition, safe_error_code
+					 FROM raw_event_flush_batches WHERE source = 'claude' AND stream_id = ?`,
+				)
+				.get(sessionId),
+		).toEqual({
+			status: "failed",
+			attempt_count: 1,
+			completion_disposition: "none",
+			safe_error_code: "output_invalid",
+		});
+	});
+
+	it("keeps a substantive prompt after a trivial prompt retryable", async () => {
+		const sessionId = "ses_mixed_prompts";
+		for (const [eventId, promptText, tsWallMs] of [
+			["evt-yes", "yes", 100],
+			["evt-substantive", "Investigate the durable retry path", 200],
+		] as const) {
+			store.recordRawEvent({
+				opencodeSessionId: sessionId,
+				eventId,
+				eventType: "user_prompt",
+				payload: { type: "user_prompt", prompt_text: promptText },
+				repositoryIdentity,
+				tsWallMs,
+			});
+		}
+		await expect(
+			flushRawEvents(store, ingestOptions(nullObserver), {
+				opencodeSessionId: sessionId,
+				source: "opencode",
+				cwd: null,
+				project: null,
+				startedAt: null,
+			}),
+		).rejects.toThrow("observer produced no storable output for raw-event flush");
+		expect(store.rawEventFlushState(sessionId, "opencode")).toBe(-1);
+		expect(
+			store.db
+				.prepare("SELECT status, attempt_count FROM raw_event_flush_batches WHERE stream_id = ?")
+				.get(sessionId),
+		).toEqual({ status: "failed", attempt_count: 1 });
+	});
+
+	it("keeps an unknown accepted event retryable", async () => {
+		const sessionId = "ses_unknown_event";
+		store.recordRawEvent({
+			opencodeSessionId: sessionId,
+			eventId: "evt-unknown",
+			eventType: "unknown.event",
+			payload: { type: "unknown.event" },
+			repositoryIdentity,
+			tsWallMs: 100,
+		});
+
+		await expect(
+			flushRawEvents(store, ingestOptions(nullObserver), {
+				opencodeSessionId: sessionId,
+				source: "opencode",
+				cwd: null,
+				project: null,
+				startedAt: null,
+			}),
+		).rejects.toThrow("observer produced no storable output for raw-event flush");
+
+		expect(store.rawEventFlushState(sessionId, "opencode")).toBe(-1);
+		expect(
+			store.db
+				.prepare(
+					`SELECT batch.status, batch.attempt_count, COUNT(event.id) AS source_count
+					 FROM raw_event_flush_batches AS batch
+					 JOIN raw_events AS event ON event.source = batch.source
+						AND event.stream_id = batch.stream_id
+						AND event.event_seq BETWEEN batch.start_event_seq AND batch.end_event_seq
+					 WHERE batch.stream_id = ?`,
+				)
+				.get(sessionId),
+		).toEqual({ status: "failed", attempt_count: 1, source_count: 1 });
+	});
+
+	it("records the closed diagnostic for observer output above the active limit", async () => {
+		const sessionId = "ses_output_limit";
+		seedEvents(sessionId);
+		const observer = {
+			observe: async () => ({
+				raw: Array.from(
+					{ length: 17 },
+					(_, index) =>
+						`<observation><type>discovery</type><title>Result ${index}</title><narrative>Distinct durable result ${index}.</narrative></observation>`,
+				).join(""),
+				parsed: null,
+				provider: "test",
+				model: "test-model",
+			}),
+			getStatus: summaryObserver.getStatus,
+		};
+
+		await expect(
+			flushRawEvents(store, ingestOptions(observer), {
+				opencodeSessionId: sessionId,
+				source: "opencode",
+				cwd: null,
+				project: null,
+				startedAt: null,
+			}),
+		).rejects.toThrow("output limit exceeded");
+		expect(
+			store.db
+				.prepare("SELECT status, safe_error_code FROM raw_event_flush_batches WHERE stream_id = ?")
+				.get(sessionId),
+		).toEqual({ status: "failed", safe_error_code: "output_limit_exceeded" });
+		expect(
+			store.db.prepare("SELECT ended_at FROM sessions ORDER BY id DESC LIMIT 1").get(),
+		).toEqual({ ended_at: null });
+	});
+
+	it("preserves the observer failure when legacy diagnostic persistence also fails", async () => {
+		const sessionId = "ses_diagnostic_failure";
+		seedEvents(sessionId);
+		vi.spyOn(store, "recordRawEventFlushBatchDiagnostic").mockImplementation(() => {
+			throw new Error("legacy diagnostic failure");
+		});
+
+		await expect(
+			flushRawEvents(store, ingestOptions(nullObserver), {
+				opencodeSessionId: sessionId,
+				source: "opencode",
+				cwd: null,
+				project: null,
+				startedAt: null,
+			}),
+		).rejects.toThrow("observer failed during raw-event flush");
+		expect(
+			store.db
+				.prepare("SELECT status FROM raw_event_flush_batches WHERE opencode_session_id = ?")
+				.get(sessionId),
+		).toEqual({ status: "failed" });
+	});
+
+	it("preserves an auth failure when its processing claim became stale", async () => {
+		const sessionId = "ses_stale_auth_failure";
+		seedEvents(sessionId);
+		const authError = new ObserverAuthError("auth failed");
+		const observer = {
+			observe: async () => {
+				store.db
+					.prepare(
+						"UPDATE raw_event_flush_batches SET claim_generation = claim_generation + 1 WHERE stream_id = ? AND status = 'processing'",
+					)
+					.run(sessionId);
+				throw authError;
+			},
+			getStatus: nullObserver.getStatus,
+		};
+
+		await expect(
+			flushRawEvents(store, ingestOptions(observer), {
+				opencodeSessionId: sessionId,
+				source: "opencode",
+				cwd: null,
+				project: null,
+				startedAt: null,
+			}),
+		).rejects.toBe(authError);
+	});
+
+	it("surfaces a canonical job failure persistence error", async () => {
+		const sessionId = "ses_failure_persistence";
+		seedEvents(sessionId);
+		const persistenceError = new Error("job failure persistence failed");
+		vi.spyOn(store, "failRawEventFlushJob").mockImplementation(() => {
+			throw persistenceError;
+		});
+
+		await expect(
+			flushRawEvents(store, ingestOptions(nullObserver), {
+				opencodeSessionId: sessionId,
+				source: "opencode",
+				cwd: null,
+				project: null,
+				startedAt: null,
+			}),
+		).rejects.toBe(persistenceError);
+	});
+
+	it("privacy-skips an all-quarantined range without calling the observer", async () => {
+		const sessionId = "ses_all_quarantined";
+		expect(
+			store.recordRawEvent({
+				opencodeSessionId: sessionId,
+				eventId: "quarantined-0",
+				eventType: "user_prompt",
+				payload: { text: "must not reach provider" },
+				sensitivity: "secret",
+				captureState: "quarantined",
+				safeErrorCode: "redaction_degraded",
+				redactionDegraded: true,
+			}),
+		).toMatchObject({ status: "quarantined", normalAck: false });
+		let observerCalls = 0;
+		const observer = {
+			observe: async () => {
+				observerCalls++;
+				throw new Error("observer must not be called");
+			},
+			getStatus: nullObserver.getStatus,
+		};
+		expect(
+			await flushRawEvents(store, ingestOptions(observer), {
+				opencodeSessionId: sessionId,
+				source: "opencode",
+				cwd: null,
+				project: null,
+				startedAt: null,
+			}),
+		).toEqual({ flushed: 1, updatedState: 1 });
+		expect(observerCalls).toBe(0);
+		expect(store.rawEventFlushState(sessionId, "opencode")).toBe(0);
+		expect(
+			store.db
+				.prepare(
+					"SELECT payload_json, sensitivity, capture_state, safe_error_code FROM raw_events WHERE event_id = 'quarantined-0'",
+				)
+				.get(),
+		).toEqual({
+			payload_json: "{}",
+			sensitivity: "secret",
+			capture_state: "quarantined",
+			safe_error_code: "redaction_degraded",
+		});
+		expect(
+			store.db
+				.prepare(
+					"SELECT status, completion_disposition FROM raw_event_flush_batches WHERE stream_id = ?",
+				)
+				.get(sessionId),
+		).toEqual({ status: "completed", completion_disposition: "privacy_skip" });
+	});
+
+	it("omits quarantined positions from mixed provider input and memory citations", async () => {
+		const sessionId = "ses_mixed_quarantine";
+		store.recordRawEvent({
+			opencodeSessionId: sessionId,
+			eventId: "mixed-accepted",
+			eventType: "user_prompt",
+			payload: { type: "user_prompt", prompt_text: "VISIBLE_MIXED_EVENT" },
+			repositoryIdentity,
+			sensitivity: "eligible",
+		});
+		store.recordRawEvent({
+			opencodeSessionId: sessionId,
+			eventId: "mixed-quarantined",
+			eventType: "user_prompt",
+			payload: { type: "user_prompt", prompt_text: "FORBIDDEN_MIXED_EVENT" },
+			repositoryIdentity,
+			sensitivity: "secret",
+			captureState: "quarantined",
+			safeErrorCode: "redaction_degraded",
+			redactionDegraded: true,
+		});
+		store.recordRawEvent({
+			opencodeSessionId: sessionId,
+			eventId: "mixed-accepted-assistant",
+			eventType: "assistant_message",
+			payload: { type: "assistant_message", assistant_text: "Visible completion" },
+			repositoryIdentity,
+			sensitivity: "eligible",
+		});
+		let requestText = "";
+		const observer = {
+			observe: async (system: string, user: string) => {
+				requestText = `${system}\n${user}`;
+				return summaryObserver.observe();
+			},
+			getStatus: summaryObserver.getStatus,
+		};
+		expect(
+			await flushRawEvents(store, ingestOptions(observer), {
+				opencodeSessionId: sessionId,
+				source: "opencode",
+				cwd: null,
+				project: null,
+				startedAt: null,
+			}),
+		).toEqual({ flushed: 3, updatedState: 1 });
+		expect(requestText).toContain("VISIBLE_MIXED_EVENT");
+		expect(requestText).not.toContain("FORBIDDEN_MIXED_EVENT");
+		expect(
+			store.db
+				.prepare(
+					"SELECT source_event_ids_json FROM memory_items WHERE source_event_ids_json IS NOT NULL ORDER BY id DESC LIMIT 1",
+				)
+				.get(),
+		).toEqual({
+			source_event_ids_json: '["mixed-accepted","mixed-accepted-assistant"]',
+		});
 	});
 
 	it("does not give up when under the max attempts", async () => {
 		const sessionId = "ses_under_max";
 		seedEvents(sessionId);
 
-		const ingestOpts = { observer: nullObserver } as unknown as IngestOptions;
+		const ingestOpts = ingestOptions(nullObserver);
 		const flushOpts = {
 			opencodeSessionId: sessionId,
 			source: "opencode",
 			cwd: null,
 			project: null,
 			startedAt: null,
-			maxEvents: null,
 		};
 
 		// Fail twice — still under the limit
@@ -145,11 +627,6 @@ describe("flushRawEvents max retry", () => {
 				"observer failed during raw-event flush",
 			);
 		}
-
-		// 3rd attempt should still try (and fail), not give up
-		await expect(flushRawEvents(store, ingestOpts, flushOpts)).rejects.toThrow(
-			"observer failed during raw-event flush",
-		);
 
 		const batch = store.db
 			.prepare("SELECT status FROM raw_event_flush_batches WHERE opencode_session_id = ?")
@@ -188,13 +665,12 @@ describe("flushRawEvents max retry", () => {
 		};
 
 		await expect(
-			flushRawEvents(store, { observer } as unknown as IngestOptions, {
+			flushRawEvents(store, ingestOptions(observer), {
 				opencodeSessionId: sessionId,
 				source: "opencode",
 				cwd: null,
 				project: null,
 				startedAt: null,
-				maxEvents: null,
 			}),
 		).rejects.toThrow("observer repair remained lossy during raw-event flush");
 
@@ -238,13 +714,12 @@ describe("flushRawEvents max retry", () => {
 		};
 
 		await expect(
-			flushRawEvents(store, { observer } as unknown as IngestOptions, {
+			flushRawEvents(store, ingestOptions(observer), {
 				opencodeSessionId: sessionId,
 				source: "opencode",
 				cwd: null,
 				project: null,
 				startedAt: null,
-				maxEvents: null,
 			}),
 		).rejects.toThrow("observer repair remained lossy during raw-event flush");
 
@@ -257,86 +732,94 @@ describe("flushRawEvents max retry", () => {
 		expect(store.recent(10)).toHaveLength(0);
 	});
 
-	it("keeps the legacy retry threshold at 5 until v21 owns enforcement", async () => {
-		const sessionId = "ses_default_max";
-		seedEvents(sessionId);
-
-		const ingestOpts = { observer: nullObserver } as unknown as IngestOptions;
-		const flushOpts = {
-			opencodeSessionId: sessionId,
-			source: "opencode",
-			cwd: null,
-			project: null,
-			startedAt: null,
-			maxEvents: null,
-		};
-
-		for (let i = 0; i < 5; i++) {
-			await expect(flushRawEvents(store, ingestOpts, flushOpts)).rejects.toThrow(
-				"observer failed during raw-event flush",
-			);
-		}
-
-		// The next pass terminally records exhaustion in the legacy v20 state.
-		const result = await flushRawEvents(store, ingestOpts, flushOpts);
-		expect(result.updatedState).toBe(1);
-
-		const batch = store.db
-			.prepare("SELECT status FROM raw_event_flush_batches WHERE opencode_session_id = ?")
-			.get(sessionId) as { status: string };
-		expect(batch.status).toBe("gave_up");
-	});
-
-	it("gave_up batches are not resurrected by retryRawEventFailures", async () => {
+	it("retry-exhausted batches are not resurrected by broad retry maintenance", async () => {
 		const sessionId = "ses_no_resurrect";
 		seedEvents(sessionId);
 
-		const ingestOpts = { observer: nullObserver } as unknown as IngestOptions;
+		const ingestOpts = ingestOptions(nullObserver);
 		const flushOpts = {
 			opencodeSessionId: sessionId,
 			source: "opencode",
 			cwd: null,
 			project: null,
 			startedAt: null,
-			maxEvents: null,
 		};
 
-		// Exhaust the legacy v20 attempts, then give up.
-		for (let attempt = 0; attempt < 5; attempt++) {
+		for (let attempt = 0; attempt < 3; attempt++) {
 			await expect(flushRawEvents(store, ingestOpts, flushOpts)).rejects.toThrow();
 		}
-		await flushRawEvents(store, ingestOpts, flushOpts);
 
-		// Verify gave_up
 		const before = store.db
 			.prepare("SELECT status FROM raw_event_flush_batches WHERE opencode_session_id = ?")
 			.get(sessionId) as { status: string };
-		expect(before.status).toBe("gave_up");
+		expect(before.status).toBe("retry_exhausted");
 
-		// retryRawEventFailures should not touch it
 		const { retryRawEventFailuresWithDb } = await import("./maintenance.js");
 		const retried = retryRawEventFailuresWithDb(store.db);
 		expect(retried.retried).toBe(0);
 
-		// Still gave_up
 		const after = store.db
 			.prepare("SELECT status FROM raw_event_flush_batches WHERE opencode_session_id = ?")
 			.get(sessionId) as { status: string };
-		expect(after.status).toBe("gave_up");
+		expect(after.status).toBe("retry_exhausted");
+	});
+
+	it("keeps direct flush admission contiguous and capped at 100 source events", async () => {
+		const sessionId = "ses-slice1-max-100";
+		for (let eventSeq = 0; eventSeq < 101; eventSeq++) {
+			store.recordRawEvent({
+				opencodeSessionId: sessionId,
+				eventId: `evt-${eventSeq}`,
+				eventType: "user_prompt",
+				payload: { type: "user_prompt", prompt_text: `event ${eventSeq}` },
+				repositoryIdentity,
+				tsWallMs: eventSeq,
+			});
+		}
+		const opts = {
+			opencodeSessionId: sessionId,
+			source: "opencode",
+			cwd: null,
+			project: null,
+			startedAt: null,
+		};
+		const cappedObserver = {
+			observe: async () => ({
+				raw: '<skip_summary reason="low-signal"/>',
+				parsed: null,
+				provider: "test",
+				model: "test-model",
+			}),
+			getStatus: summaryObserver.getStatus,
+		};
+		const cappedIngestOptions = {
+			observer: cappedObserver,
+			configurationFingerprint: `sha256:${"a".repeat(64)}`,
+			providerFingerprint: `sha256:${"b".repeat(64)}`,
+		} as IngestOptions;
+		expect(await flushRawEvents(store, cappedIngestOptions, opts)).toEqual({
+			flushed: 100,
+			updatedState: 1,
+		});
+		expect(store.rawEventFlushState(sessionId)).toBe(99);
+		expect(await flushRawEvents(store, cappedIngestOptions, opts)).toEqual({
+			flushed: 1,
+			updatedState: 1,
+		});
+		expect(store.rawEventFlushState(sessionId)).toBe(100);
 	});
 
 	it("reuses one local session per stable raw-event session id", async () => {
 		const sessionId = "ses_bridge_reuse";
 		seedEvents(sessionId);
 
-		const ingestOpts = { observer: summaryObserver } as unknown as IngestOptions;
+		const ingestOpts = ingestOptions(summaryObserver);
 		const flushOpts = {
 			opencodeSessionId: sessionId,
 			source: "opencode",
 			cwd: null,
 			project: null,
 			startedAt: "2026-03-01T10:00:00Z",
-			maxEvents: null,
 		};
 
 		const first = await flushRawEvents(store, ingestOpts, flushOpts);
@@ -347,6 +830,7 @@ describe("flushRawEvents max retry", () => {
 			eventId: "evt-3",
 			eventType: "assistant_message",
 			payload: { type: "assistant_message", assistant_text: "Added validation." },
+			repositoryIdentity,
 			tsWallMs: 300,
 		});
 		store.recordRawEvent({
@@ -358,6 +842,7 @@ describe("flushRawEvents max retry", () => {
 				tool: "edit",
 				args: { filePath: "/tmp/y.ts" },
 			},
+			repositoryIdentity,
 			tsWallMs: 400,
 		});
 
@@ -429,6 +914,7 @@ describe("flushRawEvents max retry", () => {
 				eventId: envelope.event_id,
 				eventType: envelope.event_type,
 				payload: envelope.payload,
+				repositoryIdentity,
 				tsWallMs: envelope.ts_wall_ms,
 			});
 		}
@@ -455,14 +941,13 @@ describe("flushRawEvents max retry", () => {
 			}),
 		};
 
-		const ingestOpts = { observer: summaryResponder } as unknown as IngestOptions;
+		const ingestOpts = ingestOptions(summaryResponder);
 		const flushOpts = {
 			opencodeSessionId: sessionId,
 			source: "claude",
 			cwd: "/tmp/repo",
 			project: "repo",
 			startedAt: "2026-03-04T10:00:00Z",
-			maxEvents: null,
 		};
 
 		const result = await flushRawEvents(store, ingestOpts, flushOpts);
@@ -544,6 +1029,7 @@ describe("flushRawEvents max retry", () => {
 				prompt_text: "Ship the apply_patch fix",
 				timestamp: "2026-04-11T12:00:00Z",
 			},
+			repositoryIdentity,
 			tsWallMs: Date.parse("2026-04-11T12:00:00Z"),
 		});
 		store.recordRawEvent({
@@ -552,6 +1038,7 @@ describe("flushRawEvents max retry", () => {
 			eventId: adapterEvent.event_id,
 			eventType: "tool.execute.after",
 			payload: { _adapter: adapterEvent },
+			repositoryIdentity,
 			tsWallMs: Date.parse(adapterEvent.ts),
 		});
 
@@ -577,14 +1064,13 @@ describe("flushRawEvents max retry", () => {
 			}),
 		};
 
-		const ingestOpts = { observer: summaryResponder } as unknown as IngestOptions;
+		const ingestOpts = ingestOptions(summaryResponder);
 		const flushOpts = {
 			opencodeSessionId: sessionId,
 			source: "opencode",
 			cwd: "/repo",
 			project: "repo",
 			startedAt: "2026-04-11T12:00:00Z",
-			maxEvents: null,
 		};
 
 		const result = await flushRawEvents(store, ingestOpts, flushOpts);

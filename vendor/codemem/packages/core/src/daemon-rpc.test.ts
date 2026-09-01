@@ -407,6 +407,42 @@ describe("Phase 1 daemon RPC", () => {
 				},
 			},
 		});
+
+		const degradedId = "p1-doctor-degraded";
+		expect(
+			await core.callDaemonRpc(
+				handle.socketPath,
+				handshake({
+					id: degradedId,
+					method: "POST /v1/events",
+					body: {
+						idempotencyKey: degradedId,
+						event: normalizedEvent(degradedId),
+						adapterRedaction: {
+							sensitivity: "secret",
+							secret_rules_version: `${"a".repeat(64)}:degraded`,
+							redaction_degraded: true,
+							private_content_omitted: false,
+							local_only: false,
+						},
+					},
+				}),
+			),
+		).toMatchObject({ result: { status: "quarantined" } });
+		expect(
+			rpcResult(
+				await core.callDaemonRpc(
+					handle.socketPath,
+					handshake({ id: "p1-doctor-warning", method: "GET /v1/doctor" }),
+				),
+			).diagnostics,
+		).toMatchObject({
+			redaction: {
+				status: "warning",
+				degradedDeliveries: 1,
+				workerDeadlineMs: core.REDACTION_WORKER_DEADLINE_MS,
+			},
+		});
 	});
 
 	it("rejects malformed memory adapter redaction metadata", async () => {
@@ -1379,6 +1415,392 @@ describe("T008 capability runtime RPC", () => {
 			});
 		} finally {
 			vi.unstubAllEnvs();
+		}
+	});
+});
+
+describe("T018/T019 durable capture and processing-job RPC", () => {
+	it("keeps capture conflicts non-successful and saturates direct admission at two", async () => {
+		const dataDir = tempDataDir();
+		const handle = await core.startDaemon({ dataDir });
+		created.push(handle);
+		const send = async (idempotencyKey: string, event: Record<string, unknown>) =>
+			core.callDaemonRpc(
+				handle.socketPath,
+				handshake({
+					id: `t018-${idempotencyKey}`,
+					method: "POST /v1/events",
+					body: { idempotencyKey, event: { ...event, idempotencyKey } },
+				}),
+			);
+
+		const canonical = normalizedEvent("t018-null-identity");
+		expect(await send("t018-null-identity", canonical)).toMatchObject({
+			result: { status: "committed" },
+		});
+		const conflicting = {
+			...canonical,
+			cwd: "/tmp/conflicting",
+			projectKey: "conflicting-project",
+			occurredAt: new Date(1_000).toISOString(),
+			payload: { text: "must not become canonical" },
+			sourceHash: "c".repeat(64),
+		};
+		const quarantined = await send("t018-null-identity", conflicting);
+		const replay = await send("t018-null-identity", conflicting);
+		const quarantineReceipt = rpcResult(quarantined);
+		const replayReceipt = rpcResult(replay);
+		expect(quarantineReceipt).toMatchObject({
+			status: "quarantined",
+			receiptId: expect.any(String),
+			safeErrorCode: "repository_identity_unknown_collision",
+		});
+		expect(quarantineReceipt.status).not.toBe("committed");
+		expect(quarantineReceipt).not.toHaveProperty("ack");
+		expect(replayReceipt).toMatchObject({
+			status: "quarantined",
+			receiptId: quarantineReceipt.receiptId,
+		});
+		const activePointer = core.readCurrentDatabasePointer(handle.layout);
+		const reader = ReadOnlyActor.open(resolve(handle.layout.dbDir, activePointer as string));
+		try {
+			expect(
+				reader
+					.prepare(
+						`SELECT cwd, project, last_seen_ts_wall_ms
+						 FROM raw_event_sessions WHERE source = ? AND stream_id = ?`,
+					)
+					.get("codex", "t008-session"),
+			).toEqual({ cwd: process.cwd(), project: "t008-project", last_seen_ts_wall_ms: 0 });
+			expect(
+				reader
+					.prepare(
+						`SELECT COUNT(*) AS count FROM mutation_quarantine
+						 WHERE method = ? AND idempotency_key = ?`,
+					)
+					.get("POST /v1/events", "t018-null-identity"),
+			).toEqual({ count: 1 });
+		} finally {
+			reader.close();
+		}
+
+		{
+			const items = [0, 1, 2].map((index) => {
+				const id = `t018-capture-${index}`;
+				const event = normalizedEvent(id);
+				return { idempotencyKey: id, event };
+			});
+			const batch = await core.callDaemonRpc(
+				handle.socketPath,
+				handshake({
+					id: "t018-capture-batch",
+					method: "POST /v1/events/batch",
+					body: { items },
+				}),
+			);
+			expect(batch).toMatchObject({
+				result: {
+					receipts: [{ status: "committed" }, { status: "committed" }, { status: "committed" }],
+				},
+			});
+			expect(
+				rpcResult(
+					await core.callDaemonRpc(
+						handle.socketPath,
+						handshake({
+							id: "t018-capture-count",
+							method: "GET /v1/view",
+							body: { collection: "raw-events" },
+						}),
+					),
+				).body,
+			).toMatchObject({ pending: 4 });
+
+			const admissionDataDir = tempDataDir();
+			const admissionStore = openTestMemoryStore(join(admissionDataDir, "admission.sqlite"));
+			try {
+				const admissionContext = {
+					identity: { pid: process.pid, nonce: "t018-saturated" },
+					dataDir: admissionDataDir,
+					onStop: () => undefined,
+					writer: admissionStore.db,
+					store: admissionStore,
+					jobs: { isMaintenanceMode: () => false },
+					capability: core.captureOnlyCapabilityProjection("ready"),
+					captureInFlight: 0,
+				} as unknown as Parameters<typeof core.dispatchDaemonRpc>[1];
+				const requests = [
+					handshake({
+						id: "direct-event",
+						method: "POST /v1/events",
+						body: {
+							idempotencyKey: "direct-event",
+							event: normalizedEvent("direct-event"),
+						},
+					}),
+					handshake({
+						id: "batch-event",
+						method: "POST /v1/events/batch",
+						body: {
+							items: [
+								{
+									idempotencyKey: "batch-event",
+									event: normalizedEvent("batch-event"),
+								},
+							],
+						},
+					}),
+					handshake({
+						id: "rejected-event",
+						method: "POST /v1/events",
+						body: {
+							idempotencyKey: "rejected-event",
+							event: normalizedEvent("rejected-event"),
+						},
+					}),
+				];
+				const admissions = await Promise.all(
+					requests.map((request) =>
+						core.dispatchDaemonRpc(JSON.stringify(request), admissionContext),
+					),
+				);
+				expect(admissions[0]).toMatchObject({ result: { status: "committed" } });
+				expect(admissions[1]).toMatchObject({
+					result: { receipts: [{ status: "committed" }] },
+				});
+				expect(admissions[2]).toMatchObject({
+					error: { code: "capture_saturated", retryable: true },
+				});
+				expect(admissionContext.captureInFlight).toBe(0);
+			} finally {
+				admissionStore.close();
+			}
+		}
+	});
+
+	it("recovers one exact legacy-unknown job and rejects stale or concurrent doctor confirmations", async () => {
+		const dataDir = tempDataDir();
+		const initial = await core.startDaemon({ dataDir });
+		await initial.stop();
+		const layout = core.resolveStorageLayout(dataDir);
+		const pointer = core.readCurrentDatabasePointer(layout);
+		if (!pointer) throw new Error("expected canonical database pointer");
+		const manifest = capabilityManifest(
+			"http://127.0.0.1:1234/v1/chat/completions",
+			"t019-legacy-doctor",
+		);
+		activateManifest(dataDir, manifest);
+		const store = openTestMemoryStore(resolve(layout.dbDir, pointer));
+		let batchId: number;
+		const manifestFingerprint = manifest.configurationFingerprint;
+		const providerFingerprint = manifest.summaryProvider.providerFingerprint;
+		try {
+			store.recordRawEvent({
+				opencodeSessionId: "t019-processing-job",
+				source: "codex",
+				eventId: "t019-processing-job-0",
+				eventType: "user_prompt",
+				payload: { text: "legacy recovery source" },
+				repositoryIdentity: `repo-v1:sha256:${"a".repeat(64)}`,
+				sensitivity: "eligible",
+			});
+			const result = store.db
+				.prepare(
+					`INSERT INTO raw_event_flush_batches(
+						source, stream_id, opencode_session_id, start_event_seq, end_event_seq,
+						extractor_version, status, admission_manifest_fingerprint,
+						admission_provider_fingerprint, attempt_manifest_fingerprint,
+						attempt_provider_fingerprint, retry_limit, attempt_count,
+						claim_generation, legacy_recovery_state, created_at, updated_at
+					 ) VALUES ('codex', 't019-processing-job', 't019-processing-job', 0, 0,
+						'raw_events_v1', 'retry_exhausted', NULL, NULL, NULL, NULL, 3, 3, 0,
+						'complete_range', ?, ?)`,
+				)
+				.run("2026-08-31T00:00:00.000Z", "2026-08-31T00:00:00.000Z");
+			batchId = Number(result.lastInsertRowid);
+		} finally {
+			store.close();
+		}
+		const handle = await core.startDaemon({ dataDir });
+		created.push(handle);
+		const get = () =>
+			core.callDaemonRpc(
+				handle.socketPath,
+				handshake({
+					id: `t019-get-${batchId}`,
+					method: "GET /v1/processing-jobs/:id",
+					body: { id: String(batchId) },
+				}),
+			);
+		const before = rpcResult(await get());
+		expect(before).toEqual({
+			job: {
+				jobId: batchId,
+				component: "summary",
+				state: "retry_exhausted",
+				admission: {
+					manifestFingerprint: null,
+					providerFingerprint: null,
+					retryLimit: 3,
+				},
+				attempt: {
+					count: 3,
+					claimGeneration: 0,
+					manifestFingerprint: null,
+					providerFingerprint: null,
+					fingerprint: null,
+				},
+				resume: { grantState: "none", lastSequence: 0 },
+				retryTarget: { manifestFingerprint, providerFingerprint },
+				nextAction: "confirm_retry",
+			},
+		});
+		expect(JSON.stringify(before)).not.toContain("payload");
+		const stale = await core.callDaemonRpc(
+			handle.socketPath,
+			handshake({
+				id: `t019-stale-${batchId}`,
+				method: "POST /v1/processing-jobs/:id/doctor-retry",
+				body: {
+					id: String(batchId),
+					producerReceiptId: "doctor-receipt-stale",
+					expectedRole: "summary",
+					expectedProviderFingerprint: null,
+					expectedManifestFingerprint: null,
+					expectedAttemptCount: 3,
+					expectedClaimGeneration: 1,
+				},
+			}),
+		);
+		expect(stale).toMatchObject({ error: { code: "stale_snapshot", retryable: false } });
+		expect(rpcResult(await get())).toEqual(before);
+
+		const acceptedRequest = handshake({
+			id: `t019-accepted-${batchId}`,
+			method: "POST /v1/processing-jobs/:id/doctor-retry",
+			body: {
+				id: String(batchId),
+				producerReceiptId: "doctor-receipt-accepted",
+				expectedRole: "summary",
+				expectedProviderFingerprint: null,
+				expectedManifestFingerprint: null,
+				expectedAttemptCount: 3,
+				expectedClaimGeneration: 0,
+			},
+		});
+		const accepted = await core.callDaemonRpc(handle.socketPath, acceptedRequest);
+		expect(accepted).toMatchObject({
+			result: { jobId: batchId, disposition: "accepted", grantState: "pending" },
+		});
+		const acceptedResult = rpcResult(accepted);
+		const duplicate = await core.callDaemonRpc(handle.socketPath, acceptedRequest);
+		expect(rpcResult(duplicate)).toEqual({
+			jobId: batchId,
+			signalId: acceptedResult.signalId,
+			producerReceiptId: "doctor-receipt-accepted",
+			sequence: 1,
+			disposition: "duplicate",
+			grantState: "pending",
+		});
+		const pendingSnapshot = rpcResult(await get());
+		const pending = await core.callDaemonRpc(
+			handle.socketPath,
+			handshake({
+				id: `t019-pending-${batchId}`,
+				method: "POST /v1/processing-jobs/:id/doctor-retry",
+				body: {
+					id: String(batchId),
+					producerReceiptId: "doctor-receipt-pending",
+					expectedRole: "summary",
+					expectedProviderFingerprint: null,
+					expectedManifestFingerprint: null,
+					expectedAttemptCount: 3,
+					expectedClaimGeneration: 0,
+				},
+			}),
+		);
+		expect(pending).toMatchObject({ error: { code: "grant_pending", retryable: true } });
+		expect(rpcResult(await get())).toEqual(pendingSnapshot);
+
+		await handle.stop();
+		created.pop();
+		rmSync(layout.capabilityCurrentPointerPath);
+		const captureOnly = await core.startDaemon({ dataDir });
+		created.push(captureOnly);
+		const captureOnlySnapshot = rpcResult(
+			await core.callDaemonRpc(
+				captureOnly.socketPath,
+				handshake({
+					id: `t019-capture-only-get-${batchId}`,
+					method: "GET /v1/processing-jobs/:id",
+					body: { id: String(batchId) },
+				}),
+			),
+		);
+		expect(captureOnlySnapshot).toMatchObject({
+			job: { resume: { grantState: "pending" }, retryTarget: null },
+		});
+		expect(rpcResult(await core.callDaemonRpc(captureOnly.socketPath, acceptedRequest))).toEqual({
+			jobId: batchId,
+			signalId: acceptedResult.signalId,
+			producerReceiptId: "doctor-receipt-accepted",
+			sequence: 1,
+			disposition: "duplicate",
+			grantState: "pending",
+		});
+		const unavailableTarget = await core.callDaemonRpc(
+			captureOnly.socketPath,
+			handshake({
+				id: `t019-capture-only-new-${batchId}`,
+				method: "POST /v1/processing-jobs/:id/doctor-retry",
+				body: {
+					...(acceptedRequest.body ?? {}),
+					producerReceiptId: "doctor-receipt-capture-only-new",
+				},
+			}),
+		);
+		expect(unavailableTarget).toMatchObject({
+			error: { code: "stale_snapshot", retryable: false },
+		});
+		expect(
+			rpcResult(
+				await core.callDaemonRpc(
+					captureOnly.socketPath,
+					handshake({
+						id: `t019-capture-only-get-after-${batchId}`,
+						method: "GET /v1/processing-jobs/:id",
+						body: { id: String(batchId) },
+					}),
+				),
+			),
+		).toEqual(captureOnlySnapshot);
+		await captureOnly.stop();
+		created.pop();
+		const resumed = openTestMemoryStore(resolve(layout.dbDir, pointer));
+		try {
+			const claim = resumed.claimRawEventFlushJob({
+				jobId: batchId,
+				manifestFingerprint,
+				providerFingerprint,
+			});
+			if (!claim) throw new Error("expected legacy doctor claim");
+			expect(
+				resumed.db
+					.prepare(
+						`SELECT admission_manifest_fingerprint, admission_provider_fingerprint,
+							attempt_manifest_fingerprint, attempt_provider_fingerprint, attempt_fingerprint
+						 FROM raw_event_flush_batches WHERE id = ?`,
+					)
+					.get(batchId),
+			).toEqual({
+				admission_manifest_fingerprint: null,
+				admission_provider_fingerprint: null,
+				attempt_manifest_fingerprint: manifestFingerprint,
+				attempt_provider_fingerprint: providerFingerprint,
+				attempt_fingerprint: claim.attemptFingerprint,
+			});
+		} finally {
+			resumed.close();
 		}
 	});
 });

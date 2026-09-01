@@ -144,7 +144,7 @@ Malformed pointer/reference/fingerprint/shape fails startup; it is not treated l
 
 **Decision**: ResourceProfileV1 includes the accepted fixture envelope plus periodic 30,000 ms, idle
 120,000 ms, debounce 1,000 ms, stuck claim 300,000 ms, retention disabled/0, and maximum 100 source
-events per job.
+events per newly admitted v21 job.
 
 Preserve the accepted output-limit recovery as a runner-owned test-only fault successor: the same
 profile ID, version 2, and every field unchanged except derivation limit 17. Base remote/local/
@@ -179,7 +179,8 @@ increase recovery states without benefit.
 ## Decision 6: Deepen flush batches, with immutable admission and per-attempt provenance
 
 **Decision**: Keep `raw_event_flush_batches` as the sole job. Capacity includes every uncompleted
-state, including retry-exhausted. Capture precedes admission; at most 100 source events enter a job.
+state, including retry-exhausted. Capture precedes admission; at most 100 source events enter a newly
+admitted v21 job, while migration preserves a wider immutable v20 recovery range.
 
 Raw events store the accepted domain-separated payload digest/version. Same identity/same digest is
 idempotent only after an atomic strongest-sensitivity/absorbing-quarantine join strengthens the
@@ -297,8 +298,10 @@ false. Deleting the internal benchmark would discard useful tests unnecessarily.
 ## Decision 12: Projection and exact source-bound derivation
 
 **Decision**: Stable-filter events before building session context/transcript/prompt/request. Provider
-output cites only IDs/spans from the projected set, bounded by the 100-event job. Each output inherits
-the strongest sensitivity and exact repository identity; mixed/unknown citations reject all output.
+output cites only IDs/spans from the job's exact projected set. A newly admitted v21 job projects at
+most 100 events; a migrated legacy recovery job may project its wider immutable actual range. Each
+output inherits the strongest sensitivity and exact repository identity; mixed/unknown citations
+reject all output.
 
 Dedup/supersession is same-repository and monotonic. Ineligible pack traces are aggregate and
 content-free; eligible injected items keep source/reason evidence.

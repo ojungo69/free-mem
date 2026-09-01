@@ -1,7 +1,8 @@
 import { mkdtempSync, rmSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
-import { afterEach, beforeEach, describe, expect, it } from "vitest";
+import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
+import { defaultResourceProfile } from "./capability-manifest.js";
 import { connect } from "./db.js";
 import type { IngestOptions } from "./ingest-pipeline.js";
 import { RawEventSweeper } from "./raw-event-sweeper.js";
@@ -13,6 +14,9 @@ function sleep(ms: number) {
 }
 
 describe("RawEventSweeper auto flush", () => {
+	const configurationFingerprint = `sha256:${"a".repeat(64)}`;
+	const providerFingerprint = `sha256:${"b".repeat(64)}`;
+	const repositoryIdentity = `repo-v1:sha256:${"c".repeat(64)}`;
 	let tmpDir: string;
 	let dbPath: string;
 	let store: MemoryStore;
@@ -43,15 +47,19 @@ describe("RawEventSweeper auto flush", () => {
 		rmSync(tmpDir, { recursive: true, force: true });
 	});
 
+	function recordRawEvent(input: Parameters<MemoryStore["recordRawEvent"]>[0]) {
+		return store.recordRawEvent({ ...input, repositoryIdentity });
+	}
+
 	function seedSession(sessionId: string) {
-		store.recordRawEvent({
+		recordRawEvent({
 			opencodeSessionId: sessionId,
 			eventId: "evt-0",
 			eventType: "user_prompt",
 			payload: { type: "user_prompt", prompt_text: "Hello from auto flush" },
 			tsWallMs: 100,
 		});
-		store.recordRawEvent({
+		recordRawEvent({
 			opencodeSessionId: sessionId,
 			eventId: "evt-1",
 			eventType: "tool.execute.after",
@@ -72,21 +80,21 @@ describe("RawEventSweeper auto flush", () => {
 	}
 
 	function seedLifecycleOnlySession(sessionId: string) {
-		store.recordRawEvent({
+		recordRawEvent({
 			opencodeSessionId: sessionId,
 			eventId: "evt-0",
 			eventType: "session.started",
 			payload: { type: "session.started" },
 			tsWallMs: 100,
 		});
-		store.recordRawEvent({
+		recordRawEvent({
 			opencodeSessionId: sessionId,
 			eventId: "evt-1",
 			eventType: "session.idle",
 			payload: { type: "session.idle" },
 			tsWallMs: 150,
 		});
-		store.recordRawEvent({
+		recordRawEvent({
 			opencodeSessionId: sessionId,
 			eventId: "evt-2",
 			eventType: "session.ended",
@@ -103,7 +111,7 @@ describe("RawEventSweeper auto flush", () => {
 	}
 
 	function seedAdapterPromptSession(sessionId: string) {
-		store.recordRawEvent({
+		recordRawEvent({
 			opencodeSessionId: sessionId,
 			source: "claude",
 			eventId: "evt-0",
@@ -122,7 +130,7 @@ describe("RawEventSweeper auto flush", () => {
 			},
 			tsWallMs: 100,
 		});
-		store.recordRawEvent({
+		recordRawEvent({
 			opencodeSessionId: sessionId,
 			source: "claude",
 			eventId: "evt-1",
@@ -152,6 +160,8 @@ describe("RawEventSweeper auto flush", () => {
 	}
 
 	const ingestOpts: IngestOptions = {
+		configurationFingerprint,
+		providerFingerprint,
 		observer: {
 			observe: async () => ({
 				raw: `<summary>
@@ -177,6 +187,8 @@ describe("RawEventSweeper auto flush", () => {
 		seedSession("sess-auth");
 		let calls = 0;
 		const sweeper = new RawEventSweeper(store, {
+			configurationFingerprint,
+			providerFingerprint,
 			observer: {
 				observe: async () => {
 					calls += 1;
@@ -206,6 +218,8 @@ describe("RawEventSweeper auto flush", () => {
 		seedSession("sess-stop");
 		let resolved = false;
 		const sweeper = new RawEventSweeper(store, {
+			configurationFingerprint,
+			providerFingerprint,
 			observer: {
 				observe: async () => {
 					await sleep(80);
@@ -240,11 +254,13 @@ describe("RawEventSweeper auto flush", () => {
 		seedSession("sess-rerun");
 		let firstCall = true;
 		const sweeper = new RawEventSweeper(store, {
+			configurationFingerprint,
+			providerFingerprint,
 			observer: {
 				observe: async () => {
 					if (firstCall) {
 						firstCall = false;
-						store.recordRawEvent({
+						recordRawEvent({
 							opencodeSessionId: "sess-rerun",
 							eventId: "evt-2",
 							eventType: "tool.execute.after",
@@ -318,7 +334,7 @@ describe("RawEventSweeper auto flush", () => {
 
 		sweeper.nudge("sess-bounded-debounce");
 		await sleep(20);
-		store.recordRawEvent({
+		recordRawEvent({
 			opencodeSessionId: "sess-bounded-debounce",
 			eventId: "evt-2",
 			eventType: "assistant_message",
@@ -343,21 +359,21 @@ describe("RawEventSweeper auto flush", () => {
 		process.env.CODEMEM_RAW_EVENTS_DEBOUNCE_MS = "0";
 		process.env.CODEMEM_RAW_EVENTS_WORKER_MAX_EVENTS = "2";
 		seedSession("sess-small-batches");
-		store.recordRawEvent({
+		recordRawEvent({
 			opencodeSessionId: "sess-small-batches",
 			eventId: "evt-2",
 			eventType: "assistant_message",
 			payload: { type: "assistant_message", assistant_text: "a" },
 			tsWallMs: 300,
 		});
-		store.recordRawEvent({
+		recordRawEvent({
 			opencodeSessionId: "sess-small-batches",
 			eventId: "evt-3",
 			eventType: "assistant_message",
 			payload: { type: "assistant_message", assistant_text: "b" },
 			tsWallMs: 400,
 		});
-		store.recordRawEvent({
+		recordRawEvent({
 			opencodeSessionId: "sess-small-batches",
 			eventId: "evt-4",
 			eventType: "assistant_message",
@@ -385,6 +401,8 @@ describe("RawEventSweeper auto flush", () => {
 		seedSession("sess-low-signal");
 
 		const sweeper = new RawEventSweeper(store, {
+			configurationFingerprint,
+			providerFingerprint,
 			observer: {
 				observe: async () => ({
 					raw: '<skip_summary reason="low-signal"/>',
@@ -414,6 +432,8 @@ describe("RawEventSweeper auto flush", () => {
 		seedSession("sess-failed-diagnostics");
 
 		const sweeper = new RawEventSweeper(store, {
+			configurationFingerprint,
+			providerFingerprint,
 			observer: {
 				observe: async () => ({
 					raw: null,
@@ -458,6 +478,8 @@ describe("RawEventSweeper auto flush", () => {
 
 		let observerCalls = 0;
 		const sweeper = new RawEventSweeper(store, {
+			configurationFingerprint,
+			providerFingerprint,
 			observer: {
 				observe: async () => {
 					observerCalls += 1;
@@ -530,6 +552,120 @@ describe("RawEventSweeper auto flush", () => {
 		}
 	});
 
+	it("does not create a job for an idle stream with a retained source gap", async () => {
+		const streamId = "sess-source-gap-private-path";
+		for (let eventSeq = 0; eventSeq < 3; eventSeq++) {
+			recordRawEvent({
+				opencodeSessionId: streamId,
+				eventId: `source-gap-event-${eventSeq}`,
+				eventType: "message",
+				payload: { type: "message", path: streamId },
+				tsWallMs: eventSeq,
+			});
+		}
+		store.db.prepare("DELETE FROM raw_events WHERE stream_id = ? AND event_seq = 1").run(streamId);
+		store.updateRawEventSessionMeta({ opencodeSessionId: streamId, lastSeenTsWallMs: 0 });
+		const sweeper = new RawEventSweeper(store, ingestOpts);
+
+		await sweeper.tick();
+		await sweeper.tick();
+
+		expect(store.rawEventFlushState(streamId)).toBe(-1);
+		expect(
+			store.db
+				.prepare("SELECT COUNT(*) AS count FROM raw_event_flush_batches WHERE stream_id = ?")
+				.get(streamId),
+		).toEqual({ count: 0 });
+	});
+
+	it("does not admit a fully pruned source gap from the event-driven nudge path", async () => {
+		const streamId = "sess-nudge-source-gap-private-path";
+		recordRawEvent({
+			opencodeSessionId: streamId,
+			eventId: "source-gap-event-0",
+			eventType: "message",
+			payload: { type: "message", path: streamId },
+			tsWallMs: 0,
+		});
+		store.db.prepare("DELETE FROM raw_events WHERE stream_id = ?").run(streamId);
+		vi.useFakeTimers();
+		try {
+			const admit = vi.spyOn(store, "admitRawEventFlushJob");
+			const sweeper = new RawEventSweeper(store, ingestOpts);
+			sweeper.nudge(streamId);
+			await vi.advanceTimersByTimeAsync(defaultResourceProfile().eventDebounceMs);
+			await sweeper.stop();
+			expect(admit).toHaveBeenCalledWith(expect.objectContaining({ streamId }));
+		} finally {
+			vi.useRealTimers();
+		}
+		expect(store.rawEventFlushState(streamId)).toBe(-1);
+		expect(
+			store.db
+				.prepare("SELECT COUNT(*) AS count FROM raw_event_flush_batches WHERE stream_id = ?")
+				.get(streamId),
+		).toEqual({ count: 0 });
+	});
+
+	it("does not retry a queued job whose retained source range has a gap", async () => {
+		const streamId = "sess-queue-source-gap-private-path";
+		for (let eventSeq = 0; eventSeq < 3; eventSeq++) {
+			recordRawEvent({
+				opencodeSessionId: streamId,
+				eventId: `source-gap-event-${eventSeq}`,
+				eventType: "message",
+				payload: { type: "message", path: streamId },
+				tsWallMs: eventSeq,
+			});
+		}
+		const job = store.admitRawEventFlushJob({
+			source: "opencode",
+			streamId,
+			manifestFingerprint: configurationFingerprint,
+			providerFingerprint,
+		});
+		store.db.prepare("DELETE FROM raw_events WHERE stream_id = ? AND event_seq = 1").run(streamId);
+		const sweeper = new RawEventSweeper(store, ingestOpts);
+
+		await sweeper.tick();
+
+		expect(store.rawEventFlushState(streamId)).toBe(-1);
+		expect(
+			store.db
+				.prepare("SELECT status, attempt_count FROM raw_event_flush_batches WHERE id = ?")
+				.get(job.jobId),
+		).toEqual({ status: "queued", attempt_count: 0 });
+	});
+
+	it("flushes a valid queued range when only the later retained tail has a gap", async () => {
+		const streamId = "sess-queue-tail-source-gap";
+		seedSession(streamId);
+		const job = store.admitRawEventFlushJob({
+			source: "opencode",
+			streamId,
+			manifestFingerprint: configurationFingerprint,
+			providerFingerprint,
+		});
+		for (let eventSeq = 2; eventSeq < 5; eventSeq++) {
+			recordRawEvent({
+				opencodeSessionId: streamId,
+				eventId: `tail-event-${eventSeq}`,
+				eventType: "message",
+				payload: { type: "message" },
+				tsWallMs: eventSeq * 100,
+			});
+		}
+		store.db.prepare("DELETE FROM raw_events WHERE stream_id = ? AND event_seq = 3").run(streamId);
+		const sweeper = new RawEventSweeper(store, ingestOpts);
+
+		await sweeper.tick();
+
+		expect(store.rawEventFlushState(streamId)).toBe(1);
+		expect(
+			store.db.prepare("SELECT status FROM raw_event_flush_batches WHERE id = ?").get(job.jobId),
+		).toEqual({ status: "completed" });
+	});
+
 	it("does not terminally skip adapter-wrapped prompt sessions", async () => {
 		process.env.CODEMEM_RAW_EVENTS_AUTO_FLUSH = "1";
 		process.env.CODEMEM_RAW_EVENTS_DEBOUNCE_MS = "0";
@@ -537,6 +673,8 @@ describe("RawEventSweeper auto flush", () => {
 
 		let observerCalls = 0;
 		const sweeper = new RawEventSweeper(store, {
+			configurationFingerprint,
+			providerFingerprint,
 			observer: {
 				observe: async () => {
 					observerCalls += 1;

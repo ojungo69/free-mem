@@ -21,7 +21,7 @@
 
 import { and, eq, isNull, lt } from "drizzle-orm";
 import { drizzle } from "drizzle-orm/better-sqlite3";
-import type { ResourceProfileV1 } from "./capability-manifest.js";
+import type { EffectiveCapabilityManifestV1, ResourceProfileV1 } from "./capability-manifest.js";
 import { normalizeProjectLabel } from "./claude-hooks.js";
 import { fromJson, toJson } from "./db.js";
 import {
@@ -66,9 +66,10 @@ import type { ObserverClient } from "./observer-client.js";
 import { resolveProject } from "./project.js";
 import * as schema from "./schema.js";
 import { classifySessionForInjection, shouldSuppressSummaryOnlyOutput } from "./session-policy.js";
-import type { MemoryStore } from "./store.js";
+import type { MemoryStore, RawEventDerivationContext } from "./store.js";
 import { deriveTags } from "./tags.js";
 import { isOneOf, trimEndWhere } from "./text-trim.js";
+import type { RawEventJobClaim } from "./types.js";
 
 const TRAILING_SLASH = isOneOf("/");
 
@@ -268,6 +269,10 @@ export interface IngestOptions {
 	/** Observer LLM client. */
 	observer: ObserverClient;
 	resourceProfile?: ResourceProfileV1;
+	capabilityManifest?: EffectiveCapabilityManifestV1;
+	/** Frozen manifest/provider identity used by durable processing claims. */
+	configurationFingerprint?: string;
+	providerFingerprint?: string;
 	/** Maximum chars per tool event payload (from config). Default 12000. */
 	maxChars?: number;
 	/** Maximum chars for observer total budget. Default 12000. */
@@ -349,6 +354,18 @@ export async function ingest(
 	if (!Array.isArray(events) || events.length === 0) return;
 
 	const sessionContext = payload.sessionContext ?? {};
+	const flushBatchMetadata =
+		sessionContext.flushBatch && typeof sessionContext.flushBatch === "object"
+			? sessionContext.flushBatch
+			: null;
+	const flushClaim = flushBatchMetadata?.claim as RawEventJobClaim | undefined;
+	const flushSourceEventIds = Array.isArray(flushBatchMetadata?.source_event_ids)
+		? flushBatchMetadata.source_event_ids.map(String)
+		: [];
+	let flushProjectedSourceEventIds = flushClaim ? [] : flushSourceEventIds;
+	if (Array.isArray(flushBatchMetadata?.projected_source_event_ids)) {
+		flushProjectedSourceEventIds = flushBatchMetadata.projected_source_event_ids.map(String);
+	}
 	const storeSummary = options.storeSummary ?? true;
 	const storeTyped = options.storeTyped ?? true;
 	const maxChars = options.maxChars ?? 12_000;
@@ -677,13 +694,34 @@ export async function ingest(
 					locallySuppressedSummaryOnlyMicro ||
 					captureSuppressedTelemetryOnly
 				) {
-					endSession(store, sessionId, events.length, sessionContext, {
-						session_class: sessionClass,
-						summary_disposition: summaryDisposition,
-						// Only emit capture-routing telemetry when the gate is on, so
-						// default-off session metadata stays byte-identical to pre-feature.
-						...(captureRoutingEnabled ? { capture_suppressed_count: captureSuppressedCount } : {}),
-					});
+					const persistSkip = () => {
+						endSession(store, sessionId, events.length, sessionContext, {
+							session_class: sessionClass,
+							summary_disposition: summaryDisposition,
+							...(captureRoutingEnabled
+								? { capture_suppressed_count: captureSuppressedCount }
+								: {}),
+						});
+						return [];
+					};
+					if (flushClaim) {
+						store.completeRawEventFlushJobMemory(
+							{
+								claim: flushClaim,
+								sourceEventIds: flushSourceEventIds,
+								observedOutputCount: parsed.observations.length + (parsed.summary === null ? 0 : 1),
+								diagnostic: {
+									version: 1,
+									action: "skipped",
+									reason: "eligible_only",
+									nextAction: "none",
+								},
+							},
+							persistSkip,
+						);
+					} else {
+						persistSkip();
+					}
 					return;
 				}
 				throw new Error("observer produced no storable output for raw-event flush");
@@ -691,13 +729,39 @@ export async function ingest(
 		}
 
 		const vectorWriteInputs: Array<{ memoryId: number; title: string; bodyText: string }> = [];
-		const flushBatchMetadata =
-			sessionContext.flushBatch && typeof sessionContext.flushBatch === "object"
-				? sessionContext.flushBatch
-				: null;
-
-		// Persist all observations, summary, and usage atomically
-		store.db.transaction(() => {
+		const sessionEndMetadata = {
+			session_class: sessionClass,
+			summary_disposition: summaryDisposition,
+			...(captureRoutingEnabled ? { capture_suppressed_count: captureSuppressedCount } : {}),
+			observer_tier: selectedTier,
+			observer_tier_reasons: selectedTierReasons,
+			observer_requested_provider: requestedObserverProvider,
+			observer_requested_model: requestedObserverModel,
+			observer_requested_runtime: requestedObserverRuntime,
+			observer_requested_openai_responses: requestedObserverOpenAIResponses,
+			observer_provider: response.provider,
+			observer_model: response.model,
+			observer_runtime: observerStatus.runtime,
+			observer_openai_responses: selectedObserver.openaiUseResponses,
+			observer_fallback_applied: observerFallbackApplied,
+			observer_fallback_reason: observerFallbackReason,
+		};
+		const persistOutputs = (
+			newMemoryIdFloor = 0,
+			derivation: RawEventDerivationContext | null = null,
+		) => {
+			const rememberMemory: RawEventDerivationContext["remember"] =
+				derivation?.remember ??
+				((input) =>
+					store.remember(
+						input.sessionId,
+						input.kind,
+						input.title,
+						input.bodyText,
+						input.confidence,
+						input.tags,
+						input.metadata,
+					));
 			// ------------------------------------------------------------------
 			// Filter and persist observations
 			// ------------------------------------------------------------------
@@ -719,7 +783,7 @@ export async function ingest(
 					filesRead: obs.filesRead,
 					filesModified: obs.filesModified,
 				});
-				const memoryId = store.remember(sessionId, kind, memoryTitle, bodyText, 0.5, tags, {
+				const metadata = {
 					...(obs.derivation ? { derivation: obs.derivation } : {}),
 					subtitle: obs.subtitle,
 					narrative: obs.narrative,
@@ -743,6 +807,16 @@ export async function ingest(
 					observer_fallback_applied: observerFallbackApplied,
 					observer_fallback_reason: observerFallbackReason,
 					flush_batch: flushBatchMetadata,
+				};
+				const memoryId = rememberMemory({
+					citedSourceEventIds: flushProjectedSourceEventIds,
+					sessionId,
+					kind,
+					title: memoryTitle,
+					bodyText,
+					confidence: 0.5,
+					tags,
+					metadata,
 				});
 				vectorWriteInputs.push({ memoryId, title: memoryTitle, bodyText });
 			}
@@ -766,41 +840,43 @@ export async function ingest(
 				// Long-running durable sessions would otherwise accumulate one
 				// summary per flush batch.
 				const supersededIds = supersedePriorObserverSummaries(store, d, sessionId);
-				const memoryId = store.remember(
+				const metadata = {
+					is_summary: true,
+					request,
+					investigated: summary.investigated,
+					learned: summary.learned,
+					completed: summary.completed,
+					next_steps: summary.nextSteps,
+					notes: summary.notes,
+					prompt_number: promptNumber,
+					session_class: sessionClass,
+					observer_tier: selectedTier,
+					observer_tier_reasons: selectedTierReasons,
+					observer_requested_provider: requestedObserverProvider,
+					observer_requested_model: requestedObserverModel,
+					observer_requested_runtime: requestedObserverRuntime,
+					observer_requested_openai_responses: requestedObserverOpenAIResponses,
+					observer_provider: response.provider,
+					observer_model: response.model,
+					observer_runtime: observerStatus.runtime,
+					observer_openai_responses: selectedObserver.openaiUseResponses,
+					observer_fallback_applied: observerFallbackApplied,
+					observer_fallback_reason: observerFallbackReason,
+					files_read: summary.filesRead,
+					files_modified: summary.filesModified,
+					source: "observer_summary",
+					flush_batch: flushBatchMetadata,
+				};
+				const memoryId = rememberMemory({
+					citedSourceEventIds: flushProjectedSourceEventIds,
 					sessionId,
-					"session_summary",
-					summaryTitle,
-					body,
-					0.3,
-					summaryTags,
-					{
-						is_summary: true,
-						request,
-						investigated: summary.investigated,
-						learned: summary.learned,
-						completed: summary.completed,
-						next_steps: summary.nextSteps,
-						notes: summary.notes,
-						prompt_number: promptNumber,
-						session_class: sessionClass,
-						observer_tier: selectedTier,
-						observer_tier_reasons: selectedTierReasons,
-						observer_requested_provider: requestedObserverProvider,
-						observer_requested_model: requestedObserverModel,
-						observer_requested_runtime: requestedObserverRuntime,
-						observer_requested_openai_responses: requestedObserverOpenAIResponses,
-						observer_provider: response.provider,
-						observer_model: response.model,
-						observer_runtime: observerStatus.runtime,
-						observer_openai_responses: selectedObserver.openaiUseResponses,
-						observer_fallback_applied: observerFallbackApplied,
-						observer_fallback_reason: observerFallbackReason,
-						files_read: summary.filesRead,
-						files_modified: summary.filesModified,
-						source: "observer_summary",
-						flush_batch: flushBatchMetadata,
-					},
-				);
+					kind: "session_summary",
+					title: summaryTitle,
+					bodyText: body,
+					confidence: 0.3,
+					tags: summaryTags,
+					metadata,
+				});
 				markSupersededBy(d, supersededIds, memoryId);
 				vectorWriteInputs.push({ memoryId, title: summaryTitle, bodyText: body });
 			}
@@ -850,7 +926,43 @@ export async function ingest(
 					}),
 				})
 				.run();
-		})();
+			if (flushClaim) {
+				endSession(store, sessionId, events.length, sessionContext, sessionEndMetadata);
+			}
+			return [
+				...new Map(
+					vectorWriteInputs.map((input) => [
+						input.memoryId,
+						{
+							memoryId: input.memoryId,
+							citedSourceEventIds: flushProjectedSourceEventIds,
+							disposition:
+								input.memoryId > newMemoryIdFloor
+									? ("inserted" as const)
+									: ("deduplicated" as const),
+						},
+					]),
+				).values(),
+			];
+		};
+		if (flushClaim) {
+			store.completeRawEventFlushJobMemory(
+				{
+					claim: flushClaim,
+					sourceEventIds: flushSourceEventIds,
+					observedOutputCount: parsed.observations.length + (parsed.summary === null ? 0 : 1),
+					diagnostic: {
+						version: 1,
+						action: "sent",
+						reason: "eligible_only",
+						nextAction: "none",
+					},
+				},
+				persistOutputs,
+			);
+		} else {
+			store.db.transaction(persistOutputs)();
+		}
 
 		for (const input of vectorWriteInputs) {
 			try {
@@ -863,29 +975,17 @@ export async function ingest(
 		// ------------------------------------------------------------------
 		// End session
 		// ------------------------------------------------------------------
-		endSession(store, sessionId, events.length, sessionContext, {
-			session_class: sessionClass,
-			summary_disposition: summaryDisposition,
-			...(captureRoutingEnabled ? { capture_suppressed_count: captureSuppressedCount } : {}),
-			observer_tier: selectedTier,
-			observer_tier_reasons: selectedTierReasons,
-			observer_requested_provider: requestedObserverProvider,
-			observer_requested_model: requestedObserverModel,
-			observer_requested_runtime: requestedObserverRuntime,
-			observer_requested_openai_responses: requestedObserverOpenAIResponses,
-			observer_provider: response.provider,
-			observer_model: response.model,
-			observer_runtime: observerStatus.runtime,
-			observer_openai_responses: selectedObserver.openaiUseResponses,
-			observer_fallback_applied: observerFallbackApplied,
-			observer_fallback_reason: observerFallbackReason,
-		});
+		if (!flushClaim) {
+			endSession(store, sessionId, events.length, sessionContext, sessionEndMetadata);
+		}
 	} catch (err) {
-		// End session even on error
-		try {
-			endSession(store, sessionId, events.length, sessionContext);
-		} catch {
-			// ignore cleanup errors
+		// Durable flush completion owns session-end metadata inside its transaction.
+		if (!flushClaim) {
+			try {
+				endSession(store, sessionId, events.length, sessionContext);
+			} catch {
+				// ignore cleanup errors
+			}
 		}
 		throw err;
 	}

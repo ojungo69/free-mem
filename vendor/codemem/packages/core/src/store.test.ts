@@ -2,8 +2,12 @@ import { mkdtempSync, rmSync, writeFileSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
+import {
+	compileCapabilityManifest,
+	compileDefaultCapabilityManifest,
+} from "./capability-manifest.js";
 import { buildFilterClauses, buildFilterClausesWithContext } from "./filters.js";
-import type { MemoryStore } from "./store.js";
+import { type MemoryStore, ProcessingResumeError } from "./store.js";
 import { insertTestSession, openTestMemoryStore } from "./test-utils.js";
 import * as vectors from "./vectors.js";
 
@@ -1792,6 +1796,2293 @@ describe("MemoryStore", () => {
 			expect(() => store.get(1)).toThrow();
 			// Prevent afterEach from double-closing
 			store = undefined as unknown as MemoryStore;
+		});
+	});
+
+	describe("Slice 1 durable raw-event contracts", () => {
+		const repositoryIdentity = `repo-v1:sha256:${"a".repeat(64)}`;
+		const manifestFingerprint = `sha256:${"b".repeat(64)}`;
+		const providerFingerprint = `sha256:${"c".repeat(64)}`;
+
+		const capture = (
+			durable: MemoryStore,
+			eventId: string,
+			payload: Record<string, unknown>,
+			overrides: Partial<Parameters<MemoryStore["recordRawEvent"]>[0]> = {},
+		) =>
+			durable.recordRawEvent({
+				opencodeSessionId: "slice1",
+				eventId,
+				eventType: "user_prompt",
+				payload,
+				repositoryIdentity,
+				captureManifestFingerprint: manifestFingerprint,
+				sensitivity: "eligible",
+				source: "codex",
+				tsWallMs: Date.now() - 10_000,
+				...overrides,
+			});
+		const insertRetryExhaustedJob = (
+			streamId: string,
+			attemptManifestFingerprint = manifestFingerprint,
+			attemptProviderFingerprint = providerFingerprint,
+		): number => {
+			const now = "2026-08-31T00:00:00.000Z";
+			capture(store, `${streamId}-0`, {}, { opencodeSessionId: streamId });
+			return Number(
+				store.db
+					.prepare(
+						`INSERT INTO raw_event_flush_batches(
+							source, stream_id, opencode_session_id, start_event_seq, end_event_seq,
+							extractor_version, status, attempt_count, claim_generation,
+							attempt_manifest_fingerprint, attempt_provider_fingerprint,
+							created_at, updated_at
+						 ) VALUES ('codex', ?, ?, 0, 0, 'raw_events_v1', 'retry_exhausted', 3, 0, ?, ?, ?, ?)`,
+					)
+					.run(streamId, streamId, attemptManifestFingerprint, attemptProviderFingerprint, now, now)
+					.lastInsertRowid,
+			);
+		};
+		const completeDerivedMemory = (input: {
+			streamId: string;
+			eventId: string;
+			repositoryIdentity: string;
+			sensitivity: "eligible" | "private";
+			title: string;
+			body: string;
+		}) => {
+			capture(
+				store,
+				input.eventId,
+				{ text: input.body },
+				{
+					opencodeSessionId: input.streamId,
+					repositoryIdentity: input.repositoryIdentity,
+					sensitivity: input.sensitivity,
+				},
+			);
+			const admission = store.admitRawEventFlushJob({
+				source: "codex",
+				streamId: input.streamId,
+				manifestFingerprint,
+				providerFingerprint,
+			});
+			const claim = store.claimRawEventFlushJob({
+				jobId: admission.jobId as number,
+				manifestFingerprint,
+				providerFingerprint,
+			});
+			if (!claim) throw new Error("expected derivation claim");
+			const sessionId = store.getOrCreateSessionForOpencodeSession({
+				opencodeSessionId: input.streamId,
+				source: "codex",
+			});
+			return store.completeRawEventFlushJobMemory(
+				{ claim, sourceEventIds: [input.eventId], observedOutputCount: 1, diagnostic: {} },
+				(newMemoryIdFloor, derivation) => {
+					const memoryId = derivation.remember({
+						citedSourceEventIds: [input.eventId],
+						sessionId,
+						kind: "discovery",
+						title: input.title,
+						bodyText: input.body,
+					});
+					return [
+						{
+							memoryId,
+							citedSourceEventIds: [input.eventId],
+							disposition:
+								memoryId > newMemoryIdFloor ? ("inserted" as const) : ("deduplicated" as const),
+						},
+					];
+				},
+			);
+		};
+
+		it("persists repository-aware idempotency, monotonic quarantine, and pair-bound conflicts", () => {
+			const durable = store;
+			const first = capture(durable, "event-1", { text: "canonical" });
+			expect(first).toMatchObject({ status: "accepted", normalAck: true });
+
+			expect(
+				capture(durable, "event-1", { text: "canonical" }, { sensitivity: "private" }),
+			).toMatchObject({ status: "idempotent", normalAck: true });
+			expect(
+				capture(
+					durable,
+					"event-1",
+					{ text: "canonical" },
+					{
+						sensitivity: "secret",
+						captureState: "quarantined",
+						safeErrorCode: "redaction_degraded",
+					},
+				),
+			).toMatchObject({ status: "quarantined", normalAck: false });
+			expect(
+				store.db
+					.prepare(
+						"SELECT payload_json, sensitivity, capture_state FROM raw_events WHERE event_id = 'event-1'",
+					)
+					.get(),
+			).toEqual({ payload_json: "{}", sensitivity: "secret", capture_state: "quarantined" });
+
+			const conflict = capture(durable, "event-1", { text: "different" });
+			const samePair = capture(durable, "event-1", { text: "different" });
+			const otherPair = capture(durable, "event-1", { text: "third" });
+			expect([conflict, samePair, otherPair]).toMatchObject([
+				{ status: "identity_conflict", normalAck: false },
+				{ status: "identity_conflict", normalAck: false },
+				{ status: "identity_conflict", normalAck: false },
+			]);
+			expect(conflict.receiptId).toBe(samePair.receiptId);
+			expect(otherPair.receiptId).not.toBe(conflict.receiptId);
+			expect(
+				store.db.prepare("SELECT COUNT(*) AS count FROM raw_event_identity_conflicts").get(),
+			).toEqual({ count: 2 });
+
+			capture(durable, "unknown", { text: "unknown" }, { repositoryIdentity: null });
+			const nullCollision = capture(
+				durable,
+				"unknown",
+				{ text: "unknown" },
+				{
+					repositoryIdentity: null,
+				},
+			);
+			const nullReplay = capture(
+				durable,
+				"unknown",
+				{ text: "unknown" },
+				{
+					repositoryIdentity: null,
+				},
+			);
+			expect(nullCollision).toMatchObject({ status: "quarantined", normalAck: false });
+			expect(nullReplay.receiptId).toBe(nullCollision.receiptId);
+			expect(
+				store.db
+					.prepare(
+						"SELECT payload_json, sensitivity, capture_state, safe_error_code FROM raw_event_quarantine WHERE event_id = 'unknown'",
+					)
+					.get(),
+			).toEqual({
+				payload_json: '{"text":"unknown"}',
+				sensitivity: "secret",
+				capture_state: "quarantined",
+				safe_error_code: "repository_identity_unknown_collision",
+			});
+			expect(
+				store.db.prepare("SELECT COUNT(*) AS count FROM raw_event_flush_batches").get(),
+			).toEqual({ count: 0 });
+		});
+
+		it("scopes replay sensitivity cascades to the originating source and stream", () => {
+			const eventId = "shared-event-id";
+			const derive = (source: string, streamId: string, label: string) => {
+				const payload = { text: label };
+				capture(store, eventId, payload, { opencodeSessionId: streamId, source });
+				const admission = store.admitRawEventFlushJob({
+					source,
+					streamId,
+					manifestFingerprint,
+					providerFingerprint,
+				});
+				const claim = store.claimRawEventFlushJob({
+					jobId: admission.jobId as number,
+					manifestFingerprint,
+					providerFingerprint,
+				});
+				if (!claim) throw new Error("expected claim");
+				const sessionId = store.getOrCreateSessionForOpencodeSession({
+					opencodeSessionId: streamId,
+					source,
+				});
+				const completed = store.completeRawEventFlushJobMemory(
+					{ claim, sourceEventIds: [eventId], observedOutputCount: 1, diagnostic: {} },
+					() => [
+						{
+							memoryId: store.remember(sessionId, "discovery", label, label),
+							citedSourceEventIds: [eventId],
+							disposition: "inserted",
+						},
+					],
+				);
+				return { memoryId: completed.memoryIds[0] as number, payload };
+			};
+
+			const target = derive("codex", "target-stream", "target");
+			const sameSource = derive("codex", "sibling-stream", "same source");
+			const sameStream = derive("claude", "target-stream", "same stream");
+			const ambiguousSessionId = insertTestSession(store.db);
+			const ambiguousMemoryId = store.remember(
+				ambiguousSessionId,
+				"discovery",
+				"ambiguous",
+				"ambiguous",
+			);
+			store.db
+				.prepare(
+					`UPDATE memory_items
+					 SET sensitivity = 'eligible', repository_identity = ?, source_event_ids_json = ?
+					 WHERE id = ?`,
+				)
+				.run(repositoryIdentity, JSON.stringify([eventId]), ambiguousMemoryId);
+			const sensitivities = () => {
+				const sensitivity = store.db
+					.prepare("SELECT sensitivity FROM memory_items WHERE id = ?")
+					.pluck();
+				return [target.memoryId, sameSource.memoryId, sameStream.memoryId, ambiguousMemoryId].map(
+					(memoryId) => sensitivity.get(memoryId),
+				);
+			};
+
+			expect(
+				capture(store, eventId, target.payload, {
+					opencodeSessionId: "target-stream",
+					source: "codex",
+					sensitivity: "private",
+				}),
+			).toMatchObject({ status: "idempotent", normalAck: true });
+			expect(sensitivities()).toEqual(["private", "eligible", "eligible", "eligible"]);
+
+			expect(
+				capture(store, eventId, target.payload, {
+					opencodeSessionId: "target-stream",
+					source: "codex",
+					sensitivity: "secret",
+					captureState: "quarantined",
+					safeErrorCode: "redaction_degraded",
+				}),
+			).toMatchObject({ status: "quarantined", normalAck: false });
+			expect(sensitivities()).toEqual(["secret", "eligible", "eligible", "eligible"]);
+		});
+
+		it.each([
+			repositoryIdentity,
+			null,
+		])("uses the repository identity index for %s capture lookup", (identity) => {
+			const plan = store.db
+				.prepare(
+					`EXPLAIN QUERY PLAN
+						 SELECT id FROM raw_events
+						 WHERE COALESCE(repository_identity, 'repo-v1:unknown') = ?
+						   AND source = ? AND stream_id = ? AND event_id = ?`,
+				)
+				.all(identity ?? "repo-v1:unknown", "codex", "slice1", "event-1") as Array<{
+				detail: string;
+			}>;
+			expect(
+				plan.some((row) => row.detail.includes("idx_raw_events_repository_source_stream_event_id")),
+			).toBe(true);
+		});
+
+		it("normalizes malformed batch sensitivity to secret", () => {
+			expect(
+				store.recordRawEventsBatch(
+					"malformed-sensitivity",
+					[
+						{
+							event_id: "malformed-sensitivity",
+							event_type: "user_prompt",
+							payload: { text: "synthetic" },
+							repository_identity: repositoryIdentity,
+							sensitivity: "malformed",
+						},
+					],
+					"codex",
+				),
+			).toMatchObject({ inserted: 1, skipped: 0 });
+			expect(
+				store.db
+					.prepare("SELECT sensitivity FROM raw_events WHERE event_id = 'malformed-sensitivity'")
+					.get(),
+			).toEqual({ sensitivity: "secret" });
+
+			expect(
+				store.recordRawEventsBatch(
+					"contradictory-quarantine",
+					[
+						{
+							event_id: "contradictory-quarantine",
+							event_type: "user_prompt",
+							payload: { text: "must be scrubbed" },
+							repository_identity: repositoryIdentity,
+							sensitivity: "secret",
+							capture_state: "quarantined",
+							safe_error_code: "redaction_degraded",
+							redaction_degraded: false,
+						},
+					],
+					"codex",
+				),
+			).toMatchObject({
+				inserted: 0,
+				outcomes: [{ status: "quarantined", normalAck: false }],
+			});
+			expect(
+				store.db
+					.prepare(
+						"SELECT payload_json FROM raw_events WHERE event_id = 'contradictory-quarantine'",
+					)
+					.get(),
+			).toEqual({ payload_json: "{}" });
+		});
+
+		it("keeps multi-source memory sensitivity monotonic when one source strengthens", () => {
+			capture(store, "multi-secret", { text: "secret source" }, { sensitivity: "secret" });
+			capture(
+				store,
+				"multi-eligible",
+				{ text: "eligible source" },
+				{
+					sensitivity: "eligible",
+				},
+			);
+			const sessionId = insertTestSession(store.db);
+			const memoryId = store.remember(sessionId, "discovery", "Multi-source", "Multi-source");
+			store.db
+				.prepare(
+					`UPDATE memory_items
+					 SET sensitivity = 'secret', repository_identity = ?, source_event_ids_json = ?
+					 WHERE id = ?`,
+				)
+				.run(repositoryIdentity, '["multi-secret","multi-eligible"]', memoryId);
+
+			expect(
+				capture(
+					store,
+					"multi-eligible",
+					{ text: "eligible source" },
+					{
+						sensitivity: "private",
+					},
+				),
+			).toMatchObject({ status: "idempotent", normalAck: true });
+			expect(
+				store.db
+					.prepare("SELECT sensitivity FROM raw_events WHERE event_id = ?")
+					.get("multi-eligible"),
+			).toEqual({ sensitivity: "private" });
+			expect(
+				store.db.prepare("SELECT sensitivity FROM memory_items WHERE id = ?").get(memoryId),
+			).toEqual({ sensitivity: "secret" });
+		});
+
+		it("keeps same-title raw derivations separate across repositories", () => {
+			const first = completeDerivedMemory({
+				streamId: "derived-cross-repository",
+				eventId: "derived-repository-a",
+				repositoryIdentity,
+				sensitivity: "eligible",
+				title: "Shared derived title",
+				body: "Shared derived body",
+			});
+			const second = completeDerivedMemory({
+				streamId: "derived-cross-repository",
+				eventId: "derived-repository-b",
+				repositoryIdentity: `repo-v1:sha256:${"d".repeat(64)}`,
+				sensitivity: "eligible",
+				title: "Shared derived title",
+				body: "Shared derived body",
+			});
+
+			expect(second.memoryIds[0]).not.toBe(first.memoryIds[0]);
+			expect(
+				store.db
+					.prepare(
+						"SELECT status, attempt_count FROM raw_event_flush_batches WHERE stream_id = ? ORDER BY id",
+					)
+					.all("derived-cross-repository"),
+			).toEqual([
+				{ status: "completed", attempt_count: 1 },
+				{ status: "completed", attempt_count: 1 },
+			]);
+		});
+
+		it("does not merge derived provenance into a legacy title-only dedup key", () => {
+			const streamId = "derived-legacy-dedup";
+			const title = "Legacy dedup title";
+			const sessionId = store.getOrCreateSessionForOpencodeSession({
+				opencodeSessionId: streamId,
+				source: "codex",
+			});
+			const legacyMemoryId = store.remember(sessionId, "discovery", title, "Legacy body");
+			store.db
+				.prepare(
+					`UPDATE memory_items SET repository_identity = ?, sensitivity = 'eligible',
+						source_event_ids_json = '["legacy-event"]'
+					 WHERE id = ?`,
+				)
+				.run(repositoryIdentity, legacyMemoryId);
+
+			const derived = completeDerivedMemory({
+				streamId,
+				eventId: "derived-legacy-dedup-0",
+				repositoryIdentity,
+				sensitivity: "eligible",
+				title,
+				body: "Derived body",
+			});
+
+			expect(derived.memoryIds[0]).not.toBe(legacyMemoryId);
+		});
+
+		it("keeps same-title raw derivations separate across source events", () => {
+			const first = completeDerivedMemory({
+				streamId: "derived-stronger-sensitivity",
+				eventId: "derived-eligible",
+				repositoryIdentity,
+				sensitivity: "eligible",
+				title: "Sensitivity derived title",
+				body: "Sensitivity derived body",
+			});
+			const second = completeDerivedMemory({
+				streamId: "derived-stronger-sensitivity",
+				eventId: "derived-private",
+				repositoryIdentity,
+				sensitivity: "private",
+				title: "Sensitivity derived title",
+				body: "Sensitivity derived body",
+			});
+
+			expect(second.memoryIds[0]).not.toBe(first.memoryIds[0]);
+			expect(
+				store.db
+					.prepare(
+						"SELECT id, sensitivity, source_event_ids_json FROM memory_items WHERE id IN (?, ?) ORDER BY id",
+					)
+					.all(first.memoryIds[0], second.memoryIds[0]),
+			).toEqual([
+				{
+					id: first.memoryIds[0],
+					sensitivity: "eligible",
+					source_event_ids_json: '["derived-eligible"]',
+				},
+				{
+					id: second.memoryIds[0],
+					sensitivity: "private",
+					source_event_ids_json: '["derived-private"]',
+				},
+			]);
+			expect(
+				capture(
+					store,
+					"derived-private",
+					{ text: "Sensitivity derived body" },
+					{
+						opencodeSessionId: "derived-stronger-sensitivity",
+						repositoryIdentity,
+						sensitivity: "secret",
+					},
+				),
+			).toMatchObject({ status: "idempotent", normalAck: true });
+			expect(
+				store.db
+					.prepare("SELECT id, sensitivity FROM memory_items WHERE id IN (?, ?) ORDER BY id")
+					.all(first.memoryIds[0], second.memoryIds[0]),
+			).toEqual([
+				{ id: first.memoryIds[0], sensitivity: "eligible" },
+				{ id: second.memoryIds[0], sensitivity: "secret" },
+			]);
+			expect(
+				store.db
+					.prepare(
+						"SELECT status, attempt_count FROM raw_event_flush_batches WHERE stream_id = ? ORDER BY id",
+					)
+					.all("derived-stronger-sensitivity"),
+			).toEqual([
+				{ status: "completed", attempt_count: 1 },
+				{ status: "completed", attempt_count: 1 },
+			]);
+		});
+
+		it("keeps same bare event IDs isolated across sibling streams", () => {
+			const first = completeDerivedMemory({
+				streamId: "derived-shared-id-a",
+				eventId: "derived-shared-id",
+				repositoryIdentity,
+				sensitivity: "eligible",
+				title: "Shared event ID title",
+				body: "Shared event ID body",
+			});
+			const second = completeDerivedMemory({
+				streamId: "derived-shared-id-b",
+				eventId: "derived-shared-id",
+				repositoryIdentity,
+				sensitivity: "eligible",
+				title: "Shared event ID title",
+				body: "Shared event ID body",
+			});
+			expect(second.memoryIds[0]).not.toBe(first.memoryIds[0]);
+
+			expect(
+				capture(
+					store,
+					"derived-shared-id",
+					{ text: "Shared event ID body" },
+					{
+						opencodeSessionId: "derived-shared-id-b",
+						repositoryIdentity,
+						sensitivity: "secret",
+					},
+				),
+			).toMatchObject({ status: "idempotent", normalAck: true });
+			expect(
+				store.db
+					.prepare("SELECT id, sensitivity FROM memory_items WHERE id IN (?, ?) ORDER BY id")
+					.all(first.memoryIds[0], second.memoryIds[0]),
+			).toEqual([
+				{ id: first.memoryIds[0], sensitivity: "eligible" },
+				{ id: second.memoryIds[0], sensitivity: "secret" },
+			]);
+		});
+
+		it("deduplicates repeated derivations only for the same citation identity", () => {
+			const streamId = "derived-same-citation";
+			const eventId = "derived-same-citation-0";
+			capture(store, eventId, {}, { opencodeSessionId: streamId });
+			const admission = store.admitRawEventFlushJob({
+				source: "codex",
+				streamId,
+				manifestFingerprint,
+				providerFingerprint,
+			});
+			const claim = store.claimRawEventFlushJob({
+				jobId: admission.jobId as number,
+				manifestFingerprint,
+				providerFingerprint,
+			});
+			if (!claim) throw new Error("expected same-citation claim");
+			const sessionId = store.getOrCreateSessionForOpencodeSession({
+				opencodeSessionId: streamId,
+				source: "codex",
+			});
+			let repeatedId = 0;
+			const completed = store.completeRawEventFlushJobMemory(
+				{ claim, sourceEventIds: [eventId], observedOutputCount: 1, diagnostic: {} },
+				(_newMemoryIdFloor, derivation) => {
+					const input = {
+						citedSourceEventIds: [eventId],
+						sessionId,
+						kind: "discovery",
+						title: "Same citation title",
+						bodyText: "Same citation body",
+					};
+					const memoryId = derivation.remember(input);
+					repeatedId = derivation.remember(input);
+					return [
+						{
+							memoryId,
+							citedSourceEventIds: [eventId],
+							disposition: "inserted" as const,
+						},
+					];
+				},
+			);
+			expect(repeatedId).toBe(completed.memoryIds[0]);
+		});
+
+		it("rolls back when trusted derivation and completion citations differ", () => {
+			const streamId = "derived-citation-binding";
+			capture(
+				store,
+				"derived-private-source",
+				{ text: "private" },
+				{
+					opencodeSessionId: streamId,
+					sensitivity: "private",
+				},
+			);
+			capture(
+				store,
+				"derived-eligible-source",
+				{ text: "eligible" },
+				{
+					opencodeSessionId: streamId,
+					sensitivity: "eligible",
+				},
+			);
+			const admission = store.admitRawEventFlushJob({
+				source: "codex",
+				streamId,
+				manifestFingerprint,
+				providerFingerprint,
+			});
+			const claim = store.claimRawEventFlushJob({
+				jobId: admission.jobId as number,
+				manifestFingerprint,
+				providerFingerprint,
+			});
+			if (!claim) throw new Error("expected citation-binding claim");
+			const sessionId = store.getOrCreateSessionForOpencodeSession({
+				opencodeSessionId: streamId,
+				source: "codex",
+			});
+			const before = store.db.prepare("SELECT COUNT(*) AS count FROM memory_items").get();
+
+			expect(() =>
+				store.completeRawEventFlushJobMemory(
+					{
+						claim,
+						sourceEventIds: ["derived-private-source", "derived-eligible-source"],
+						observedOutputCount: 1,
+						diagnostic: {},
+					},
+					(newMemoryIdFloor, derivation) => {
+						const memoryId = derivation.remember({
+							citedSourceEventIds: ["derived-private-source"],
+							sessionId,
+							kind: "discovery",
+							title: "Bound citation title",
+							bodyText: "Bound citation body",
+						});
+						return [
+							{
+								memoryId,
+								citedSourceEventIds: ["derived-eligible-source"],
+								disposition:
+									memoryId > newMemoryIdFloor ? ("inserted" as const) : ("deduplicated" as const),
+							},
+						];
+					},
+				),
+			).toThrow(/citation binding/i);
+			expect(store.db.prepare("SELECT COUNT(*) AS count FROM memory_items").get()).toEqual(before);
+			expect(store.rawEventFlushState(streamId, "codex")).toBe(-1);
+			expect(
+				store.db
+					.prepare("SELECT status FROM raw_event_flush_batches WHERE id = ?")
+					.get(claim.jobId),
+			).toEqual({ status: "processing" });
+		});
+
+		it.each([
+			["repeated event IDs", ["shared-event-id", "shared-event-id"]],
+			["distinct event IDs", ["repository-a-event", "repository-b-event"]],
+		] as const)("splits repository changes with %s into sequential jobs", (_case, eventIds) => {
+			const streamId = "repository-scoped-event-id";
+			const otherRepository = `repo-v1:sha256:${"d".repeat(64)}`;
+			const cases = [
+				[repositoryIdentity, "private"],
+				[otherRepository, "eligible"],
+			] as const;
+			for (const [index, [repository, sensitivity]] of cases.entries()) {
+				capture(
+					store,
+					eventIds[index] as string,
+					{ repository },
+					{
+						opencodeSessionId: streamId,
+						repositoryIdentity: repository,
+						sensitivity,
+					},
+				);
+			}
+			const sessionId = store.getOrCreateSessionForOpencodeSession({
+				opencodeSessionId: streamId,
+				source: "codex",
+			});
+
+			for (const [sequence, [repository, sensitivity]] of cases.entries()) {
+				const admission = store.admitRawEventFlushJob({
+					source: "codex",
+					streamId,
+					manifestFingerprint,
+					providerFingerprint,
+				});
+				expect(admission).toMatchObject({
+					status: "admitted",
+					startEventSeq: sequence,
+					endEventSeq: sequence,
+				});
+				const claim = store.claimRawEventFlushJob({
+					jobId: admission.jobId as number,
+					manifestFingerprint,
+					providerFingerprint,
+				});
+				if (!claim) throw new Error("expected repository-scoped claim");
+				const eventId = eventIds[sequence] as string;
+				const completed = store.completeRawEventFlushJobMemory(
+					{ claim, sourceEventIds: [eventId], observedOutputCount: 1, diagnostic: {} },
+					() => [
+						{
+							memoryId: store.remember(sessionId, "discovery", repository, repository),
+							citedSourceEventIds: [eventId],
+							disposition: "inserted",
+						},
+					],
+				);
+				expect(
+					store.db
+						.prepare("SELECT repository_identity, sensitivity FROM memory_items WHERE id = ?")
+						.get(completed.memoryIds[0]),
+				).toEqual({
+					repository_identity: repository,
+					sensitivity,
+				});
+				expect(store.rawEventFlushState(streamId, "codex")).toBe(sequence);
+			}
+
+			expect(
+				store.db
+					.prepare(
+						"SELECT status, attempt_count FROM raw_event_flush_batches WHERE stream_id = ? ORDER BY start_event_seq",
+					)
+					.all(streamId),
+			).toEqual([
+				{ status: "completed", attempt_count: 1 },
+				{ status: "completed", attempt_count: 1 },
+			]);
+		});
+
+		it("bounds admission and claims, exhausts attempts, and makes grant consumption atomic", () => {
+			const durable = store;
+			const seedStream = (
+				streamId: string,
+				count: number,
+				sensitivity: Parameters<MemoryStore["recordRawEvent"]>[0]["sensitivity"] = "secret",
+			) => {
+				for (let index = 0; index < count; index++) {
+					capture(
+						durable,
+						`${streamId}-${index}`,
+						{ index },
+						{
+							opencodeSessionId: streamId,
+							sensitivity,
+						},
+					);
+				}
+			};
+			const admit = (streamId: string) =>
+				durable.admitRawEventFlushJob({
+					source: "codex",
+					streamId,
+					manifestFingerprint,
+					providerFingerprint,
+				});
+
+			seedStream("jobs", 101);
+			const first = admit("jobs");
+			expect(first).toMatchObject({
+				status: "admitted",
+				startEventSeq: 0,
+				endEventSeq: 99,
+			});
+			expect(admit("jobs")).toMatchObject({ status: "existing", jobId: first.jobId });
+
+			seedStream("gap", 3);
+			store.db.prepare("DELETE FROM raw_events WHERE stream_id = 'gap' AND event_seq = 1").run();
+			expect(admit("gap")).toMatchObject({ status: "source_gap" });
+			seedStream("fully-pruned", 1);
+			store.db.prepare("DELETE FROM raw_events WHERE stream_id = 'fully-pruned'").run();
+			expect(admit("fully-pruned")).toMatchObject({ status: "source_gap" });
+
+			const admittedIds = [first.jobId as number];
+			for (let index = 0; index < 24; index++) {
+				const streamId = `capacity-${index}`;
+				seedStream(streamId, 1);
+				admittedIds.push(admit(streamId).jobId as number);
+			}
+			store.db
+				.prepare("UPDATE raw_event_flush_batches SET status = 'retry_exhausted' WHERE id = ?")
+				.run(admittedIds[23]);
+			seedStream("over-capacity", 1);
+			expect(admit("over-capacity")).toMatchObject({ status: "capacity" });
+			expect(
+				store.db
+					.prepare(
+						"SELECT COUNT(*) AS count FROM raw_event_flush_batches WHERE status IN ('queued','processing','failed','retry_exhausted')",
+					)
+					.get(),
+			).toEqual({ count: 25 });
+
+			const claim = (jobId: number) =>
+				durable.claimRawEventFlushJob({ jobId, manifestFingerprint, providerFingerprint });
+			let firstClaim = claim(admittedIds[0] as number);
+			const secondClaim = claim(admittedIds[1] as number);
+			expect(firstClaim).toMatchObject({ attemptCount: 1, claimGeneration: 1 });
+			expect(secondClaim).toMatchObject({ attemptCount: 1, claimGeneration: 1 });
+			expect(claim(admittedIds[2] as number)).toBeNull();
+			if (!firstClaim) throw new Error("expected first claim");
+
+			for (const expectedStatus of ["failed", "failed", "retry_exhausted"] as const) {
+				expect(
+					durable.failRawEventFlushJob({
+						jobId: firstClaim.jobId,
+						claimGeneration: firstClaim.claimGeneration,
+						attemptFingerprint: firstClaim.attemptFingerprint,
+						safeErrorCode: "provider_unavailable",
+					}),
+				).toEqual({ status: expectedStatus });
+				if (expectedStatus === "retry_exhausted") break;
+				expect(durable.requeueFailedRawEventFlushJob(firstClaim.jobId)).toBe(true);
+				const next = claim(firstClaim.jobId);
+				if (!next) throw new Error("expected automatic retry claim");
+				firstClaim = next;
+			}
+
+			const signal = durable.applyResumeSignal({
+				signalId: "doctor-signal-1",
+				producerReceiptId: "doctor-receipt-1",
+				targetJobId: firstClaim.jobId,
+				sequence: 1,
+				kind: "user_confirmed_doctor_retry",
+				targetRole: "summary",
+				providerFingerprint,
+				manifestFingerprint,
+			});
+			expect(signal).toMatchObject({ disposition: "accepted", grantState: "pending" });
+			expect(
+				durable.applyResumeSignal({
+					signalId: "doctor-signal-1",
+					producerReceiptId: "doctor-receipt-1",
+					targetJobId: firstClaim.jobId,
+					sequence: 1,
+					kind: "user_confirmed_doctor_retry",
+					targetRole: "summary",
+					providerFingerprint,
+					manifestFingerprint,
+				}),
+			).toMatchObject({ disposition: "duplicate", grantState: "pending" });
+			expect(
+				store.db
+					.prepare(
+						"SELECT last_resume_signal_disposition FROM raw_event_flush_batches WHERE id = ?",
+					)
+					.get(firstClaim.jobId),
+			).toEqual({ last_resume_signal_disposition: "duplicate" });
+			const resumed = claim(firstClaim.jobId);
+			expect(resumed).toMatchObject({ attemptCount: 4, claimGeneration: 4 });
+			if (!resumed) throw new Error("expected resumed claim");
+			expect(() =>
+				durable.completeRawEventFlushJobPrivacySkip({
+					claim: firstClaim,
+					sourceEventIds: Array.from({ length: 100 }, (_, index) => `jobs-${index}`),
+					projection: {
+						eligibleSourceEventIds: [],
+						omittedSourceEventIds: Array.from({ length: 100 }, (_, index) => `jobs-${index}`),
+					},
+					diagnostic: {},
+				}),
+			).toThrow(/stale/i);
+			expect(() =>
+				durable.completeRawEventFlushJobPrivacySkip({
+					claim: resumed,
+					sourceEventIds: Array.from({ length: 100 }, (_, index) => `jobs-${index}`),
+					projection: {
+						eligibleSourceEventIds: [],
+						omittedSourceEventIds: Array.from({ length: 100 }, (_, index) => `jobs-${index}`),
+					},
+					diagnostic: {},
+				}),
+			).toThrow(/all-ineligible/i);
+			expect(store.rawEventFlushState("jobs", "codex")).toBe(-1);
+			store.db
+				.prepare(
+					`UPDATE raw_events
+					 SET sensitivity = 'secret', capture_state = 'quarantined',
+						safe_error_code = 'redaction_degraded', payload_json = '{}'
+					 WHERE stream_id = 'jobs'`,
+				)
+				.run();
+			expect(() =>
+				durable.completeRawEventFlushJobPrivacySkip({
+					claim: resumed,
+					sourceEventIds: Array.from({ length: 100 }, (_, index) => `jobs-${index}`),
+					projection: {
+						eligibleSourceEventIds: ["jobs-0"],
+						omittedSourceEventIds: Array.from({ length: 99 }, (_, index) => `jobs-${index + 1}`),
+					},
+					diagnostic: {},
+				}),
+			).toThrow(/all-ineligible/i);
+			expect(store.rawEventFlushState("jobs", "codex")).toBe(-1);
+			expect(
+				durable.completeRawEventFlushJobPrivacySkip({
+					claim: resumed,
+					sourceEventIds: Array.from({ length: 100 }, (_, index) => `jobs-${index}`),
+					projection: {
+						eligibleSourceEventIds: [],
+						omittedSourceEventIds: Array.from({ length: 100 }, (_, index) => `jobs-${index}`),
+					},
+					diagnostic: {
+						version: 1,
+						action: "skipped",
+						reason: "all_restricted",
+						nextAction: "none",
+					},
+				}),
+			).toEqual({ frontierChanged: true });
+			expect(
+				store.db
+					.prepare(
+						"SELECT status, attempt_count, resume_grant_state FROM raw_event_flush_batches WHERE id = ?",
+					)
+					.get(resumed.jobId),
+			).toEqual({ status: "completed", attempt_count: 4, resume_grant_state: "consumed" });
+			expect(store.rawEventFlushState("jobs", "codex")).toBe(99);
+		});
+
+		it("refuses a direct claim when the admitted source range is no longer exact", () => {
+			const streamId = "direct-claim-source-gap";
+			for (let index = 0; index < 3; index++) {
+				capture(store, `${streamId}-${index}`, { index }, { opencodeSessionId: streamId });
+			}
+			const admission = store.admitRawEventFlushJob({
+				source: "codex",
+				streamId,
+				manifestFingerprint,
+				providerFingerprint,
+			});
+			store.db
+				.prepare("DELETE FROM raw_events WHERE stream_id = ? AND event_seq = 1")
+				.run(streamId);
+
+			expect(
+				store.claimRawEventFlushJob({
+					jobId: admission.jobId as number,
+					manifestFingerprint,
+					providerFingerprint,
+				}),
+			).toBeNull();
+			expect(
+				store.db
+					.prepare("SELECT status, attempt_count FROM raw_event_flush_batches WHERE id = ?")
+					.get(admission.jobId),
+			).toEqual({ status: "queued", attempt_count: 0 });
+		});
+
+		it("rediscovers granted complete-range legacy work and replays its consumed doctor receipt", () => {
+			const streamId = "legacy-recovery";
+			const eventId = "legacy-recovery-0";
+			capture(
+				store,
+				eventId,
+				{},
+				{
+					opencodeSessionId: streamId,
+					redactionDegraded: true,
+					captureState: "quarantined",
+					safeErrorCode: "redaction_degraded",
+				},
+			);
+			const admitted = store.admitRawEventFlushJob({
+				source: "codex",
+				streamId,
+				manifestFingerprint,
+				providerFingerprint,
+			});
+			if (!admitted.jobId) throw new Error("expected admitted legacy fixture");
+			store.db
+				.prepare(
+					`UPDATE raw_event_sessions SET last_flushed_event_seq = 0
+					 WHERE source = 'codex' AND stream_id = ?`,
+				)
+				.run(streamId);
+			store.db
+				.prepare(
+					`UPDATE raw_event_flush_batches
+					 SET status = 'retry_exhausted', attempt_count = 3,
+						admission_manifest_fingerprint = NULL, admission_provider_fingerprint = NULL,
+						attempt_manifest_fingerprint = NULL, attempt_provider_fingerprint = NULL,
+						attempt_fingerprint = NULL,
+						legacy_recovery_state = 'complete_range', frontier_already_advanced = 1
+					 WHERE id = ?`,
+				)
+				.run(admitted.jobId);
+			const confirmation = {
+				jobId: admitted.jobId,
+				producerReceiptId: "legacy-recovery-receipt",
+				expectedRole: "summary" as const,
+				expectedProviderFingerprint: null,
+				expectedManifestFingerprint: null,
+				expectedAttemptCount: 3,
+				expectedClaimGeneration: 0,
+				targetProviderFingerprint: providerFingerprint,
+				targetManifestFingerprint: manifestFingerprint,
+			};
+			const accepted = store.confirmDoctorRetry(confirmation);
+			expect(accepted).toMatchObject({ disposition: "accepted", grantState: "pending" });
+			expect(
+				store.db
+					.prepare(
+						`SELECT admission_manifest_fingerprint, admission_provider_fingerprint,
+							attempt_manifest_fingerprint, attempt_provider_fingerprint,
+							attempt_fingerprint, resume_grant_state
+						 FROM raw_event_flush_batches WHERE id = ?`,
+					)
+					.get(admitted.jobId),
+			).toEqual({
+				admission_manifest_fingerprint: null,
+				admission_provider_fingerprint: null,
+				attempt_manifest_fingerprint: null,
+				attempt_provider_fingerprint: null,
+				attempt_fingerprint: null,
+				resume_grant_state: "pending",
+			});
+			expect(store.rawEventSessionsWithPendingQueue()).toContainEqual({
+				source: "codex",
+				streamId,
+			});
+			expect(
+				store.admitRawEventFlushJob({
+					source: "codex",
+					streamId,
+					manifestFingerprint,
+					providerFingerprint,
+				}),
+			).toMatchObject({ status: "existing", jobId: admitted.jobId });
+			const claim = store.claimRawEventFlushJob({
+				jobId: admitted.jobId,
+				manifestFingerprint,
+				providerFingerprint,
+			});
+			if (!claim) throw new Error("expected legacy recovery claim");
+			expect(
+				store.confirmDoctorRetry({
+					...confirmation,
+					targetProviderFingerprint: null,
+					targetManifestFingerprint: null,
+				}),
+			).toEqual({
+				...accepted,
+				disposition: "duplicate",
+				grantState: "consumed",
+			});
+			expect(
+				store.db
+					.prepare(
+						`SELECT
+							(SELECT COUNT(*) FROM processing_resume_signals WHERE job_id = ?) AS signal_count,
+							(SELECT COUNT(*) FROM processing_resume_producer_receipts WHERE receipt_id = ?) AS receipt_count,
+							(SELECT last_resume_signal_disposition FROM raw_event_flush_batches WHERE id = ?) AS last_disposition`,
+					)
+					.get(admitted.jobId, confirmation.producerReceiptId, admitted.jobId),
+			).toEqual({ signal_count: 1, receipt_count: 1, last_disposition: "duplicate" });
+			expect(
+				store.db
+					.prepare(
+						`SELECT admission_manifest_fingerprint, admission_provider_fingerprint,
+							attempt_manifest_fingerprint, attempt_provider_fingerprint, attempt_fingerprint
+						 FROM raw_event_flush_batches WHERE id = ?`,
+					)
+					.get(admitted.jobId),
+			).toEqual({
+				admission_manifest_fingerprint: null,
+				admission_provider_fingerprint: null,
+				attempt_manifest_fingerprint: manifestFingerprint,
+				attempt_provider_fingerprint: providerFingerprint,
+				attempt_fingerprint: claim.attemptFingerprint,
+			});
+			expect(
+				store.completeRawEventFlushJobPrivacySkip({
+					claim,
+					sourceEventIds: [eventId],
+					projection: { eligibleSourceEventIds: [], omittedSourceEventIds: [eventId] },
+					diagnostic: {},
+				}),
+			).toEqual({ frontierChanged: false });
+			expect(store.rawEventFlushState(streamId, "codex")).toBe(0);
+		});
+
+		it("binds the derivation limit to the validated active manifest", () => {
+			const base = compileDefaultCapabilityManifest({
+				version: 1,
+				role: "summary",
+				state: "enabled",
+				wireProtocol: "openai_chat_completions_v1",
+				modelId: "store-limit-model",
+				modelRevision: "1",
+				endpointUrl: "https://summary.stub.invalid/v1/chat/completions",
+				credentialRef: { kind: "environment", name: "FREE_MEM_SUMMARY_API_KEY" },
+			});
+			capture(
+				store,
+				"base-limit-0",
+				{},
+				{
+					opencodeSessionId: "base-limit",
+					captureManifestFingerprint: base.configurationFingerprint,
+				},
+			);
+			const baseAdmission = store.admitRawEventFlushJob({
+				source: "codex",
+				streamId: "base-limit",
+				manifestFingerprint: base.configurationFingerprint,
+				providerFingerprint: base.summaryProvider.providerFingerprint,
+			});
+			expect(() =>
+				store.claimRawEventFlushJob({
+					jobId: baseAdmission.jobId as number,
+					manifestFingerprint: base.configurationFingerprint,
+					providerFingerprint: base.summaryProvider.providerFingerprint,
+					maxMemoryItemsPerDerivation: 17,
+					manifest: base,
+				}),
+			).toThrow(/maxMemoryItemsPerDerivation/i);
+			let baseClaim = store.claimRawEventFlushJob({
+				jobId: baseAdmission.jobId as number,
+				manifestFingerprint: base.configurationFingerprint,
+				providerFingerprint: base.summaryProvider.providerFingerprint,
+				manifest: base,
+			});
+			if (!baseClaim) throw new Error("expected base claim");
+			for (let attempt = 1; attempt <= 3; attempt++) {
+				expect(
+					store.failRawEventFlushJob({
+						jobId: baseClaim.jobId,
+						claimGeneration: baseClaim.claimGeneration,
+						attemptFingerprint: baseClaim.attemptFingerprint,
+						safeErrorCode: "output_invalid",
+					}),
+				).toEqual({ status: attempt === 3 ? "retry_exhausted" : "failed" });
+				if (attempt < 3) {
+					expect(store.requeueFailedRawEventFlushJob(baseClaim.jobId)).toBe(true);
+					const next = store.claimRawEventFlushJob({
+						jobId: baseClaim.jobId,
+						manifestFingerprint: base.configurationFingerprint,
+						providerFingerprint: base.summaryProvider.providerFingerprint,
+						manifest: base,
+					});
+					if (!next) throw new Error("expected next base claim");
+					baseClaim = next;
+				}
+			}
+
+			const successor = compileCapabilityManifest({
+				manifestVersion: base.manifestVersion,
+				manifestId: base.manifestId,
+				baseConfigurationFingerprint: base.configurationFingerprint,
+				destinationPolicyMap: base.destinationPolicyMap,
+				resourceProfile: {
+					...base.resourceProfile,
+					version: 2,
+					maxMemoryItemsPerDerivation: 17,
+				},
+				summaryProvider: {
+					version: base.summaryProvider.version,
+					role: base.summaryProvider.role,
+					state: base.summaryProvider.state,
+					wireProtocol: base.summaryProvider.wireProtocol,
+					modelId: base.summaryProvider.modelId,
+					modelRevision: base.summaryProvider.modelRevision,
+					endpointUrl: base.summaryProvider.endpointUrl,
+					credentialRef: base.summaryProvider.credentialRef,
+				},
+				embeddingProvider: base.embeddingProvider,
+				legacyDispositions: base.legacyDispositions,
+			});
+			capture(
+				store,
+				"successor-limit-0",
+				{},
+				{
+					opencodeSessionId: "successor-limit",
+					captureManifestFingerprint: successor.configurationFingerprint,
+				},
+			);
+			const successorAdmission = store.admitRawEventFlushJob({
+				source: "codex",
+				streamId: "successor-limit",
+				manifestFingerprint: successor.configurationFingerprint,
+				providerFingerprint: successor.summaryProvider.providerFingerprint,
+			});
+			expect(() =>
+				store.claimRawEventFlushJob({
+					jobId: successorAdmission.jobId as number,
+					manifestFingerprint: successor.configurationFingerprint,
+					providerFingerprint: successor.summaryProvider.providerFingerprint,
+					maxMemoryItemsPerDerivation: 17,
+					manifest: successor,
+				}),
+			).toThrow(/recovery successor/i);
+			expect(
+				store.applyResumeSignal({
+					signalId: "doctor-limit-signal-1",
+					producerReceiptId: "doctor-limit-receipt-1",
+					targetJobId: baseClaim.jobId,
+					sequence: 1,
+					kind: "user_confirmed_doctor_retry",
+					targetRole: "summary",
+					providerFingerprint: base.summaryProvider.providerFingerprint,
+					manifestFingerprint: base.configurationFingerprint,
+				}),
+			).toMatchObject({ disposition: "accepted", grantState: "pending" });
+			expect(
+				store.applyResumeSignal({
+					signalId: "doctor-limit-invalid-signal-2",
+					producerReceiptId: "doctor-limit-invalid-receipt-2",
+					targetJobId: baseClaim.jobId,
+					sequence: 2,
+					kind: "user_confirmed_doctor_retry",
+					targetRole: "summary",
+					providerFingerprint: `sha256:${"d".repeat(64)}`,
+					manifestFingerprint: base.configurationFingerprint,
+				}),
+			).toMatchObject({ disposition: "unrelated_component", grantState: "pending" });
+			expect(() =>
+				store.claimRawEventFlushJob({
+					jobId: baseClaim.jobId,
+					manifestFingerprint: successor.configurationFingerprint,
+					providerFingerprint: successor.summaryProvider.providerFingerprint,
+					maxMemoryItemsPerDerivation: 17,
+					manifest: successor,
+				}),
+			).toThrow(/resume grant target/i);
+			const doctorClaim = store.claimRawEventFlushJob({
+				jobId: baseClaim.jobId,
+				manifestFingerprint: base.configurationFingerprint,
+				providerFingerprint: base.summaryProvider.providerFingerprint,
+				manifest: base,
+			});
+			if (!doctorClaim) throw new Error("expected doctor claim");
+			expect(
+				store.failRawEventFlushJob({
+					jobId: doctorClaim.jobId,
+					claimGeneration: doctorClaim.claimGeneration,
+					attemptFingerprint: doctorClaim.attemptFingerprint,
+					safeErrorCode: "output_invalid",
+				}),
+			).toEqual({ status: "retry_exhausted" });
+			expect(
+				store.applyResumeSignal({
+					signalId: "output-limit-signal-2",
+					producerReceiptId: "output-limit-receipt-2",
+					targetJobId: baseClaim.jobId,
+					sequence: 2,
+					kind: "validated_configuration_activation",
+					targetRole: "summary",
+					providerFingerprint: successor.summaryProvider.providerFingerprint,
+					manifestFingerprint: successor.configurationFingerprint,
+				}),
+			).toMatchObject({ disposition: "accepted", grantState: "pending" });
+			const successorClaim = store.claimRawEventFlushJob({
+				jobId: baseClaim.jobId,
+				manifestFingerprint: successor.configurationFingerprint,
+				providerFingerprint: successor.summaryProvider.providerFingerprint,
+				maxMemoryItemsPerDerivation: 17,
+				manifest: successor,
+			});
+			expect(successorClaim).toMatchObject({
+				maxMemoryItemsPerDerivation: 17,
+				usedResumeGrant: true,
+			});
+			if (!successorClaim) throw new Error("expected successor claim");
+			expect(
+				store.failRawEventFlushJob({
+					jobId: successorClaim.jobId,
+					claimGeneration: successorClaim.claimGeneration,
+					attemptFingerprint: successorClaim.attemptFingerprint,
+					safeErrorCode: "output_invalid",
+				}),
+			).toEqual({ status: "retry_exhausted" });
+
+			const chainedSuccessor = compileCapabilityManifest({
+				manifestVersion: base.manifestVersion,
+				manifestId: base.manifestId,
+				baseConfigurationFingerprint: successor.configurationFingerprint,
+				destinationPolicyMap: base.destinationPolicyMap,
+				resourceProfile: successor.resourceProfile,
+				summaryProvider: {
+					version: base.summaryProvider.version,
+					role: base.summaryProvider.role,
+					state: base.summaryProvider.state,
+					wireProtocol: base.summaryProvider.wireProtocol,
+					modelId: base.summaryProvider.modelId,
+					modelRevision: base.summaryProvider.modelRevision,
+					endpointUrl: base.summaryProvider.endpointUrl,
+					credentialRef: base.summaryProvider.credentialRef,
+				},
+				embeddingProvider: base.embeddingProvider,
+				legacyDispositions: base.legacyDispositions,
+			});
+			expect(
+				store.applyResumeSignal({
+					signalId: "output-limit-signal-3",
+					producerReceiptId: "output-limit-receipt-3",
+					targetJobId: successorClaim.jobId,
+					sequence: 3,
+					kind: "validated_configuration_activation",
+					targetRole: "summary",
+					providerFingerprint: chainedSuccessor.summaryProvider.providerFingerprint,
+					manifestFingerprint: chainedSuccessor.configurationFingerprint,
+				}),
+			).toMatchObject({ disposition: "accepted", grantState: "pending" });
+			expect(() =>
+				store.claimRawEventFlushJob({
+					jobId: successorClaim.jobId,
+					manifestFingerprint: chainedSuccessor.configurationFingerprint,
+					providerFingerprint: chainedSuccessor.summaryProvider.providerFingerprint,
+					maxMemoryItemsPerDerivation: 17,
+					manifest: chainedSuccessor,
+				}),
+			).toThrow(/recovery successor/i);
+		});
+
+		it("validates cited sources and stamps per-memory provenance atomically", () => {
+			for (const [eventId, sensitivity] of [
+				["cited-0", "eligible"],
+				["cited-1", "private"],
+			] as const) {
+				store.recordRawEvent({
+					opencodeSessionId: "cited",
+					source: "codex",
+					eventId,
+					eventType: "user_prompt",
+					payload: { eventId },
+					repositoryIdentity,
+					captureManifestFingerprint: manifestFingerprint,
+					sensitivity,
+				});
+			}
+			expect(() =>
+				store.admitRawEventFlushJob({
+					source: "codex",
+					streamId: "cited",
+					manifestFingerprint: null as never,
+					providerFingerprint,
+				}),
+			).toThrow(/required/i);
+			const admission = store.admitRawEventFlushJob({
+				source: "codex",
+				streamId: "cited",
+				manifestFingerprint,
+				providerFingerprint,
+			});
+			expect(() =>
+				store.claimRawEventFlushJob({
+					jobId: admission.jobId as number,
+					manifestFingerprint,
+					providerFingerprint: null as never,
+				}),
+			).toThrow(/required/i);
+			const claim = store.claimRawEventFlushJob({
+				jobId: admission.jobId as number,
+				manifestFingerprint,
+				providerFingerprint,
+			});
+			if (!claim) throw new Error("expected cited claim");
+			const sessionId = insertTestSession(store.db);
+			const countMemories = () =>
+				(store.db.prepare("SELECT COUNT(*) AS count FROM memory_items").get() as { count: number })
+					.count;
+			const before = countMemories();
+			expect(() =>
+				store.completeRawEventFlushJobMemory(
+					{
+						claim: { ...claim, maxMemoryItemsPerDerivation: Number.NaN },
+						sourceEventIds: ["cited-0", "cited-1"],
+						observedOutputCount: 0,
+						diagnostic: {},
+					},
+					() => [],
+				),
+			).toThrow(/output limit/i);
+			expect(() =>
+				store.completeRawEventFlushJobMemory(
+					{
+						claim: { ...claim, maxMemoryItemsPerDerivation: 17 },
+						sourceEventIds: ["cited-0", "cited-1"],
+						observedOutputCount: 0,
+						diagnostic: {},
+					},
+					() => [],
+				),
+			).toThrow(/binding/i);
+			expect(() =>
+				store.completeRawEventFlushJobMemory(
+					{
+						claim: { ...claim, manifestFingerprint: `sha256:${"c".repeat(64)}` },
+						sourceEventIds: ["cited-0", "cited-1"],
+						observedOutputCount: 0,
+						diagnostic: {},
+					},
+					() => [],
+				),
+			).toThrow(/binding/i);
+			expect(() =>
+				store.completeRawEventFlushJobMemory(
+					{
+						claim,
+						sourceEventIds: ["cited-0", "cited-1"],
+						observedOutputCount: 1,
+						diagnostic: {},
+					},
+					() => [
+						{
+							memoryId: store.remember(sessionId, "discovery", "invalid", "invalid"),
+							citedSourceEventIds: [],
+							disposition: "inserted",
+						},
+					],
+				),
+			).toThrow(/citation/i);
+			expect(countMemories()).toBe(before);
+			expect(store.rawEventFlushState("cited", "codex")).toBe(-1);
+			const unrelatedMemoryId = store.remember(sessionId, "discovery", "unrelated", "unrelated");
+			expect(() =>
+				store.completeRawEventFlushJobMemory(
+					{
+						claim,
+						sourceEventIds: ["cited-0", "cited-1"],
+						observedOutputCount: 1,
+						diagnostic: {},
+					},
+					() => [
+						{
+							memoryId: unrelatedMemoryId,
+							citedSourceEventIds: ["cited-0"],
+							disposition: "inserted",
+						},
+					],
+				),
+			).toThrow(/memory completion is invalid/i);
+			expect(
+				store.db
+					.prepare(
+						"SELECT repository_identity, source_event_ids_json, manifest_fingerprint FROM memory_items WHERE id = ?",
+					)
+					.get(unrelatedMemoryId),
+			).toEqual({
+				repository_identity: null,
+				source_event_ids_json: null,
+				manifest_fingerprint: null,
+			});
+			expect(() =>
+				store.completeRawEventFlushJobMemory(
+					{
+						claim,
+						sourceEventIds: ["cited-0", "cited-1"],
+						observedOutputCount: 1,
+						diagnostic: {},
+					},
+					() => [
+						{
+							memoryId: unrelatedMemoryId,
+							citedSourceEventIds: ["cited-0"],
+							disposition: "unexpected",
+						} as never,
+					],
+				),
+			).toThrow(/memory completion is invalid/i);
+
+			const completed = store.completeRawEventFlushJobMemory(
+				{
+					claim,
+					sourceEventIds: ["cited-0", "cited-1"],
+					observedOutputCount: 1,
+					diagnostic: {},
+				},
+				() => [
+					{
+						memoryId: store.remember(sessionId, "discovery", "valid", "valid"),
+						citedSourceEventIds: ["cited-1"],
+						disposition: "inserted",
+					},
+				],
+			);
+			expect(completed).toMatchObject({ frontierChanged: true, memoryIds: [expect.any(Number)] });
+			expect(
+				store.db
+					.prepare(
+						`SELECT sensitivity, repository_identity, source_event_ids_json,
+							manifest_fingerprint, provider_fingerprint, attempt_fingerprint
+						 FROM memory_items WHERE id = ?`,
+					)
+					.get(completed.memoryIds[0]),
+			).toEqual({
+				sensitivity: "private",
+				repository_identity: repositoryIdentity,
+				source_event_ids_json: '["cited-1"]',
+				manifest_fingerprint: manifestFingerprint,
+				provider_fingerprint: providerFingerprint,
+				attempt_fingerprint: claim.attemptFingerprint,
+			});
+
+			store.recordRawEvent({
+				opencodeSessionId: "deduplicated-output",
+				source: "codex",
+				eventId: "deduplicated-0",
+				eventType: "user_prompt",
+				payload: { text: "duplicate" },
+				repositoryIdentity,
+				captureManifestFingerprint: manifestFingerprint,
+				sensitivity: "eligible",
+			});
+			const dedupAdmission = store.admitRawEventFlushJob({
+				source: "codex",
+				streamId: "deduplicated-output",
+				manifestFingerprint,
+				providerFingerprint,
+			});
+			const dedupClaim = store.claimRawEventFlushJob({
+				jobId: dedupAdmission.jobId as number,
+				manifestFingerprint,
+				providerFingerprint,
+			});
+			if (!dedupClaim) throw new Error("expected dedup claim");
+			expect(() =>
+				store.completeRawEventFlushJobMemory(
+					{
+						claim: dedupClaim,
+						sourceEventIds: ["deduplicated-0"],
+						observedOutputCount: 1,
+						diagnostic: {},
+					},
+					() => [
+						{
+							memoryId: store.remember(sessionId, "discovery", "valid", "valid"),
+							citedSourceEventIds: ["deduplicated-0"],
+							disposition: "deduplicated",
+						},
+					],
+				),
+			).toThrow(/citation binding/i);
+			expect(
+				store.db
+					.prepare(
+						"SELECT source_event_ids_json, attempt_fingerprint FROM memory_items WHERE id = ?",
+					)
+					.get(completed.memoryIds[0]),
+			).toEqual({
+				source_event_ids_json: '["cited-1"]',
+				attempt_fingerprint: claim.attemptFingerprint,
+			});
+
+			const otherRepository = `repo-v1:sha256:${"d".repeat(64)}`;
+			for (const eventId of ["mixed-0", "mixed-1"]) {
+				store.recordRawEvent({
+					opencodeSessionId: "mixed-repositories",
+					source: "codex",
+					eventId,
+					eventType: "user_prompt",
+					payload: { eventId },
+					repositoryIdentity,
+					captureManifestFingerprint: manifestFingerprint,
+					sensitivity: "eligible",
+				});
+			}
+			const mixedAdmission = store.admitRawEventFlushJob({
+				source: "codex",
+				streamId: "mixed-repositories",
+				manifestFingerprint,
+				providerFingerprint,
+			});
+			const mixedClaim = store.claimRawEventFlushJob({
+				jobId: mixedAdmission.jobId as number,
+				manifestFingerprint,
+				providerFingerprint,
+			});
+			if (!mixedClaim) throw new Error("expected mixed claim");
+			store.db
+				.prepare("UPDATE raw_events SET repository_identity = ? WHERE event_id = 'mixed-1'")
+				.run(otherRepository);
+			const beforeMixed = countMemories();
+			expect(() =>
+				store.completeRawEventFlushJobMemory(
+					{
+						claim: mixedClaim,
+						sourceEventIds: ["mixed-0", "mixed-1"],
+						observedOutputCount: 1,
+						diagnostic: {},
+					},
+					() => [
+						{
+							memoryId: store.remember(sessionId, "discovery", "mixed", "mixed"),
+							citedSourceEventIds: ["mixed-0", "mixed-1"],
+							disposition: "inserted",
+						},
+					],
+				),
+			).toThrow(/one repository/i);
+			expect(countMemories()).toBe(beforeMixed);
+			expect(store.rawEventFlushState("mixed-repositories", "codex")).toBe(-1);
+		});
+
+		it("replays a fanout signal using its stored global producer identity", () => {
+			const nextManifest = `sha256:${"d".repeat(64)}`;
+			const nextProvider = `sha256:${"e".repeat(64)}`;
+			const jobId = insertRetryExhaustedJob("global-producer-replay");
+			const fanout = store.importActivationReceipt({
+				receiptId: "global-producer-replay-receipt",
+				activationSequence: 42,
+				manifestFingerprint: nextManifest,
+				providerFingerprint: nextProvider,
+			});
+			expect(fanout).toMatchObject({ disposition: "accepted", fanoutCount: 1 });
+			const signal = store.db
+				.prepare(
+					`SELECT signal_id, producer_receipt_id, sequence, kind,
+						target_manifest_fingerprint, target_provider_fingerprint
+					 FROM processing_resume_signals WHERE job_id = ?`,
+				)
+				.get(jobId) as {
+				signal_id: string;
+				producer_receipt_id: string;
+				sequence: number;
+				kind: "validated_configuration_activation";
+				target_manifest_fingerprint: string;
+				target_provider_fingerprint: string;
+			};
+
+			expect(
+				store.applyResumeSignal({
+					signalId: signal.signal_id,
+					producerReceiptId: signal.producer_receipt_id,
+					targetJobId: jobId,
+					sequence: Number(signal.sequence),
+					kind: signal.kind,
+					targetRole: "summary",
+					providerFingerprint: signal.target_provider_fingerprint,
+					manifestFingerprint: signal.target_manifest_fingerprint,
+				}),
+			).toMatchObject({ disposition: "duplicate", grantState: "pending" });
+		});
+
+		it("rejects non-monotonic activation sequences before durable fanout", () => {
+			const nextManifest = `sha256:${"d".repeat(64)}`;
+			const nextProvider = `sha256:${"e".repeat(64)}`;
+			const ordinaryStreamId = "activation-sequence-ordinary-queued";
+			capture(store, `${ordinaryStreamId}-0`, {}, { opencodeSessionId: ordinaryStreamId });
+			const ordinaryJobId = store.admitRawEventFlushJob({
+				source: "codex",
+				streamId: ordinaryStreamId,
+				manifestFingerprint,
+				providerFingerprint,
+			}).jobId as number;
+			expect(
+				store.importActivationReceipt({
+					receiptId: "activation-sequence-10",
+					activationSequence: 10,
+					manifestFingerprint: nextManifest,
+					providerFingerprint: nextProvider,
+				}),
+			).toMatchObject({ disposition: "accepted", fanoutCount: 0 });
+			expect(
+				store.db
+					.prepare("SELECT status, resume_grant_state FROM raw_event_flush_batches WHERE id = ?")
+					.get(ordinaryJobId),
+			).toEqual({ status: "queued", resume_grant_state: "none" });
+			const snapshot = () => ({
+				receipts: store.db
+					.prepare(
+						`SELECT receipt_id, producer_sequence, target_job_ids_json
+						 FROM processing_resume_producer_receipts
+						 ORDER BY producer_sequence, receipt_id`,
+					)
+					.all(),
+				signals: store.db.prepare("SELECT * FROM processing_resume_signals").all(),
+			});
+			const afterTen = snapshot();
+			const futureJobId = insertRetryExhaustedJob("activation-sequence-future-job");
+			expect(() =>
+				store.applyResumeSignal({
+					signalId: "activation-sequence-future-signal",
+					producerReceiptId: "activation-sequence-10",
+					targetJobId: futureJobId,
+					sequence: 10,
+					kind: "validated_configuration_activation",
+					targetRole: "summary",
+					providerFingerprint: nextProvider,
+					manifestFingerprint: nextManifest,
+				}),
+			).toThrow(/not bound to this job/i);
+
+			for (const [receiptId, activationSequence] of [
+				["activation-sequence-9", 9],
+				["activation-sequence-10-alias", 10],
+			] as const) {
+				expect(
+					store.importActivationReceipt({
+						receiptId,
+						activationSequence,
+						manifestFingerprint: nextManifest,
+						providerFingerprint: nextProvider,
+					}),
+				).toMatchObject({ disposition: "stale", fanoutCount: 0, results: [] });
+				expect(snapshot()).toEqual(afterTen);
+			}
+			expect(
+				store.importActivationReceipt({
+					receiptId: "activation-sequence-10",
+					activationSequence: 10,
+					manifestFingerprint: nextManifest,
+					providerFingerprint: nextProvider,
+				}),
+			).toMatchObject({ disposition: "duplicate", fanoutCount: 0 });
+			expect(
+				store.db
+					.prepare("SELECT status, resume_grant_state FROM raw_event_flush_batches WHERE id = ?")
+					.get(futureJobId),
+			).toEqual({ status: "retry_exhausted", resume_grant_state: "none" });
+			expect(
+				store.db
+					.prepare("SELECT COUNT(*) AS count FROM processing_resume_signals WHERE job_id = ?")
+					.get(futureJobId),
+			).toEqual({ count: 0 });
+			expect(
+				store.importActivationReceipt({
+					receiptId: "activation-sequence-11",
+					activationSequence: 11,
+					manifestFingerprint: nextManifest,
+					providerFingerprint: nextProvider,
+				}),
+			).toMatchObject({ disposition: "accepted", fanoutCount: 1 });
+			expect(
+				store.db
+					.prepare("SELECT status, resume_grant_state FROM raw_event_flush_batches WHERE id = ?")
+					.get(ordinaryJobId),
+			).toEqual({ status: "queued", resume_grant_state: "none" });
+		});
+
+		it("does not replay an older pending activation after a newer sequence", () => {
+			const jobId = insertRetryExhaustedJob("activation-sequence-superseded");
+			const siblingJobId = insertRetryExhaustedJob("activation-sequence-superseded-sibling");
+			expect(
+				store.applyResumeSignal({
+					signalId: "activation-sequence-blocker-signal",
+					producerReceiptId: "activation-sequence-blocker-receipt",
+					targetJobId: jobId,
+					sequence: 1,
+					kind: "user_confirmed_doctor_retry",
+					targetRole: "summary",
+					providerFingerprint,
+					manifestFingerprint,
+				}),
+			).toMatchObject({ disposition: "accepted", grantState: "pending" });
+			const older = {
+				receiptId: "activation-sequence-older-pending",
+				activationSequence: 50,
+				manifestFingerprint: `sha256:${"d".repeat(64)}`,
+				providerFingerprint: `sha256:${"e".repeat(64)}`,
+			};
+			const newer = {
+				receiptId: "activation-sequence-newer-pending",
+				activationSequence: 51,
+				manifestFingerprint: `sha256:${"f".repeat(64)}`,
+				providerFingerprint: `sha256:${"0".repeat(64)}`,
+			};
+			expect(store.importActivationReceipt(older)).toMatchObject({
+				disposition: "grant_pending",
+				fanoutCount: 1,
+				results: [{ jobId: siblingJobId, disposition: "accepted" }],
+			});
+			expect(store.importActivationReceipt(newer)).toMatchObject({
+				disposition: "grant_pending",
+				fanoutCount: 0,
+			});
+			const blockerClaim = store.claimRawEventFlushJob({
+				jobId,
+				manifestFingerprint,
+				providerFingerprint,
+			});
+			if (!blockerClaim) throw new Error("expected blocker claim");
+			expect(
+				store.failRawEventFlushJob({
+					jobId,
+					claimGeneration: blockerClaim.claimGeneration,
+					attemptFingerprint: blockerClaim.attemptFingerprint,
+					safeErrorCode: "provider_unavailable",
+				}),
+			).toEqual({ status: "retry_exhausted" });
+			expect(store.importActivationReceipt(newer)).toMatchObject({
+				disposition: "grant_pending",
+				fanoutCount: 1,
+			});
+			const newerClaim = store.claimRawEventFlushJob({
+				jobId,
+				manifestFingerprint: newer.manifestFingerprint,
+				providerFingerprint: newer.providerFingerprint,
+			});
+			if (!newerClaim) throw new Error("expected newer activation claim");
+			expect(
+				store.failRawEventFlushJob({
+					jobId,
+					claimGeneration: newerClaim.claimGeneration,
+					attemptFingerprint: newerClaim.attemptFingerprint,
+					safeErrorCode: "provider_unavailable",
+				}),
+			).toEqual({ status: "retry_exhausted" });
+
+			expect(store.importActivationReceipt(older)).toMatchObject({
+				disposition: "stale",
+				fanoutCount: 1,
+				results: [],
+			});
+			expect(
+				store.db
+					.prepare(
+						`SELECT COUNT(*) AS count FROM processing_resume_signals
+						 WHERE producer_receipt_id = ? AND job_id = ?`,
+					)
+					.get(older.receiptId, jobId),
+			).toEqual({ count: 0 });
+		});
+
+		it("keeps a completed older activation duplicate after a newer sequence", () => {
+			insertRetryExhaustedJob("activation-sequence-completed-before-newer");
+			const older = {
+				receiptId: "activation-sequence-completed-older",
+				activationSequence: 70,
+				manifestFingerprint: `sha256:${"d".repeat(64)}`,
+				providerFingerprint: `sha256:${"e".repeat(64)}`,
+			};
+			expect(store.importActivationReceipt(older)).toMatchObject({
+				disposition: "accepted",
+				fanoutCount: 1,
+			});
+			expect(
+				store.importActivationReceipt({
+					receiptId: "activation-sequence-completed-newer",
+					activationSequence: 71,
+					manifestFingerprint: `sha256:${"f".repeat(64)}`,
+					providerFingerprint: `sha256:${"0".repeat(64)}`,
+				}),
+			).toMatchObject({ disposition: "grant_pending", fanoutCount: 0 });
+			expect(store.importActivationReceipt(older)).toMatchObject({
+				disposition: "duplicate",
+				fanoutCount: 1,
+				results: [],
+			});
+		});
+
+		it("does not grant any resume producer when the exhausted source range has a gap", () => {
+			const streamId = "resume-source-gap";
+			const jobId = insertRetryExhaustedJob(streamId);
+			store.db.prepare("DELETE FROM raw_events WHERE stream_id = ?").run(streamId);
+			const nextManifest = `sha256:${"d".repeat(64)}`;
+			const nextProvider = `sha256:${"e".repeat(64)}`;
+
+			expect(
+				store.importActivationReceipt({
+					receiptId: "source-gap-activation",
+					activationSequence: 7,
+					manifestFingerprint: nextManifest,
+					providerFingerprint: nextProvider,
+				}),
+			).toMatchObject({ disposition: "accepted", fanoutCount: 0, results: [] });
+			expect(
+				store.recordProviderHealth({
+					manifestFingerprint,
+					providerFingerprint,
+					health: "provider_unavailable",
+				}),
+			).toBeNull();
+			expect(
+				store.recordProviderHealth({
+					manifestFingerprint,
+					providerFingerprint,
+					health: "available",
+				}),
+			).toMatchObject({ disposition: "accepted", fanoutCount: 0, results: [] });
+
+			let error: unknown;
+			try {
+				store.confirmDoctorRetry({
+					jobId,
+					producerReceiptId: "source-gap-doctor",
+					expectedRole: "summary",
+					expectedProviderFingerprint: providerFingerprint,
+					expectedManifestFingerprint: manifestFingerprint,
+					expectedAttemptCount: 3,
+					expectedClaimGeneration: 0,
+					targetProviderFingerprint: providerFingerprint,
+					targetManifestFingerprint: manifestFingerprint,
+				});
+			} catch (caught) {
+				error = caught;
+			}
+			expect(error).toBeInstanceOf(ProcessingResumeError);
+			expect(error).toMatchObject({ code: "stale_snapshot", retryable: false });
+			expect(
+				store.db
+					.prepare(
+						`SELECT status, resume_grant_state, attempt_count
+						 FROM raw_event_flush_batches WHERE id = ?`,
+					)
+					.get(jobId),
+			).toEqual({ status: "retry_exhausted", resume_grant_state: "none", attempt_count: 3 });
+		});
+
+		it("rejects an activation receipt reused by a doctor retry without mutating the target job", () => {
+			const nextManifest = `sha256:${"d".repeat(64)}`;
+			const nextProvider = `sha256:${"e".repeat(64)}`;
+			insertRetryExhaustedJob("activation-receipt-source");
+			const doctorJobId = insertRetryExhaustedJob(
+				"activation-receipt-doctor-target",
+				nextManifest,
+				nextProvider,
+			);
+			store.importActivationReceipt({
+				receiptId: "activation-receipt-reused-by-doctor",
+				activationSequence: 42,
+				manifestFingerprint: nextManifest,
+				providerFingerprint: nextProvider,
+			});
+			const snapshot = () => ({
+				receipt: store.db
+					.prepare(
+						`SELECT producer_kind, configuration_fingerprint, provider_fingerprint,
+							producer_sequence, fanout_count
+						 FROM processing_resume_producer_receipts WHERE receipt_id = ?`,
+					)
+					.get("activation-receipt-reused-by-doctor"),
+				signals: store.db
+					.prepare(
+						`SELECT signal_id, job_id, sequence, kind, disposition, grant_id
+						 FROM processing_resume_signals WHERE producer_receipt_id = ? ORDER BY job_id`,
+					)
+					.all("activation-receipt-reused-by-doctor"),
+				job: store.db
+					.prepare(
+						`SELECT status, resume_grant_id, resume_grant_state, resume_grant_reason,
+							last_resume_signal_id, last_resume_sequence, last_resume_signal_disposition
+						 FROM raw_event_flush_batches WHERE id = ?`,
+					)
+					.get(doctorJobId),
+			});
+			const before = snapshot();
+
+			let error: unknown;
+			try {
+				store.confirmDoctorRetry({
+					jobId: doctorJobId,
+					producerReceiptId: "activation-receipt-reused-by-doctor",
+					expectedRole: "summary",
+					expectedProviderFingerprint: nextProvider,
+					expectedManifestFingerprint: nextManifest,
+					expectedAttemptCount: 3,
+					expectedClaimGeneration: 0,
+					targetProviderFingerprint: nextProvider,
+					targetManifestFingerprint: nextManifest,
+				});
+			} catch (caught) {
+				error = caught;
+			}
+			expect(error).toBeInstanceOf(ProcessingResumeError);
+			expect(error).toMatchObject({ code: "invalid_signal", retryable: false });
+			expect(snapshot()).toEqual(before);
+		});
+
+		it("rejects mismatched fanout reuse of a doctor receipt without mutation", () => {
+			const doctorJobId = insertRetryExhaustedJob("doctor-receipt-fanout-source");
+			store.confirmDoctorRetry({
+				jobId: doctorJobId,
+				producerReceiptId: "doctor-receipt-reused-by-activation",
+				expectedRole: "summary",
+				expectedProviderFingerprint: providerFingerprint,
+				expectedManifestFingerprint: manifestFingerprint,
+				expectedAttemptCount: 3,
+				expectedClaimGeneration: 0,
+				targetProviderFingerprint: providerFingerprint,
+				targetManifestFingerprint: manifestFingerprint,
+			});
+			const snapshot = () => ({
+				receipts: store.db
+					.prepare("SELECT * FROM processing_resume_producer_receipts ORDER BY receipt_id")
+					.all(),
+				signals: store.db
+					.prepare("SELECT * FROM processing_resume_signals ORDER BY signal_id")
+					.all(),
+				jobs: store.db
+					.prepare(
+						`SELECT id, status, resume_grant_id, resume_grant_state, resume_grant_reason,
+							last_resume_signal_id, last_resume_sequence, last_resume_signal_disposition
+						 FROM raw_event_flush_batches ORDER BY id`,
+					)
+					.all(),
+			});
+			const before = snapshot();
+
+			let error: unknown;
+			try {
+				store.importActivationReceipt({
+					receiptId: "doctor-receipt-reused-by-activation",
+					activationSequence: 9,
+					manifestFingerprint: `sha256:${"f".repeat(64)}`,
+					providerFingerprint: `sha256:${"0".repeat(64)}`,
+				});
+			} catch (caught) {
+				error = caught;
+			}
+			expect(error).toBeInstanceOf(ProcessingResumeError);
+			expect(error).toMatchObject({ code: "invalid_signal", retryable: false });
+			expect(snapshot()).toEqual(before);
+		});
+
+		it("rejects reuse of one doctor receipt across jobs with matching producer metadata", () => {
+			const firstJobId = insertRetryExhaustedJob("doctor-receipt-first-job");
+			const secondJobId = insertRetryExhaustedJob("doctor-receipt-second-job");
+			const confirmation = {
+				producerReceiptId: "doctor-receipt-cross-job",
+				expectedRole: "summary" as const,
+				expectedProviderFingerprint: providerFingerprint,
+				expectedManifestFingerprint: manifestFingerprint,
+				expectedAttemptCount: 3,
+				expectedClaimGeneration: 0,
+				targetProviderFingerprint: providerFingerprint,
+				targetManifestFingerprint: manifestFingerprint,
+			};
+			store.confirmDoctorRetry({ jobId: firstJobId, ...confirmation });
+			const before = store.db
+				.prepare(
+					`SELECT status, resume_grant_id, resume_grant_state, resume_grant_reason,
+						last_resume_signal_id, last_resume_sequence, last_resume_signal_disposition
+					 FROM raw_event_flush_batches WHERE id = ?`,
+				)
+				.get(secondJobId);
+
+			let error: unknown;
+			try {
+				store.confirmDoctorRetry({ jobId: secondJobId, ...confirmation });
+			} catch (caught) {
+				error = caught;
+			}
+			expect(error).toBeInstanceOf(ProcessingResumeError);
+			expect(error).toMatchObject({ code: "invalid_signal", retryable: false });
+			expect(
+				store.db
+					.prepare(
+						`SELECT status, resume_grant_id, resume_grant_state, resume_grant_reason,
+							last_resume_signal_id, last_resume_sequence, last_resume_signal_disposition
+						 FROM raw_event_flush_batches WHERE id = ?`,
+					)
+					.get(secondJobId),
+			).toEqual(before);
+			expect(
+				store.db
+					.prepare(
+						"SELECT COUNT(*) AS count FROM processing_resume_signals WHERE producer_receipt_id = ?",
+					)
+					.get("doctor-receipt-cross-job"),
+			).toEqual({ count: 1 });
+		});
+
+		it("fans one producer receipt out with independent per-job sequences", () => {
+			const now = "2026-08-31T00:00:00.000Z";
+			capture(store, "fanout-high-0", {}, { opencodeSessionId: "fanout-high" });
+			capture(store, "fanout-low-0", {}, { opencodeSessionId: "fanout-low" });
+			const insert = store.db.prepare(
+				`INSERT INTO raw_event_flush_batches(
+					source, stream_id, opencode_session_id, start_event_seq, end_event_seq,
+					extractor_version, status, attempt_count, attempt_manifest_fingerprint,
+					attempt_provider_fingerprint, last_resume_sequence, created_at, updated_at
+				 ) VALUES ('codex', ?, ?, 0, 0, 'raw_events_v1', 'retry_exhausted', 3, ?, ?, ?, ?, ?)`,
+			);
+			const first = Number(
+				insert.run(
+					"fanout-high",
+					"fanout-high",
+					manifestFingerprint,
+					providerFingerprint,
+					5,
+					now,
+					now,
+				).lastInsertRowid,
+			);
+			const second = Number(
+				insert.run(
+					"fanout-low",
+					"fanout-low",
+					manifestFingerprint,
+					providerFingerprint,
+					0,
+					now,
+					now,
+				).lastInsertRowid,
+			);
+			const nextManifest = `sha256:${"e".repeat(64)}`;
+			const nextProvider = `sha256:${"f".repeat(64)}`;
+			const fanout = store.importActivationReceipt({
+				receiptId: "fanout-receipt",
+				activationSequence: 2,
+				manifestFingerprint: nextManifest,
+				providerFingerprint: nextProvider,
+			});
+			expect(fanout).toMatchObject({ disposition: "accepted", fanoutCount: 2 });
+			expect(
+				store.db
+					.prepare(
+						"SELECT job_id, sequence FROM processing_resume_signals WHERE producer_receipt_id = 'fanout-receipt' ORDER BY job_id",
+					)
+					.all(),
+			).toEqual([
+				{ job_id: first, sequence: 6 },
+				{ job_id: second, sequence: 1 },
+			]);
+			expect(
+				store.db
+					.prepare(
+						"SELECT producer_sequence FROM processing_resume_producer_receipts WHERE receipt_id = 'fanout-receipt'",
+					)
+					.get(),
+			).toEqual({ producer_sequence: 2 });
+		});
+
+		it("fans out past pending jobs and retries only the missing targets", () => {
+			const firstJobId = insertRetryExhaustedJob("fanout-pending-first");
+			const secondJobId = insertRetryExhaustedJob("fanout-pending-second");
+			expect(
+				store.applyResumeSignal({
+					signalId: "fanout-existing-doctor-signal",
+					producerReceiptId: "fanout-existing-doctor-receipt",
+					targetJobId: firstJobId,
+					sequence: 1,
+					kind: "user_confirmed_doctor_retry",
+					targetRole: "summary",
+					providerFingerprint,
+					manifestFingerprint,
+				}),
+			).toMatchObject({ disposition: "accepted", grantState: "pending" });
+			const nextManifest = `sha256:${"e".repeat(64)}`;
+			const nextProvider = `sha256:${"f".repeat(64)}`;
+			const activation = {
+				receiptId: "fanout-partial-activation",
+				activationSequence: 50,
+				manifestFingerprint: nextManifest,
+				providerFingerprint: nextProvider,
+			};
+
+			expect(store.importActivationReceipt(activation)).toMatchObject({
+				disposition: "grant_pending",
+				fanoutCount: 1,
+				results: [{ jobId: secondJobId, disposition: "accepted" }],
+			});
+			const firstClaim = store.claimRawEventFlushJob({
+				jobId: firstJobId,
+				manifestFingerprint,
+				providerFingerprint,
+			});
+			if (!firstClaim) throw new Error("expected pending doctor claim");
+			expect(store.importActivationReceipt(activation)).toMatchObject({
+				disposition: "grant_pending",
+				fanoutCount: 1,
+				results: [],
+			});
+			expect(
+				store.failRawEventFlushJob({
+					jobId: firstJobId,
+					claimGeneration: firstClaim.claimGeneration,
+					attemptFingerprint: firstClaim.attemptFingerprint,
+					safeErrorCode: "provider_unavailable",
+				}),
+			).toEqual({ status: "retry_exhausted" });
+
+			expect(store.importActivationReceipt(activation)).toMatchObject({
+				disposition: "accepted",
+				fanoutCount: 2,
+				results: [{ jobId: firstJobId, disposition: "accepted" }],
+			});
+			expect(
+				store.db
+					.prepare(
+						`SELECT job_id FROM processing_resume_signals
+						 WHERE producer_receipt_id = ? ORDER BY job_id`,
+					)
+					.all(activation.receiptId),
+			).toEqual([{ job_id: firstJobId }, { job_id: secondJobId }]);
+			expect(store.importActivationReceipt(activation)).toMatchObject({
+				disposition: "duplicate",
+				fanoutCount: 2,
+				results: [],
+			});
+		});
+
+		it("records a durable no-op when a frozen target changes before replay", () => {
+			const jobId = insertRetryExhaustedJob("fanout-frozen-attempt-change");
+			const nextManifest = `sha256:${"e".repeat(64)}`;
+			const nextProvider = `sha256:${"f".repeat(64)}`;
+			expect(
+				store.importActivationReceipt({
+					receiptId: "fanout-frozen-first-activation",
+					activationSequence: 59,
+					providerFingerprint: nextProvider,
+					manifestFingerprint: nextManifest,
+				}),
+			).toMatchObject({ disposition: "accepted", fanoutCount: 1 });
+			const activation = {
+				receiptId: "fanout-frozen-activation",
+				activationSequence: 60,
+				manifestFingerprint: nextManifest,
+				providerFingerprint: nextProvider,
+			};
+			expect(store.importActivationReceipt(activation)).toMatchObject({
+				disposition: "grant_pending",
+				fanoutCount: 0,
+			});
+			const claim = store.claimRawEventFlushJob({
+				jobId,
+				manifestFingerprint: nextManifest,
+				providerFingerprint: nextProvider,
+			});
+			if (!claim) throw new Error("expected frozen target claim");
+			expect(
+				store.failRawEventFlushJob({
+					jobId,
+					claimGeneration: claim.claimGeneration,
+					attemptFingerprint: claim.attemptFingerprint,
+					safeErrorCode: "provider_unavailable",
+				}),
+			).toEqual({ status: "retry_exhausted" });
+
+			expect(store.importActivationReceipt(activation)).toMatchObject({
+				disposition: "accepted",
+				fanoutCount: 0,
+				results: [{ jobId, disposition: "unchanged_configuration" }],
+			});
+			expect(
+				store.db
+					.prepare(
+						`SELECT disposition FROM processing_resume_signals
+						 WHERE job_id = ? AND producer_receipt_id = ?`,
+					)
+					.get(jobId, activation.receiptId),
+			).toEqual({ disposition: "unchanged_configuration" });
+			expect(store.importActivationReceipt(activation)).toMatchObject({
+				disposition: "duplicate",
+				fanoutCount: 0,
+				results: [],
+			});
+		});
+
+		it("purges only completed source below the frontier and exempts every uncompleted range", () => {
+			const durable = store;
+			const statuses = ["queued", "processing", "failed", "retry_exhausted"] as const;
+			for (const streamId of ["completed", "backlog", ...statuses]) {
+				capture(
+					durable,
+					`${streamId}-event`,
+					{ streamId },
+					{
+						opencodeSessionId: streamId,
+						tsWallMs: Date.now() - 60_000,
+					},
+				);
+			}
+			store.db
+				.prepare(
+					"UPDATE raw_event_sessions SET last_flushed_event_seq = 0 WHERE stream_id != 'backlog'",
+				)
+				.run();
+			for (const status of statuses) {
+				store.db
+					.prepare(
+						`INSERT INTO raw_event_flush_batches(
+							source, stream_id, opencode_session_id, start_event_seq, end_event_seq,
+							extractor_version, status, created_at, updated_at
+						 ) VALUES ('codex', ?, ?, 0, 0, 'raw_events_v1', ?, ?, ?)`,
+					)
+					.run(status, status, status, new Date().toISOString(), new Date().toISOString());
+			}
+
+			expect(store.purgeRawEvents(1)).toBe(1);
+			expect(store.db.prepare("SELECT stream_id FROM raw_events ORDER BY stream_id").all()).toEqual(
+				["backlog", "failed", "processing", "queued", "retry_exhausted"].map((stream_id) => ({
+					stream_id,
+				})),
+			);
 		});
 	});
 });

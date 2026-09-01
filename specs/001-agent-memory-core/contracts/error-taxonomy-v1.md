@@ -64,12 +64,13 @@ The client-side `callDaemonRpc` also enforces its own `options.timeoutMs` via `s
 
 ### 1.4 RPC methods
 
-All 27 entries of `RPC_METHODS` (`daemon-rpc-contract.ts:27-55`) are exhaustively handled by explicit branches in `handleMethod` (`daemon-rpc.ts:439-641`). The final fallback branch —
+All 29 entries of `RPC_METHODS` are exhaustively handled by explicit branches in `handleMethod`. The final fallback branch —
 
 ```ts
 return { operationId: body.operationId ?? body.id, state: "not_implemented" };
 ```
-(`daemon-rpc.ts:638-641`) — is **unreachable** for any request that passed `isRpcMethod()` (`daemon-rpc.ts:424-426`, `1518-1519`), because every one of the 27 registered methods has a preceding `if` branch. A reimplementation is not required to reproduce this fallback's `"not_implemented"` shape; it is dead in the current method set.
+
+— is **unreachable** for any request that passed `isRpcMethod()`, because every one of the 29 registered methods has a preceding branch. A reimplementation is not required to reproduce this fallback's `"not_implemented"` shape; it is dead in the current method set.
 
 | Method | Required body fields | Evidence (required) |
 |---|---|---|
@@ -100,16 +101,18 @@ return { operationId: body.operationId ?? body.id, state: "not_implemented" };
 | `POST /v1/jobs` | `kind` | `daemon-rpc.ts:215` |
 | `GET /v1/jobs` | — | `daemon-rpc.ts:216` |
 | `GET /v1/jobs/:id` | `id` | `daemon-rpc.ts:217` |
+| `GET /v1/processing-jobs/:id` | `id` | `daemon-rpc.ts` |
+| `POST /v1/processing-jobs/:id/doctor-retry` | `id`, `producerReceiptId`, `expectedRole`, `expectedProviderFingerprint`, `expectedManifestFingerprint`, `expectedAttemptCount`, `expectedClaimGeneration` | `daemon-rpc.ts` |
 
 `GET /v1/checkpoints` always returns `{ checkpoints: [] }` regardless of body (`daemon-rpc.ts:568`) — a stub, not a functioning checkpoint listing.
 
 ### 1.5 Maintenance-mode blocking
 
-While `isMaintenanceMode(ctx)` is true (`ctx.jobs.isMaintenanceMode()` or `ctx.restoreState?.active === true`, `daemon-rpc.ts:348-350`), the following 14 methods are rejected with `maintenance_mode` (retryable) before dispatch (`daemon-rpc.ts:220-235`, `1563-1569`):
+While `isMaintenanceMode(ctx)` is true (`ctx.jobs.isMaintenanceMode()` or `ctx.restoreState?.active === true`), the existing mutation set plus `POST /v1/processing-jobs/:id/doctor-retry` — 15 methods total — is rejected with retryable `maintenance_mode` before dispatch.
 
-`POST /v1/events`, `POST /v1/events/batch`, `POST /v1/context/pack`, `POST /v1/search`, `POST /v1/retrieval/file-context`, `POST /v1/retrieval/file-context/delivery`, `GET /v1/memories/:id`, `POST /v1/memories/record`, `DELETE /v1/memories/:id`, `POST /v1/backup/create`, `POST /v1/backup/restore`, `POST /v1/operations/export`, `POST /v1/operations/import`, `POST /v1/jobs`.
+`POST /v1/events`, `POST /v1/events/batch`, `POST /v1/context/pack`, `POST /v1/search`, `POST /v1/retrieval/file-context`, `POST /v1/retrieval/file-context/delivery`, `GET /v1/memories/:id`, `POST /v1/memories/record`, `DELETE /v1/memories/:id`, `POST /v1/backup/create`, `POST /v1/backup/restore`, `POST /v1/operations/export`, `POST /v1/operations/import`, `POST /v1/jobs`, `POST /v1/processing-jobs/:id/doctor-retry`.
 
-All other methods (health, doctor, backup list/verify, view, viewer auth, operations get, jobs list/get) remain callable during maintenance mode.
+All other methods, including `GET /v1/processing-jobs/:id`, remain callable during maintenance mode.
 
 ---
 
@@ -128,8 +131,9 @@ Every RPC response is either `{ id, result }` or `{ error: { code, message, retr
 | `protocol_mismatch` | false | Handshake fields missing/mistyped, or `local_api_version` / `normalized_schema_version` / `capability_hash` mismatch | `daemon-rpc.ts:400,413,416,419` |
 | `deadline_exceeded` | **true** | Pre-dispatch elapsed check exceeds the method's deadline (soft), or the real socket timeout fires (hard) | `daemon-rpc.ts:1561`, `1676` |
 | `maintenance_mode` | **true** | Method is in `MAINTENANCE_BLOCKED_METHODS` while maintenance mode is active | `daemon-rpc.ts:1564-1568` |
+| `capture_saturated` | **true** | Two direct capture RPCs (`POST /v1/events` or `POST /v1/events/batch`) already own the request-level slots; no event write is attempted by the rejected request | `daemon-rpc.ts` |
 | `payload_too_large` | false | Accumulated connection bytes exceed `RPC_MAX_BYTES` before a newline is seen | `daemon-rpc.ts:1643` |
-| `internal_error` | false | Catch-all: any thrown error not an instance of `RpcRequestError`, `BackupRequestError`, `DaemonOperationRequestError`, or `MutationConflictError`; also the JSON-parse-failure branch of the per-connection dispatch promise | `daemon-rpc.ts:1594`, `1672` |
+| `internal_error` | false | Catch-all: any thrown error not an instance of a recognized RPC/backup/operation/mutation/resume error class; also the JSON-parse-failure branch of the per-connection dispatch promise | `daemon-rpc.ts` |
 
 ### 2.2 Codes produced by client-side connection mapping (never sent by the daemon over the wire)
 
@@ -152,7 +156,18 @@ class RpcRequestError extends Error {
 }
 ```
 
-Default code is `"invalid_request"`. The single explicit non-default use in the read code is `"not_found"` for a missing memory in `DELETE /v1/memories/:id` (`daemon-rpc.ts:913`). All other `RpcRequestError` throw sites in `daemon-rpc.ts` (event/remember validation, search mode/filter validation, view collection validation, file-context validation, etc.) use the default `"invalid_request"` code.
+Default code is `"invalid_request"`. Explicit non-default uses include `not_found` for missing memories and processing jobs, plus retryable `capture_saturated` for direct event admission at the max-two limit. Other validation sites use the default code.
+
+### 2.3.1 `ProcessingResumeError`
+
+| Code | Retryable | Trigger | Evidence |
+|---|---|---|---|
+| `not_found` | false | The exact processing job does not exist | `store.ts` |
+| `stale_snapshot` | false | Doctor retry confirmation no longer matches the displayed attempt snapshot | `store.ts` |
+| `grant_pending` | **true** | A processing job already owns an unconsumed one-shot resume grant | `daemon-rpc.ts`, `store.ts` |
+| `invalid_signal` | false | A resume signal fails its closed shape or identity validation | `store.ts` |
+
+`dispatchDaemonRpc` preserves the explicit code and retryable bit in the typed error envelope; doctor retry therefore cannot collapse a stale confirmation into `internal_error`.
 
 ### 2.4 `BackupRequestError` (`packages/core/src/online-backup.ts:60,138-146`)
 
@@ -229,7 +244,7 @@ Submitting any other string as `kind` throws `DaemonJobRequestError("job kind is
 
 ### 3.3 Maintenance-classified kinds
 
-`MAINTENANCE_JOB_KINDS` (18 kinds, `daemon-jobs.ts:128-147`) run inside `runInMaintenance` (sets `isMaintenanceMode()` true for the duration, blocking the 14 methods in §1.5) **only when `dry_run === 0`** (`daemon-jobs.ts:751`) — a `dryRun: true` submission of a maintenance-classified kind does **not** enter maintenance mode.
+`MAINTENANCE_JOB_KINDS` (18 kinds, `daemon-jobs.ts:128-147`) run inside `runInMaintenance` (sets `isMaintenanceMode()` true for the duration, blocking the 15 methods in §1.5) **only when `dry_run === 0`** (`daemon-jobs.ts:751`) — a `dryRun: true` submission of a maintenance-classified kind does **not** enter maintenance mode.
 
 `BACKUP_REQUIRED_JOB_KINDS` (8 kinds: `db.vacuum`, `memories.dedup`, `memories.prune`, `observations.prune`, `projects.normalize`, `projects.rename`, `raw-events.prune`, `secrets.scan`, `daemon-jobs.ts:148-157`) does **not** gate the backup requirement on its own. The guard inside `runInMaintenance` (entered only for non-dry-run maintenance-classified jobs, `daemon-jobs.ts:751-752`) is `if (BACKUP_REQUIRED_JOB_KINDS.has(row.kind) || args.internal !== true)` (`daemon-jobs.ts:756`) — an **OR**, not a subset restriction. `internal` is not in any kind's `JOB_ARGS` allowlist (`daemon-jobs.ts:86-127`), and `validateJobArgs` rejects unknown argument names (`daemon-jobs.ts:307-308`), so `submit()` — the only entry point for externally-submitted (RPC) jobs — always rejects an `internal` argument; consequently `args.internal !== true` is always true for any job that reached `runInMaintenance` via `submit()`, regardless of `kind`. The only jobs that ever carry `args: { internal: true }` are the six kinds `scanInternalBackfills` enqueues via a direct `this.enqueue(kind, { internal: true }, false)` call that bypasses `submit()`/`validateJobArgs` entirely (`daemon-jobs.ts:681`; scan loop `daemon-jobs.ts:653-682`) — and those six kinds (`scopes.backfill`, `dedup-keys.backfill`, `session-context.backfill`, `refs.backfill`, `summary-dedup.backfill`, `vectors.migrate`) are disjoint from the 8-kind `BACKUP_REQUIRED_JOB_KINDS` set. Net effect in the currently-reachable code paths: **every non-dry-run maintenance-classified job submitted through `submit()` requires a verified backup**, not only the 8 named in `BACKUP_REQUIRED_JOB_KINDS`; the internal scheduler's 6 kinds never require one (their `args.internal === true` and none of them is in the 8-kind set); `BACKUP_REQUIRED_JOB_KINDS` has zero observable gating effect in the reachable paths — a job's kind being in that set changes nothing, since the `args.internal !== true` disjunct already forces the backup for every reachable non-dry-run maintenance job. Backup verification failure throws a plain `Error`, which becomes job state `"failed"` with `error_code: "job_failed"` (§2.7).
 
@@ -387,11 +402,15 @@ type MaintenanceState = "idle" | "running" | "failed" | "unknown";
 type SemanticIndexState = "healthy" | "pending" | "degraded" | "failed" | "unknown";
 type RawEventsState = "healthy" | "backlogged" | "failing" | "unknown";
 type ObserverState = "healthy" | "idle" | "pending" | "backoff" | "failed" | "unconfigured" | "unknown";
+type ProcessingNextAction = "none" | "activate_valid_manifest" | "configure_credential" |
+  "wait_for_capacity" | "confirm_retry" | "restart_daemon" | "upgrade_runtime";
 ```
 
-The report also carries the exact safe `capability` projection or `null` when doctor is unavailable. A configured manifest whose provider gate is disabled reports observer `"pending"`, not `"idle"`; its manifest/provider fingerprints and privacy/schema/pack reasons remain visible in JSON and human output. A missing doctor snapshot reports observer `"unknown"` because status does not reread mutable legacy config.
+The doctor snapshot carries `raw_events: { available, pending, source_gaps, failed_batches }`; the CLI projects it as `raw_events: { state, pending, source_gaps }`. `source_gaps` is a content-free count over at most the first 25 pending streams ordered by session update time and stable source/stream keys, so its observable range is 0–25 and it is not an unbounded total. A positive count forces processing `next_action: "upgrade_runtime"`; stream IDs, event IDs, payloads, and paths are never projected. If either the pending aggregate or source-gap scan cannot run, `available=false`; a successful pending count remains visible, but the CLI reports raw events `unknown`, emits `raw_events_unavailable`, and forces `next_action=upgrade_runtime`. A missing, non-integer, or negative `source_gaps` in an older/partial doctor snapshot is likewise unavailable, not zero.
 
-`projectDatabaseSubsystems` maps a missing `OperationalStatusSnapshot` (no doctor response) to `maintenance/semantic_index: "unknown"`, `raw_events: {state:"unknown", pending:0}`, and `observer: {state:"unknown"}`.
+The report also carries the exact safe `capability` projection or `null` when doctor is unavailable, plus `processing_jobs: { capacity, uncompleted, processing, failed, exhausted, pending_grants, max_attempt, legacy_unrecoverable, retry_exhausted_job_ids, next_action }`. Counts are bounded non-negative integers; `retry_exhausted_job_ids` is an ascending content-free list capped at 25 and contains only exact retained doctor-retry targets. If any exhausted job lacks an exact retained range, `next_action=upgrade_runtime`; the ID list is empty whenever that action applies. Capacity defaults to 25 and unknown/malformed next action fails closed to `upgrade_runtime`. In that state, exhausted attention instructs upgrade before retrying rather than confirmation. A configured manifest whose provider gate is disabled reports observer `"pending"`, not `"idle"`; its manifest/provider fingerprints and privacy/schema/pack reasons remain visible in JSON and human output. A missing doctor snapshot reports observer `"unknown"` because status does not reread mutable legacy config.
+
+`projectDatabaseSubsystems` maps a missing `OperationalStatusSnapshot` (no doctor response) to `maintenance/semantic_index: "unknown"`, `raw_events: {state:"unknown", pending:0, source_gaps:0}`, zeroed processing-job counts with capacity 25 and `next_action: "upgrade_runtime"`, and `observer: {state:"unknown"}`.
 
 ### 6.4 Attention codes (`StatusAttention`)
 
@@ -409,8 +428,14 @@ The report also carries the exact safe `capability` projection or `null` when do
 | `semantic_index_failed` | error | `snapshot.semantic_index.state === "failed"` | `status.ts:260-265` |
 | `semantic_index_pending` | warning | `snapshot.semantic_index.state === "pending"` | `status.ts:266-271` |
 | `semantic_index_degraded` | warning | `snapshot.semantic_index.state === "degraded"` | `status.ts:272-277` |
+| `raw_events_source_gap` | error | bounded `snapshot.raw_events.source_gaps > 0`; fixed message reports only the bounded count and sets `next_action=upgrade_runtime` | `projectDatabaseSubsystems` |
+| `raw_events_unavailable` | error | `snapshot.raw_events.available !== true` or `source_gaps` is missing, non-integer, or negative; fixed content-free message and `next_action=upgrade_runtime` | `projectDatabaseSubsystems` |
 | `raw_events_failing` | error | `snapshot.raw_events.failed_batches > 0` | `status.ts:282-288` |
 | `raw_events_backlogged` | warning | `pending > 0` and not failing | `status.ts:289-296` |
+| `processing_jobs_legacy_unrecoverable` | error | `legacy_unrecoverable > 0` | `status.ts` |
+| `processing_jobs_exhausted` | error | `exhausted > 0` and no legacy-unrecoverable range | `status.ts` |
+| `processing_jobs_backoff` | warning | `failed > 0` and no stronger processing-job condition | `status.ts` |
+| `processing_jobs_at_capacity` | warning | `next_action === "wait_for_capacity"` and no stronger processing-job condition | `status.ts` |
 | `observer_failed` | error | `configuredObserver && snapshot.observer.failed_batches > 0` | `status.ts:300-306` |
 | `observer_backoff` | warning | `configuredObserver && snapshot.observer.backoff_batches > 0` and not failed | `status.ts:307-314` |
 | `observer_pending` | warning | frozen manifest is configured while `providerEnabled !== true` | `status.ts` capability projection |
@@ -441,7 +466,7 @@ The report also carries the exact safe `capability` projection or `null` when do
 3. **The pre-dispatch elapsed-deadline check in `dispatchDaemonRpc` (`daemon-rpc.ts:1559-1562`) is not a real handler-execution timeout.** It only fires if request parsing/validation itself consumed the whole per-method deadline before the handler starts; it cannot and does not abort a slow in-flight async handler. The only mechanism that can end a slow request is the socket-level `setTimeout` at the connection layer (`daemon-rpc.ts:1666,1675-1677`), which destroys the connection and returns `deadline_exceeded` without waiting for or canceling the in-flight handler's own database/filesystem work. A reimplementation must preserve this: the deadline is a wall-clock socket timeout on the connection, not a cancellation signal delivered to request-handling logic.
 4. **`ObserverState` declares a `"healthy"` variant that `projectDatabaseSubsystems` never assigns** (`status.ts:32` vs. `298-314`) — the type is broader than the function that produces it; it only ever yields `"unconfigured"`, `"unknown"`, `"pending"`, `"idle"`, `"failed"`, or `"backoff"`. (`RawEventsState`'s `"healthy"` is **not** in this category — it is the ordinary case when `raw_events.available` is true and no failures/backlog are present, `status.ts:281`.) A reimplementation does not need to reproduce the unreachable `observer: "healthy"` state; matching the *reachable* subset (`observer`: `unknown`/`unconfigured`/`pending`/`idle`/`backoff`/`failed`) is sufficient for behavioral parity there, since no external caller can currently observe `observer: "healthy"` via `status`.
 5. **`DatabaseState` declares `"missing"` and has a dedicated attention message for it** (`status.ts:27`, `156-162`), but `collectStatusReport`'s only assignments to `databaseState` are `"ready"` and `"unavailable"` (success/failure of the doctor RPC) or the initial `"unknown"` — there is no code path in the read `status.ts` that sets `"missing"`. A reimplementation is not required to produce `database_missing`; it is dead in the current `status` implementation.
-6. **The `not_implemented` fallback branch in `handleMethod`** (`daemon-rpc.ts:638-641`, `{ operationId, state: "not_implemented" }`) is unreachable for every one of the 27 registered `RPC_METHODS` under the `isRpcMethod()` gate (`daemon-rpc.ts:424-426`, `1518-1519`). A reimplementation is not required to reproduce this shape for any currently-registered method; it exists only as defensive code for a method that could theoretically be added to `RPC_METHODS` without a matching `handleMethod` branch.
+6. **The `not_implemented` fallback branch in `handleMethod`** is unreachable for every one of the 29 registered `RPC_METHODS` under the `isRpcMethod()` gate. A reimplementation is not required to reproduce this shape for any currently-registered method; it exists only as defensive code for a method that could theoretically be added without a matching branch.
 7. **`mapPeerConnectError`'s `peer_denied` catch-all branch (`daemon-rpc-contract.ts:120`) is dead code on the `callDaemonRpc` path.** The socket `error` handler applies the mapping only to `EACCES`, `ECONNREFUSED`, and `ENOENT`, and calls `finish(peerError)` for everything else (`daemon-rpc-contract.ts:170-181`), so an `ENOTSOCK` (regular file at the socket path), `EPERM`, or any other errno rejects with the original `Error` and never becomes a `TypedRpcError`. The catch-all is reachable only by calling the exported `mapPeerConnectError` directly, which no production caller does. A reimplementation must preserve the two-way mapping (`EACCES` → `peer_denied`, `ECONNREFUSED`/`ENOENT` → `daemon_unavailable`) **and** the "everything else stays an untyped error" behavior — widening the mapping to a `peer_denied` catch-all would change both the reported status and the fail-open decision for a malformed socket path.
 8. **`GET /v1/checkpoints` is a permanent stub** returning `{ checkpoints: [] }` regardless of request body (`daemon-rpc.ts:568`), despite being a fully specified RPC method with required-field validation (none, per Table 1.4) that a client could reasonably expect to be functional. A reimplementation must preserve the empty-array stub response for wire compatibility, not implement real checkpoint listing, unless the contract is explicitly revised in a later version.
 9. **`idempotency_conflict` is allowlisted in `runBackup`'s sanitized error-code mapping (`daemon-operations.ts:500-509`) but is not reachable through the backup-create/backup-restore code paths that feed it** — that code is only produced by `submit()`'s idempotency check for `export`/`import` kinds (`:413-419`), which never call `runBackup`. It is dead defensive code in that specific allowlist. A reimplementation may keep or drop this defensive branch; no observable behavior depends on it being present.
@@ -455,7 +480,7 @@ The report also carries the exact safe `capability` projection or `null` when do
 
 - The newline-delimited JSON framing over the Unix domain socket, including the bare `STOP <nonce>` control line and its two literal replies (§1.1).
 - The handshake fields and their exact failure code (`protocol_mismatch`) for any mismatch of `local_api_version`, `normalized_schema_version`, or `capability_hash` (§1.2) — including that `capability_hash` is a hash of the exact `RPC_METHODS` list, so any method-set change must be treated as a protocol-breaking change requiring a new contract version.
-- The complete set of 27 `RPC_METHODS` strings and their required-field lists (Table 1.4), including the `GET /v1/checkpoints` empty-array stub (Known gap 8) and the maintenance-blocked method set (§1.5).
+- The complete set of 29 `RPC_METHODS` strings and their required-field lists (Table 1.4), including the `GET /v1/checkpoints` empty-array stub (Known gap 8) and the maintenance-blocked method set (§1.5).
 - Every typed error code in §2.1–2.7 and its `retryable` flag, for the exact trigger conditions cited — including the `DaemonJobRequestError` → `"invalid_request"` collapse (Known gap 1) and the `POST /v1/events` vs `POST /v1/events/batch` asymmetry for `idempotency_conflict` (§2.6).
 - `RPC_MAX_BYTES` (32 KiB) as the server's per-connection request cap (§1.3). The response side is **not** part of the wire contract: `callDaemonRpc` has no default `maxResponseBytes`, the MCP client supplies none, and only the hook client chooses a cap (32 KiB, raised to 256 KiB for `POST /v1/context/pack`). A reimplemented client must keep that per-client freedom — imposing 32 KiB as a global default would reject MCP responses the current client accepts.
 - `RPC_DEFAULT_DEADLINE_MS` (2,000 ms) and the 30-minute backup-method deadline, enforced as a real socket-level timeout that can fire independent of handler completion, not merely as a pre-dispatch check (§1.3, Known gap 3).
@@ -475,5 +500,5 @@ The report also carries the exact safe `capability` projection or `null` when do
 - Whether `outerWatchdogMs` is enforced by the reimplementation itself or left to an external host process timeout (Known gap 2) — this is a deployment-topology decision, not an internal-behavior requirement, provided the effective observed cutoff matches.
 - The exact SQL used to compute `degradedDeliveries`, `pending`, `failed_batches`, `backoff_batches`, etc. in `operational-status.ts` — only the resulting state values and thresholds (`§6.3`) are part of the contract, not the queries that produce them.
 - The unreachable enum member `ObserverState`'s `"healthy"` and `DatabaseState`'s `"missing"` (note: `RawEventsState`'s `"healthy"` is reachable and normal — it must be reproduced, not omitted) and the dead `not_implemented`/`idempotency_conflict`-in-backup-allowlist branches (Known gaps 4, 5, 6, 9) — a reimplementation may omit the genuinely-unreachable ones without any observable behavioral difference from the current TypeScript daemon.
-- Internal job scheduling implementation (in-memory promise queue vs. any other single-flight scheduler), provided the observable ordering guarantee holds: jobs run strictly one at a time in submission order, and a maintenance-classified non-dry-run job blocks the 14 maintenance-blocked RPC methods for its duration (§1.5, §3.3).
+- Internal job scheduling implementation (in-memory promise queue vs. any other single-flight scheduler), provided the observable ordering guarantee holds: jobs run strictly one at a time in submission order, and a maintenance-classified non-dry-run job blocks the 15 maintenance-blocked RPC methods for its duration (§1.5, §3.3).
 - The internal representation of the operation/job journals on disk (JSON files under `<dataDir>/control/operations/`, SQLite rows for jobs) — only the RPC-visible state machine and codes are part of the contract, not the storage format, unless a separate storage-compatibility contract says otherwise.

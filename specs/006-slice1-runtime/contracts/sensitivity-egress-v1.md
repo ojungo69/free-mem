@@ -101,10 +101,11 @@ to unresolved request-time content destinations, never to manifest activation.
 
 ## Derived memory
 
-Provider output cites only bounded event IDs/spans from the projected set, with no more than 100
-source events in the job. Each output inherits the strongest cited sensitivity and one exact
-repository identity plus manifest/provider/attempt provenance. Unknown/out-of-set citation, mixed
-repository identity, output count above the active attempt manifest's
+Provider output cites only event IDs/spans from the job's exact projected set. A newly admitted v21
+job projects at most 100 events; a migrated legacy recovery job may project its wider immutable
+actual range. Each output inherits the strongest cited sensitivity and one exact repository identity
+plus manifest/provider/attempt provenance. Unknown/out-of-set citation, mixed repository identity,
+output count above the active attempt manifest's
 `maxMemoryItemsPerDerivation`, or partial parse rejects the whole derivation and commits no item.
 
 Dedup/supersession is same-repository only, retains the stronger sensitivity, and never reactivates a

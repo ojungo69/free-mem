@@ -441,17 +441,20 @@ async function blackholeProxy(socketPath, expectedResponses) {
 	const upstreamPath = `${socketPath}.upstream`;
 	renameSync(socketPath, upstreamPath);
 	let responses = 0;
+	const heldConnections = new Set();
 	const server = createServer((client) => {
 		const upstream = createConnection(upstreamPath);
+		const connection = { client, upstream, responded: false };
+		heldConnections.add(connection);
 		client.on("error", () => {});
 		upstream.on("error", () => client.destroy());
 		client.pipe(upstream);
 		let buffer = Buffer.alloc(0);
 		upstream.on("data", (chunk) => {
 			buffer = Buffer.concat([buffer, chunk]);
-			if (buffer.includes(0x0a)) {
+			if (!connection.responded && buffer.includes(0x0a)) {
+				connection.responded = true;
 				responses++;
-				client.destroy();
 				upstream.destroy();
 			}
 		});
@@ -462,9 +465,18 @@ async function blackholeProxy(socketPath, expectedResponses) {
 		server.listen(socketPath, resolveListen);
 	});
 	chmodSync(socketPath, 0o600);
+	const release = () => {
+		for (const connection of heldConnections) {
+			connection.client.destroy();
+			connection.upstream.destroy();
+		}
+		heldConnections.clear();
+	};
 	return {
 		wait: () => waitUntil(`${expectedResponses} withheld RPC responses`, () => responses === expectedResponses),
+		release,
 		async close() {
+			release();
 			await new Promise((resolveClose) => server.close(resolveClose));
 			for (const path of [socketPath, upstreamPath]) {
 				try {
@@ -533,6 +545,7 @@ async function classAReplayGate(core, root) {
 	];
 	await proxy.wait();
 	await pauseWorker(worker);
+	proxy.release();
 	const lostResults = await Promise.all(lostCalls);
 	for (const result of lostResults) {
 		assert.equal(result.code, 0, `${result.name} failed: ${result.stderr.trim()}`);
@@ -815,12 +828,84 @@ async function lifecycleGate(core, root) {
 	const fifo = join(startupRoot, "trace.fifo");
 	const mkfifo = spawnSync("/usr/bin/mkfifo", [fifo], { encoding: "utf8" });
 	assert.equal(mkfifo.status, 0, `mkfifo failed: ${mkfifo.stderr}`);
+	let firstTrace = "";
+	let traceReaderStderr = "";
+	const traceReader = spawn("/usr/bin/head", ["-n", "1", fifo], {
+		stdio: ["ignore", "pipe", "pipe"],
+	});
+	trackedChildren.add(traceReader);
+	let resolveFirstTrace;
+	let rejectFirstTrace;
+	const firstTraceReceived = new Promise((resolve, reject) => {
+		resolveFirstTrace = resolve;
+		rejectFirstTrace = reject;
+	});
+	let firstTraceSeen = false;
+	traceReader.stdout.on("data", (chunk) => {
+		firstTrace = appendOutput(firstTrace, chunk, traceReader, "startup trace reader stdout");
+		if (!firstTraceSeen) {
+			firstTraceSeen = true;
+			resolveFirstTrace();
+		}
+	});
+	traceReader.once("error", rejectFirstTrace);
+	traceReader.stderr.on("data", (chunk) => {
+		traceReaderStderr = appendOutput(
+			traceReaderStderr,
+			chunk,
+			traceReader,
+			"startup trace reader stderr",
+		);
+	});
+	const traceReaderDone = new Promise((resolveDone, rejectDone) => {
+		traceReader.once("error", rejectDone);
+		traceReader.once("exit", (code, signal) => {
+			trackedChildren.delete(traceReader);
+			resolveDone({ code, signal });
+		});
+	});
 	const startupWorker = startDaemonWorker(
 		startupDataDir,
 		runtimeEnv(startupDataDir, startupRoot, { CODEMEM_DB_OPEN_TRACE: fifo }),
 	);
-	startupWorker.ready.catch(() => {});
 	const startupLayout = core.resolveStorageLayout(startupDataDir);
+	const traceTimeout = sleep(15_000).then(() => null);
+	const checkpoint = await Promise.race([
+		firstTraceReceived.then(
+			() => ({ kind: "trace" }),
+			(error) => ({ kind: "trace_error", error }),
+		),
+		startupWorker.ready.then(
+			() => ({ kind: "unexpected_ready" }),
+			(error) => ({ kind: "startup_error", error }),
+		),
+		traceTimeout.then(() => ({ kind: "timeout" })),
+	]);
+	if (checkpoint.kind !== "trace") {
+		traceReader.kill("SIGKILL");
+		await traceReaderDone.catch(() => {});
+		let detail = checkpoint.kind;
+		if (checkpoint.kind === "startup_error" || checkpoint.kind === "trace_error") {
+			detail =
+				checkpoint.error instanceof Error ? checkpoint.error.message : String(checkpoint.error);
+		}
+		throw new Error(
+			`Startup trace checkpoint failed (${detail}): ${startupWorker.stderr.trim()}`,
+		);
+	}
+	const traceReaderResult = await Promise.race([traceReaderDone, traceTimeout]);
+	if (traceReaderResult === null) {
+		traceReader.kill("SIGKILL");
+		await traceReaderDone.catch(() => {});
+		throw new Error("Startup trace reader did not exit before the checkpoint deadline.");
+	}
+	assert.deepEqual(
+		traceReaderResult,
+		{ code: 0, signal: null },
+		`startup trace reader failed: ${traceReaderStderr.trim()}`,
+	);
+	const firstTraceEvent = JSON.parse(firstTrace.trim());
+	assert.equal(firstTraceEvent.dbPath, startupLayout.capabilityLifecycleLockPath);
 	await waitUntil("startup lock before trace FIFO", () => {
 		if (!existsSync(startupLayout.lockPath)) return false;
 		return fdInodes(startupWorker.child.pid).has(inodeKey(startupLayout.lockPath));
@@ -1080,7 +1165,14 @@ async function daemonChild(core, dataDir) {
 
 function verifyPrerequisites() {
 	assert.equal(process.platform, "linux", "T055 requires Linux /proc and Unix sockets");
-	for (const path of [corePath, cliPath, hookRuntimePath, mcpPath, "/usr/bin/mkfifo"]) {
+	for (const path of [
+		corePath,
+		cliPath,
+		hookRuntimePath,
+		mcpPath,
+		"/usr/bin/head",
+		"/usr/bin/mkfifo",
+	]) {
 		assert.ok(existsSync(path), `required T055 artifact missing: ${path}`);
 	}
 }

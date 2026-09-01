@@ -7,6 +7,7 @@ import {
 	createLegacyObserverClient,
 	loadObserverConfig,
 	ObserverClient,
+	type ObserverHealthOptions,
 } from "./observer-client.js";
 
 function fixtureToken(label: string): string {
@@ -1709,5 +1710,106 @@ describe("ObserverClient Slice 1 frozen transport", () => {
 		await frozenClient(OPENAI_CHOICE).observe("system", "user");
 
 		expect(timeoutMs).toBe(60_000);
+	});
+});
+
+describe("T019 Observer health-edge producer", () => {
+	it("reports transport health so the Store can persist exactly one unhealthy-to-healthy edge", async () => {
+		const originalFetch = globalThis.fetch;
+		const originalSummaryKey = process.env.FREE_MEM_SUMMARY_API_KEY;
+		process.env.FREE_MEM_SUMMARY_API_KEY = fixtureToken("t019-health-edge");
+		const onHealthState = vi.fn();
+		let healthy = false;
+		globalThis.fetch = (async () =>
+			healthy
+				? new Response(JSON.stringify({ choices: [{ message: { content: "healthy" } }] }), {
+						status: 200,
+						headers: { "content-type": "application/json" },
+					})
+				: new Response("unavailable", { status: 503 })) as typeof globalThis.fetch;
+		try {
+			const options = {
+				onHealthState,
+			} satisfies ObserverHealthOptions;
+			const client = new ObserverClient(OPENAI_CHOICE, SLICE1_OBSERVER_PROFILE, options);
+			await client.observe("system", "first unhealthy probe");
+			await client.observe("system", "repeated unhealthy probe");
+			healthy = true;
+			await client.observe("system", "recovery probe");
+			await client.observe("system", "repeated healthy probe");
+
+			expect(onHealthState.mock.calls.map(([state]) => state)).toEqual([
+				"unhealthy",
+				"unhealthy",
+				"healthy",
+				"healthy",
+			]);
+		} finally {
+			globalThis.fetch = originalFetch;
+			if (originalSummaryKey === undefined) delete process.env.FREE_MEM_SUMMARY_API_KEY;
+			else process.env.FREE_MEM_SUMMARY_API_KEY = originalSummaryKey;
+		}
+	});
+
+	it("reports only the final healthy outcome after an auth retry", async () => {
+		const originalFetch = globalThis.fetch;
+		const originalSummaryKey = process.env.FREE_MEM_SUMMARY_API_KEY;
+		process.env.FREE_MEM_SUMMARY_API_KEY = fixtureToken("t019-auth-retry");
+		const onHealthState = vi.fn();
+		let requestCount = 0;
+		globalThis.fetch = (async () => {
+			requestCount += 1;
+			return requestCount === 1
+				? new Response("unauthorized", { status: 401 })
+				: new Response(JSON.stringify({ choices: [{ message: { content: "healthy" } }] }), {
+						status: 200,
+						headers: { "content-type": "application/json" },
+					});
+		}) as typeof globalThis.fetch;
+		try {
+			const client = new ObserverClient(OPENAI_CHOICE, SLICE1_OBSERVER_PROFILE, {
+				onHealthState,
+			});
+
+			await expect(client.observe("system", "auth retry")).resolves.toMatchObject({
+				raw: "healthy",
+			});
+			expect(onHealthState).toHaveBeenCalledTimes(1);
+			expect(onHealthState).toHaveBeenCalledWith("healthy");
+		} finally {
+			globalThis.fetch = originalFetch;
+			if (originalSummaryKey === undefined) delete process.env.FREE_MEM_SUMMARY_API_KEY;
+			else process.env.FREE_MEM_SUMMARY_API_KEY = originalSummaryKey;
+		}
+	});
+
+	it("preserves an inference result when the health callback rejects", async () => {
+		const originalFetch = globalThis.fetch;
+		const originalSummaryKey = process.env.FREE_MEM_SUMMARY_API_KEY;
+		process.env.FREE_MEM_SUMMARY_API_KEY = fixtureToken("t019-health-callback");
+		globalThis.fetch = (async () =>
+			new Response(JSON.stringify({ choices: [{ message: { content: "healthy" } }] }), {
+				status: 200,
+				headers: { "content-type": "application/json" },
+			})) as typeof globalThis.fetch;
+		vi.spyOn(console, "error").mockImplementation(() => undefined);
+		try {
+			const client = new ObserverClient(OPENAI_CHOICE, SLICE1_OBSERVER_PROFILE, {
+				onHealthState: async () => {
+					throw new Error("fixture callback failure");
+				},
+			});
+
+			await expect(client.observe("system", "callback failure")).resolves.toMatchObject({
+				raw: "healthy",
+			});
+			expect(console.error).toHaveBeenCalledWith(
+				"[codemem] observer health callback failed; inference result was preserved.",
+			);
+		} finally {
+			globalThis.fetch = originalFetch;
+			if (originalSummaryKey === undefined) delete process.env.FREE_MEM_SUMMARY_API_KEY;
+			else process.env.FREE_MEM_SUMMARY_API_KEY = originalSummaryKey;
+		}
 	});
 });

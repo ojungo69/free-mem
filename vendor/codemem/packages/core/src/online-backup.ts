@@ -10,7 +10,7 @@ import {
 } from "node:fs";
 import { join } from "node:path";
 import * as sqliteVec from "sqlite-vec";
-import { MIN_COMPATIBLE_SCHEMA, SCHEMA_VERSION, tableExists } from "./db.js";
+import { MIN_WRITABLE_SCHEMA, SCHEMA_VERSION, tableExists } from "./db.js";
 import {
 	peekMigrationKind,
 	runDatabaseMigrations,
@@ -1189,8 +1189,13 @@ export function restoreCanonicalBackup(input: {
 	if (!sidecar) {
 		throw new BackupRequestError("invalid_request", "Backup manifest is not restorable.");
 	}
+	if (sidecar.manifest.schema_version < MIN_WRITABLE_SCHEMA) {
+		throw new BackupRequestError(
+			"invalid_request",
+			"Backup manifest requires the schema 20 bridge before restore.",
+		);
+	}
 	if (
-		sidecar.manifest.schema_version < MIN_COMPATIBLE_SCHEMA ||
 		sidecar.manifest.schema_version > SCHEMA_VERSION ||
 		sidecar.manifest.fts_schema.normalization_version !== NORMALIZED_SCHEMA_VERSION
 	) {

@@ -6,6 +6,7 @@ import * as p from "@clack/prompts";
 import type { MemoryStore } from "@codemem/core";
 import {
 	callDaemonRpc,
+	compileDefaultCapabilityManifest,
 	hashMutationPayload,
 	LOCAL_API_VERSION,
 	NORMALIZED_SCHEMA_VERSION,
@@ -15,11 +16,133 @@ import {
 	startDaemon,
 } from "@codemem/core";
 import { describe, expect, it, vi } from "vitest";
+import {
+	acquireCapabilityLifecycleLock,
+	activateCapabilityManifest,
+	writeCapabilityManifestGeneration,
+} from "../../../core/src/storage.js";
 import { openTestMemoryStore } from "../../../core/src/test-utils.js";
 import { ReadOnlyActor } from "../../../core/src/writer-actor.js";
 import { dbCommand } from "./db.js";
 
+vi.mock("@clack/prompts", async (importOriginal) => ({
+	...(await importOriginal<typeof import("@clack/prompts")>()),
+	confirm: vi.fn(),
+}));
+
 describe("db command", () => {
+	it("registers exact-job raw-events-doctor-retry with an interactive confirmation gate", async () => {
+		const retry = dbCommand.commands.find(
+			(command) => command.name() === "raw-events-doctor-retry",
+		);
+		expect(retry).toBeDefined();
+		if (!retry) throw new Error("expected raw-events-doctor-retry command");
+		expect(retry.usage()).toContain("<job-id>");
+		expect(retry.options.map((option) => option.long)).toContain("--db-path");
+		expect(retry.options.map((option) => option.long)).not.toContain("--limit");
+	});
+
+	it("displays exact job fingerprints before confirming one doctor retry grant", async () => {
+		const retry = dbCommand.commands.find(
+			(command) => command.name() === "raw-events-doctor-retry",
+		);
+		if (!retry) throw new Error("expected raw-events-doctor-retry command");
+		const dataDir = join(mkdtempSync(join(tmpdir(), "codemem-db-doctor-retry-")), "data");
+		const initialized = await startDaemon({ dataDir });
+		await initialized.stop();
+		const layout = resolveStorageLayout(dataDir);
+		const pointer = readCurrentDatabasePointer(layout);
+		if (!pointer) throw new Error("canonical database pointer is missing");
+		const manifest = compileDefaultCapabilityManifest({
+			version: 1,
+			role: "summary",
+			state: "enabled",
+			wireProtocol: "openai_chat_completions_v1",
+			modelId: "doctor-cli",
+			modelRevision: "1",
+			endpointUrl: "http://127.0.0.1:1234/v1/chat/completions",
+			credentialRef: { kind: "none" },
+		});
+		writeCapabilityManifestGeneration(layout, manifest);
+		const lifecycle = acquireCapabilityLifecycleLock(layout);
+		try {
+			activateCapabilityManifest(layout, manifest.configurationFingerprint, lifecycle);
+		} finally {
+			lifecycle.close();
+		}
+		const store = openTestMemoryStore(join(layout.dbDir, pointer));
+		const manifestFingerprint = manifest.configurationFingerprint;
+		const providerFingerprint = manifest.summaryProvider.providerFingerprint;
+		let jobId: number;
+		try {
+			store.recordRawEvent({
+				opencodeSessionId: "doctor-cli",
+				source: "codex",
+				eventId: "doctor-cli-0",
+				eventType: "user_prompt",
+				payload: { text: "legacy recovery source" },
+				repositoryIdentity: `repo-v1:sha256:${"a".repeat(64)}`,
+				sensitivity: "eligible",
+			});
+			const inserted = store.db
+				.prepare(
+					`INSERT INTO raw_event_flush_batches(
+						source, stream_id, opencode_session_id, start_event_seq, end_event_seq,
+						extractor_version, status, admission_manifest_fingerprint,
+						admission_provider_fingerprint, attempt_manifest_fingerprint,
+						attempt_provider_fingerprint, retry_limit, attempt_count,
+						claim_generation, legacy_recovery_state, created_at, updated_at
+					 ) VALUES ('codex', 'doctor-cli', 'doctor-cli', 0, 0, 'raw_events_v1',
+						'retry_exhausted', NULL, NULL, NULL, NULL, 3, 3, 0,
+						'complete_range', ?, ?)`,
+				)
+				.run("2026-08-31T00:00:00.000Z", "2026-08-31T00:00:00.000Z");
+			jobId = Number(inserted.lastInsertRowid);
+		} finally {
+			store.close();
+		}
+		const daemon = await startDaemon({ dataDir });
+		const priorDataDir = process.env.CODEMEM_DATA_DIR;
+		const priorExitCode = process.exitCode;
+		const info = vi.spyOn(p.log, "info").mockImplementation(() => {});
+		const error = vi.spyOn(p.log, "error").mockImplementation(() => {});
+		const success = vi.spyOn(p.log, "success").mockImplementation(() => {});
+		const confirm = vi
+			.mocked(p.confirm)
+			.mockRejectedValueOnce(new Error("injected prompt failure"))
+			.mockResolvedValue(true);
+		try {
+			process.env.CODEMEM_DATA_DIR = dataDir;
+			process.exitCode = undefined;
+			await retry.parseAsync(["node", "raw-events-doctor-retry", String(jobId)], {
+				from: "node",
+			});
+			expect(error).toHaveBeenCalledWith("Retry confirmation failed.");
+			expect(success).not.toHaveBeenCalled();
+			expect(process.exitCode).toBe(1);
+
+			process.exitCode = undefined;
+			await retry.parseAsync(["node", "raw-events-doctor-retry", String(jobId)], {
+				from: "node",
+			});
+			expect(info).toHaveBeenCalledWith(expect.stringContaining(manifestFingerprint));
+			expect(info).toHaveBeenCalledWith(expect.stringContaining(providerFingerprint));
+			expect(info).toHaveBeenCalledWith(expect.stringContaining("legacy_unknown"));
+			expect(confirm).toHaveBeenCalledWith(expect.objectContaining({ initialValue: false }));
+			expect(success).toHaveBeenCalled();
+			expect(process.exitCode).toBeUndefined();
+		} finally {
+			if (priorDataDir === undefined) delete process.env.CODEMEM_DATA_DIR;
+			else process.env.CODEMEM_DATA_DIR = priorDataDir;
+			process.exitCode = priorExitCode;
+			confirm.mockReset();
+			info.mockRestore();
+			error.mockRestore();
+			success.mockRestore();
+			await daemon.stop();
+		}
+	});
+
 	it("registers backfill-tags maintenance subcommand", () => {
 		const backfill = dbCommand.commands.find((command) => command.name() === "backfill-tags");
 		expect(backfill).toBeDefined();
@@ -217,7 +340,7 @@ describe("db command", () => {
 		}
 	});
 
-	it("prune-raw-events deletes events older than the cutoff and keeps newer ones", async () => {
+	it("prune-raw-events retains accepted source events while Slice 1 retention is disabled", async () => {
 		const pruneRaw = dbCommand.commands.find((command) => command.name() === "prune-raw-events");
 		expect(pruneRaw).toBeDefined();
 		if (!pruneRaw) throw new Error("expected prune-raw-events command");
@@ -248,7 +371,7 @@ describe("db command", () => {
 			);
 
 			expect(process.exitCode).toBe(0);
-			expect(await daemonRawEventCount(daemon.socketPath)).toBe(1);
+			expect(await daemonRawEventCount(daemon.socketPath)).toBe(3);
 		} finally {
 			if (originalDataDir === undefined) delete process.env.CODEMEM_DATA_DIR;
 			else process.env.CODEMEM_DATA_DIR = originalDataDir;
@@ -263,7 +386,7 @@ describe("db command", () => {
 			const remaining = reader.prepare("SELECT event_id FROM raw_events").all() as Array<{
 				event_id: string;
 			}>;
-			expect(remaining.map((row) => row.event_id)).toEqual(["evt-2"]);
+			expect(remaining.map((row) => row.event_id).toSorted()).toEqual(["evt-0", "evt-1", "evt-2"]);
 		} finally {
 			reader.close();
 		}

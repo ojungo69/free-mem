@@ -12,8 +12,14 @@ codemem originally used a Python backend (`uvx codemem`). The TS backend
 ## Database compatibility
 
 Both backends share `~/.codemem/mem.sqlite`. The TS backend owns schema initialization
-and migrations. If you previously ran the Python backend, the TS runtime handles the
-existing database seamlessly — no manual migration is needed.
+and migrations. The current sole-writer runtime directly upgrades schema 20 to schema 21;
+schemas 6–19 remain readable by compatibility tooling but are not writable or restorable
+by the schema-21 runtime.
+
+For a schema 6–19 database, keep the verified backup, open it once with the last schema-20
+runtime (the immediate pre-v21 revision `de08bbcb23a6a8c83783de927557446d338c5ac3`), verify
+that it reaches schema 20, then retry with the current runtime. The schema-21 runtime fails
+closed before backup activation or database mutation when this intermediate step is missing.
 
 ## Environment variables
 

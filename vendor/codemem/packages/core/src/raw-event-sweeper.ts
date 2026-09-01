@@ -72,10 +72,6 @@ export class RawEventSweeper {
 		return this.profile.processingQueueCapacity;
 	}
 
-	private workerMaxEvents(): number | null {
-		return this.profile.maxSourceEventsPerJob;
-	}
-
 	private retentionMs(): number {
 		return this.profile.rawEventRetentionEnabled ? this.profile.rawEventRetentionMs : 0;
 	}
@@ -249,14 +245,12 @@ export class RawEventSweeper {
 			this.autoFlushTimers.delete(key);
 		}
 		try {
-			const maxEvents = this.workerMaxEvents();
 			await flushRawEvents(this.store, this.ingestOpts, {
 				opencodeSessionId,
 				source,
 				cwd: null,
 				project: null,
 				startedAt: null,
-				maxEvents,
 			});
 		} catch (exc) {
 			if (exc instanceof ObserverAuthError) {
@@ -361,7 +355,6 @@ export class RawEventSweeper {
 			this.store.markStuckRawEventBatchesAsError(cutoff, 100);
 		}
 
-		const maxEvents = this.workerMaxEvents();
 		const sessionLimit = this.limit();
 		const drained = new Set<string>();
 
@@ -381,7 +374,6 @@ export class RawEventSweeper {
 					cwd: null,
 					project: null,
 					startedAt: null,
-					maxEvents,
 				});
 				drained.add(`${source}:${streamId}`);
 			} catch (exc) {
@@ -415,7 +407,6 @@ export class RawEventSweeper {
 					cwd: null,
 					project: null,
 					startedAt: null,
-					maxEvents,
 				});
 			} catch (exc) {
 				if (exc instanceof ObserverAuthError) {

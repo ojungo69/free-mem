@@ -284,9 +284,10 @@ Enforcement ownership is exhaustive:
 | PR 3 | provider warm lifetime, periodic/idle/debounce scheduling, pack selection/candidate/render/item/token/lane limits |
 | PR 6 | process count, RSS, pending-depth, and storage-growth warning thresholds as measured runner gates |
 
-`captureConcurrencyLimit=2` is a non-blocking admission limit: at most two direct capture mutations
-run concurrently and excess hook clients use the existing bounded atomic spool within their current
-hard deadline. `processingConcurrencyLimit=2` is an upper bound on simultaneously claimed summary
+`captureConcurrencyLimit=2` is a non-blocking admission limit: at most two direct capture RPCs run
+concurrently, and each singular or bounded max-200 batch request owns one request-level slot. Excess
+hook clients use the existing bounded atomic spool within their current hard deadline.
+`processingConcurrencyLimit=2` is an upper bound on simultaneously claimed summary
 jobs; a deployment may run one, never more than two.
 
 ### Closed output-limit recovery successor
@@ -433,6 +434,7 @@ source/stream/sequence range. No second queue or generic job framework is added.
 | `attempt_manifest_fingerprint` | Manifest selected for the current claim |
 | `attempt_provider_fingerprint` | Provider selected for the current claim |
 | `attempt_fingerprint` | Computed identity for the current claim |
+| `attempt_max_memory_items` | Store-owned active-manifest output limit for the current claim (16 or bound successor 17) |
 | `resume_grant_id`, `resume_grant_reason` | One-shot grant identity/reason |
 | `resume_grant_state`, `resume_grant_consumed_at` | `none`, `pending`, or `consumed` plus consumption evidence |
 | `last_resume_signal_id`, `last_resume_sequence` | Signal identity and monotonic replay fence |
@@ -462,8 +464,10 @@ Capacity 25 counts `queued`, `processing`, `failed`, and `retry_exhausted`. Capt
 admission. When full, later accepted source events remain durably not admitted and visible; no job or
 event is displaced. Completed rows do not consume admission capacity.
 
-At most 100 contiguous source events enter one job. Remaining events stay behind the same session
-frontier for later admission.
+At most 100 contiguous source events enter one newly admitted v21 job. Remaining events stay behind
+the same session frontier for later admission. A migrated v20 recovery job preserves its original
+immutable range even when the old configurable worker admitted more than 100; migration does not
+split or truncate it.
 
 New admission requires the first sequence to equal `frontier + 1` and every selected sequence to be
 contiguous. A gap creates no job, does not move the frontier, and reports content-free `source_gap`;
@@ -477,6 +481,10 @@ A claim transaction:
 2. consumes the grant when present;
 3. increments `attempt_count` and `claim_generation` exactly once;
 4. copies the active manifest/provider fingerprints into the attempt fields;
+   the ordinary closed path derives limit 16, while limit 17 additionally requires the full
+   validated version-2 successor, a pending grant, the prior max-16 version-1 attempt as its base
+   fingerprint, an unchanged provider, and an accepted activation signal targeting that exact
+   manifest/provider;
 5. computes `attempt_fingerprint` from domain
    `free-mem:processing-attempt:v1\0` plus job ID, immutable source range, new attempt count, claim
    generation, and attempt manifest/provider fingerprints;
@@ -509,28 +517,46 @@ If `resume_grant_state=pending`, a concurrent otherwise-valid setup, health, or 
 content-free disposition `grant_pending` and mutates no signal row, producer-receipt uniqueness,
 sequence, grant, or attempt. The producer remains retryable after the pending grant is consumed and
 that attempt reaches a terminal state. No signal overwrites, queues behind, or creates a second grant.
+The first global producer fanout freezes only retry-exhausted jobs and jobs with a pending resume
+grant; ordinary queued, processing, and failed jobs are excluded. Eligible exhausted siblings apply
+without waiting for pending targets. The same receipt remains `grant_pending` and may be replayed to
+fill only its missing per-job signals after a frozen target becomes retry-exhausted; `fanout_count` is
+cumulative and an already complete replay is duplicate.
 
 The only producers are durable and component-specific:
 
 1. Setup writes a content-free activation receipt with monotonic activation sequence under the
    lifecycle lock; the next v21 daemon imports it through the sole writer and records one idempotent
    `validated_configuration_activation` signal per currently matching retry-exhausted job, keyed by
-   job, receipt ID, and fingerprints.
+   job, receipt ID, and fingerprints. UUID receipt IDs are canonicalized to lowercase before the
+   durable identity comparison. Exact receipt replay is duplicate after its frozen set is complete.
+   A partial receipt superseded by a greater imported activation sequence is stale for its remaining
+   targets and preserves its existing fanout count; an unseen receipt whose sequence does not exceed
+   the greatest imported activation sequence is stale with zero fanout. Both stale cases perform no
+   signal or job mutation.
 2. Observer health is persisted per manifest/provider; only a committed unhealthy-to-healthy edge
    emits one `recorded_provider_healthy_transition`. Repeated probes are no-ops.
 3. An explicit user-confirmed doctor retry RPC/CLI command emits one
    `user_confirmed_doctor_retry` for exactly the displayed job after showing its component and
    fingerprints.
 
-Setup/health producer receipts are global events, but one sole-writer transaction fans each out to
-all currently matching `retry_exhausted` jobs. The global uncompleted-job capacity is 25, so that
-complete set is necessarily at most 25. Each signal stores
+The displayed snapshot separates nullable prior attempt provenance from the frozen active
+manifest/provider `retryTarget`. A legacy-unknown confirmation compares the NULL attempt pair plus
+attempt count, claim generation, state, and grant state, then records the active target only on the
+grant. The claim is the first write of current attempt provenance; admission remains NULL.
+
+Setup/health producer receipts are global events, but one sole-writer transaction freezes all
+currently matching `retry_exhausted` jobs and jobs with an already-pending resume grant, then signals
+the ready exhausted subset. The global uncompleted-job capacity is 25, so that complete set is
+necessarily at most 25. Each signal stores
 `targetJobId` and `producerReceiptId`; `(job_id, producer_receipt_id)` and `(job_id, signal_id)` are
 unique. Job state, `resume_grant_state != pending`, role/provider/manifest fingerprints, and
 `incoming.sequence > preLastConsumedResumeSequence` are one CAS. Only acceptance sets
 `postLastConsumedResumeSequence=incoming.sequence` and inserts a pending grant; gaps are allowed,
 while equal/stale values are no-ops. Claim consumption and attempt increment are one transaction.
 Receipt import and crash replay are idempotent. Setup never opens the canonical database directly.
+The first import freezes the complete sorted target ID set in `target_job_ids_json`; receipt replay
+may fill only missing signals from that set and never targets a job created after the producer event.
 
 Every accepted signal, including changed configuration, has `grantCount=1`; it never resets or
 refills a three-attempt budget. After claim, the grant count is 0. Success completes; failure returns
@@ -556,6 +582,8 @@ set/citations, output limit, lineage/revision/dedup/supersession invariants, and
 transaction commits every memory and reference and marks the job completed. It advances the
 contiguous `last_flushed_event_seq` once only when `frontier_already_advanced=false`; a fully
 recovered legacy `gave_up` job leaves the frontier unchanged. Any failure commits none of these.
+For a durable flush claim, session-end metadata is committed only inside this transaction; failed
+attempts do not run the legacy cleanup outside it.
 
 **Privacy skip** validates the same active claim and exact all-ineligible source set. One transaction
 stores a content-free diagnostic and marks completed. It advances the frontier once only when
@@ -567,6 +595,15 @@ and is outside Slice 1.
 
 `last_flushed_event_seq` is never attempt state. Failed/retry-exhausted work retains sources and does
 not move it.
+
+### Legacy completed crash window
+
+The v20 success path could commit `status=completed` before advancing the session frontier. During
+migration, a retained completed range starting exactly at `frontier + 1` advances the frontier only
+after every exact sequence exists and no other legacy batch overlaps it. Migration repeats this for
+a contiguous completed chain and leaves already-advanced frontiers unchanged. An incomplete,
+overlapping, gapped, or sessionless stale-completed range aborts the transaction; migration never
+replays or deletes the completed row, rewinds the frontier, or discards its committed memory.
 
 ### Legacy `gave_up`
 
@@ -581,6 +618,10 @@ Migration never lowers a session frontier. For each legacy `gave_up` row:
   and is never projected as successful recovery.
 
 No synthetic source, blind cursor rewind, or range spanning missing events is allowed.
+
+If otherwise-recoverable legacy rows would exceed capacity 25, the v20-to-v21 transaction aborts and
+leaves schema 20 unchanged. Overflow rows are not truncated, terminalized, or grandfathered outside
+capacity; legacy uncompleted work must be reduced with the prior runtime before migration is retried.
 
 ## Raw-event retention
 
@@ -622,6 +663,11 @@ retry_exhausted | stale_claim | missing_or_ambiguous_range | source_gap |
 omitted_ineligible
 ```
 
+The pre-provider `eligible_only` terminal shortcut applies only when every projected event is either
+a trivial prompt or a session start/idle/end lifecycle event; lifecycle-only ranges have no count
+threshold. Adapter errors, unknown events, and substantive prompts remain retryable and are never
+silently completed by that shortcut.
+
 `omitted_ineligible` is required for aggregate restricted omissions in pack/trace/read diagnostics;
 it carries counts only and never an item ID or preview.
 
@@ -657,12 +703,16 @@ compatible kinds.
 Derivation rules:
 
 1. Provider input contains only destination-eligible source events.
-2. Provider output cites no more than the job's 100 projected event IDs/spans.
+2. Provider output cites only the job's exact projected event IDs/spans. New v21 jobs project at most
+   100; a migrated legacy recovery job may project its wider immutable actual range.
 3. Each item inherits the strongest cited sensitivity and one exact repository identity.
 4. Unknown/out-of-set citations, mixed repository identities, partial parse, or output count above
    the active attempt manifest's `maxMemoryItemsPerDerivation` reject the whole result.
-5. Dedup/supersession is limited to the same repository identity, uses the stronger sensitivity, and
-   never reactivates a tombstone. Unknown identity cannot merge into a known repository item.
+5. Derived-memory dedup requires the same repository plus the exact source, stream, and ordered cited
+   event IDs, uses the stronger sensitivity, and never reactivates a tombstone. Different citation
+   provenance produces a separate memory because one memory stores only one attempt provenance.
+   Derived matching never falls back to legacy title-only or NULL dedup keys. Unknown identity cannot
+   merge into a known repository item.
 
 ## DestinationBoundaryV1
 
@@ -829,11 +879,14 @@ all these fields.
 
 1. Verify a backup through the existing migration gate.
 2. Begin one database transaction.
-3. Add every Slice 1 column/check/index for events, memory items, user prompts, legacy session
+3. Set the transactional compatibility floor and reconcile exact contiguous completed ranges that
+   still need frontier advancement after the v20 crash window, without lowering any frontier.
+   Preserve already-advanced completed rows even when legacy pruning removed their source.
+4. Add every Slice 1 column/check/index for events, memory items, user prompts, legacy session
    summaries, content-bearing artifacts, session repository identity, jobs, provenance, and diagnostics.
-4. Backfill current content-bearing records conservatively: only trusted structural evidence may retain a known
-   sensitivity/repository; otherwise sensitivity is `secret` and repository identity NULL.
-5. Translate legacy job states, including exact `gave_up` range audit, without lowering any frontier.
+5. Backfill current content-bearing records conservatively: only trusted structural evidence may retain a known
+   sensitivity/repository; otherwise sensitivity is `secret` and repository identity NULL. Translate legacy
+   job states, including exact `gave_up` range audit.
 6. Validate closed enums, fingerprints, source-range completeness, provenance, and references.
 7. Update schema compatibility marker and `user_version` to 21.
 8. Commit; on any error roll back all changes and start no provider or sweeper.

@@ -1,5 +1,7 @@
+import { randomUUID } from "node:crypto";
 import * as p from "@clack/prompts";
 import { resolveProject } from "@codemem/core";
+import { createMcpRpcClient } from "@codemem/mcp";
 import { Command } from "commander";
 import { helpStyle } from "../help-style.js";
 import {
@@ -8,6 +10,7 @@ import {
 	type DbOpts,
 	emitJsonError,
 	type JsonOpts,
+	resolveDataDirOpt,
 } from "../shared-options.js";
 import { type DaemonJobRunOutcome, runDaemonJob } from "./daemon-job.js";
 
@@ -229,6 +232,95 @@ rawEventsRetryCmd.action(async (opts: DbOpts & { limit: string }) => {
 	p.outro(`Requeued ${result.retried.toLocaleString()} failed batch(es)`);
 });
 dbCommand.addCommand(rawEventsRetryCmd);
+
+// --- db raw-events-doctor-retry ---
+const rawEventsDoctorRetryCmd = new Command("raw-events-doctor-retry")
+	.configureHelp(helpStyle)
+	.description("Confirm one displayed retry-exhausted raw-event processing job")
+	.argument("<job-id>", "displayed processing job ID");
+addDbOption(rawEventsDoctorRetryCmd);
+rawEventsDoctorRetryCmd.action(async (jobId: string, opts: DbOpts) => {
+	const client = createMcpRpcClient({ dataDir: resolveDataDirOpt(opts) });
+	const displayed = await client.request("GET /v1/processing-jobs/:id", { id: jobId });
+	if (!displayed.ok) {
+		p.log.error(displayed.error.message);
+		process.exitCode = 1;
+		return;
+	}
+	const job = displayed.result.job;
+	if (!job || typeof job !== "object" || Array.isArray(job)) {
+		p.log.error("Processing job was not found.");
+		process.exitCode = 1;
+		return;
+	}
+	const value = job as Record<string, unknown>;
+	const attempt = value.attempt as Record<string, unknown> | null;
+	const retryTarget = value.retryTarget as Record<string, unknown> | null;
+	if (!attempt || typeof attempt !== "object" || !retryTarget || typeof retryTarget !== "object") {
+		p.log.error("Processing job snapshot is invalid.");
+		process.exitCode = 1;
+		return;
+	}
+	const attemptProviderFingerprint = attempt.providerFingerprint;
+	const attemptManifestFingerprint = attempt.manifestFingerprint;
+	const knownAttempt =
+		typeof attemptProviderFingerprint === "string" &&
+		typeof attemptManifestFingerprint === "string";
+	const legacyUnknownAttempt =
+		attemptProviderFingerprint === null && attemptManifestFingerprint === null;
+	if (
+		value.component !== "summary" ||
+		value.state !== "retry_exhausted" ||
+		(!knownAttempt && !legacyUnknownAttempt) ||
+		typeof retryTarget.providerFingerprint !== "string" ||
+		typeof retryTarget.manifestFingerprint !== "string" ||
+		typeof attempt.count !== "number" ||
+		typeof attempt.claimGeneration !== "number"
+	) {
+		p.log.error("Processing job snapshot is not retryable.");
+		process.exitCode = 1;
+		return;
+	}
+	p.log.info(
+		`Job ${String(value.jobId)}: ${String(value.component)} ${String(value.state)} ` +
+			`attempt=${String(attempt.count)} claim=${String(attempt.claimGeneration)} ` +
+			`manifest=${attemptManifestFingerprint ?? "legacy_unknown"} ` +
+			`provider=${attemptProviderFingerprint ?? "legacy_unknown"} ` +
+			`retry_manifest=${String(retryTarget.manifestFingerprint)} ` +
+			`retry_provider=${String(retryTarget.providerFingerprint)}`,
+	);
+	let confirmed: Awaited<ReturnType<typeof p.confirm>>;
+	try {
+		confirmed = await p.confirm({
+			message: "Create one retry grant for this displayed job?",
+			initialValue: false,
+		});
+	} catch {
+		p.log.error("Retry confirmation failed.");
+		process.exitCode = 1;
+		return;
+	}
+	if (!confirmed || p.isCancel(confirmed)) {
+		process.exitCode = 1;
+		return;
+	}
+	const retried = await client.request("POST /v1/processing-jobs/:id/doctor-retry", {
+		id: jobId,
+		producerReceiptId: randomUUID(),
+		expectedRole: "summary",
+		expectedProviderFingerprint: attemptProviderFingerprint,
+		expectedManifestFingerprint: attemptManifestFingerprint,
+		expectedAttemptCount: attempt.count,
+		expectedClaimGeneration: attempt.claimGeneration,
+	});
+	if (!retried.ok) {
+		p.log.error(retried.error.message);
+		process.exitCode = 1;
+		return;
+	}
+	p.log.success(`Retry grant ${String(retried.result.grantState)} for job ${jobId}.`);
+});
+dbCommand.addCommand(rawEventsDoctorRetryCmd);
 
 // --- db raw-events-gate ---
 const rawEventsGateCmd = new Command("raw-events-gate")

@@ -37,6 +37,7 @@ with `codemem setup` instead.
 - Warnings and errors appear in the bounded `attention` list. A collected report exits `0` even when `ok` is false; collection failures exit `1`, and usage errors exit `2`.
 - Terminal raw-event and observer failures affect `ok` for 24 hours; use `codemem db raw-events-gate` for the detailed reliability window.
 - Use `codemem sync status` or `codemem sync doctor`, `codemem maintenance status`, and `codemem db raw-events-status` for detailed subsystem diagnostics.
+- `codemem status` displays bounded `retry_exhausted` job IDs. To resume one, run `codemem db raw-events-doctor-retry <job-id>` and confirm the exact attempt snapshot. This command is intentionally interactive and has no `--json` mode.
 
 ## Seeing UI changes
 - The viewer UI is built from `packages/ui/` and served by `packages/viewer-server/`.

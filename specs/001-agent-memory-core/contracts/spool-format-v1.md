@@ -273,7 +273,7 @@ If `incrementDrop` itself throws (e.g. the disk is so full that even the fixed 4
 | Reason | Meaning | Raised from |
 |---|---|---|
 | `"broken_json"` | Entry failed to parse/validate as a well-formed `SpoolEntry`, or a recovered `tmp` entry no longer matches its already-promoted `ready` counterpart | `recoverTmpEntriesLocked` (`spool.ts:980-1003`), `importReadySpoolEntries` on a parse failure (`spool.ts:1039-1048`) |
-| `"idempotency_conflict"` | The daemon's mutation dispatcher found an existing committed mutation under the same `(method, idempotencyKey)` with a **different** `payloadHash` | `dispatchSpoolMutation` returning `"conflict"` on `MutationConflictError` (`packages/core/src/daemon-rpc.ts:881-897`), handled in `importReadySpoolEntries` (`spool.ts:1060-1065`) |
+| `"idempotency_conflict"` | The daemon's mutation dispatcher found an existing committed mutation under the same `(method, idempotencyKey)` with a **different** `payloadHash` | `dispatchSpoolMutation` returning `"conflict"` on `MutationConflictError`, or after event reconciliation when the durable receipt hash differs from the incoming event hash (`packages/core/src/daemon-rpc.ts`), handled in `importReadySpoolEntries` (`spool.ts:1060-1065`) |
 
 `quarantineSpoolEntry(dataDir, readyName, reason)` (`spool.ts:1076-1096`) is the externally callable form (e.g. for operator tooling): it requires `readyName` to be a bare basename ending in `.json` and `reason` to be one of the two values above, acquires the spool lock itself, and delegates to `moveToQuarantineLocked` against `readyDir`.
 
@@ -358,13 +358,13 @@ const sweepSpool = () => {
 2. For **each** name in `names`, acquire the spool lock fresh (one acquisition per entry, so a long-running sweep does not hold the lock across an unbounded handler call):
    - Re-check `existsSync(path)` (another sweep or process may have already consumed it).
    - Parse the entry (`parseSpoolEntry`); on failure, quarantine it as `"broken_json"` and continue to the next name.
-   - Call `handler(entry)` — this is `dispatchSpoolMutation`, which applies the mutation to the canonical store and returns `"committed"` or `"conflict"`, or throws for any other failure (`daemon-rpc.ts:881-897`).
+   - Call `handler(entry)` — this is `dispatchSpoolMutation`, which applies the mutation to the canonical store and returns `"committed"` or `"conflict"`, or throws for any other failure. Event reconciliation compares the retained Class A receipt hash with the incoming event hash so a non-success reconciliation cannot be mistaken for a commit (`daemon-rpc.ts`).
    - **If the handler throws** (anything other than a conflict): caught, logged ("spool import failed; ready entry was retained."), and the file is left untouched in `ready/`.
    - **If `"committed"`**: only now is the file removed, via `durableRemoveFile(path)` (`spool.ts:1056-1058`) — `unlinkSync` followed by `fsyncPath` of the parent directory (`storage-platform.ts:95-104`).
    - **If `"conflict"`**: the entry is moved to quarantine with reason `"idempotency_conflict"` (§8); it is not deleted outright.
    - Release the lock for this entry regardless of outcome.
 
-The critical ordering guarantee is: **the mutation is durably applied to the canonical store before its spool file is deleted.** If the daemon crashes between the commit and the `unlink`, the entry is simply reprocessed on the next sweep; because the canonical mutation-dispatch table is itself keyed on `(method, idempotencyKey)` and treats a matching `payloadHash` as an idempotent no-op returning the already-recorded receipt (`packages/core/src/mutation-dispatcher.ts:105-121`), redelivery through `dispatchSpoolMutation` is safe and simply reaches `"committed"` again, after which the file is deleted. There is no window in which a mutation is applied twice, and no window in which a crash can lose an applied mutation's spool file without the mutation having been durably applied.
+The critical ordering guarantee is: **the mutation is durably applied to the canonical store before its spool file is deleted.** If the daemon crashes between the commit and the `unlink`, the entry is simply reprocessed on the next sweep; because the canonical mutation-dispatch table is itself keyed on `(method, idempotencyKey)` and treats a matching `payloadHash` as an idempotent no-op returning the already-recorded receipt (`packages/core/src/mutation-dispatcher.ts:105-121`), redelivery through `dispatchSpoolMutation` is safe and simply reaches `"committed"` again, after which the file is deleted. A differing replay is durably reconciled/quarantined and the spool file moves to `idempotency_conflict` rather than being deleted. There is no window in which a mutation is applied twice, and no window in which a crash can lose an applied mutation's spool file without the mutation having been durably applied.
 
 ### 11.1 Tmp-entry recovery (`recoverTmpEntriesLocked`, `spool.ts:980-1003`)
 

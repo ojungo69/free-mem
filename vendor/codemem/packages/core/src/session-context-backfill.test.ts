@@ -1,5 +1,6 @@
 import Database from "better-sqlite3";
 import { beforeEach, describe, expect, it } from "vitest";
+import { rawEventPayloadDigest } from "./db.js";
 import { getMaintenanceJob } from "./maintenance-jobs.js";
 import {
 	hasPendingSessionContextBackfill,
@@ -44,8 +45,8 @@ function insertRawEvent(
 	db.prepare(
 		`INSERT INTO raw_events(
 			source, stream_id, opencode_session_id, event_id, event_seq,
-			event_type, ts_wall_ms, payload_json, created_at
-		) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)`,
+			event_type, ts_wall_ms, payload_json, created_at, payload_digest
+		) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
 	).run(
 		source,
 		streamId,
@@ -56,6 +57,7 @@ function insertRawEvent(
 		tsWallMs,
 		JSON.stringify(payload),
 		now,
+		rawEventPayloadDigest(payload),
 	);
 }
 

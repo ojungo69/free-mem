@@ -151,7 +151,7 @@ ResourceProfileV1 fixes all accepted fixture limits plus:
 
 - worker warm lifetime 30,000 ms, periodic sweep 30,000 ms, idle flush 120,000 ms,
   event debounce 1,000 ms;
-- stuck claim 300,000 ms, source events/job 100;
+- stuck claim 300,000 ms, newly admitted v21 source events/job 100;
 - raw-event retention disabled and 0 ms;
 - observer request timeout 60,000 ms, max input 12,000 characters, max output 4,000 tokens,
   max response 1,048,576 bytes, temperature 0.2, and TLS preflight timeout 5,000 ms.
@@ -190,6 +190,9 @@ Setup is the only compiler and activation writer. It must:
 8. before rollback, classify every target against recorded pre/post state. If any target is unknown,
    mutate no target and retain the journal; otherwise restore/remove journal-owned poststate targets
    in reverse. Remove the journal only after commit or complete verified rollback.
+
+Version-2 activation receipt IDs are UUID-shaped and canonicalized to lowercase at validation before
+they become durable producer identities, so case aliases cannot bypass replay deduplication.
 
 At next setup/daemon start, a leftover journal is finalized only if the intended pointer, activation-
 receipt fingerprint, current generation, and every target hash match. If every target matches either

@@ -70,11 +70,27 @@ export interface CapabilitySetupJournal {
 	targets: CapabilitySetupTarget[];
 }
 
-export interface CapabilityActivationReceipt {
-	version: 1;
-	configurationFingerprint: string;
-	targets: Array<{ id: string; path: string; fingerprint: string }>;
-}
+type CapabilityActivationReceiptTarget = {
+	id: string;
+	path: string;
+	fingerprint: string;
+};
+
+export type CapabilityActivationReceipt =
+	| {
+			version: 1;
+			configurationFingerprint: string;
+			targets: CapabilityActivationReceiptTarget[];
+	  }
+	| {
+			version: 2;
+			receiptId: string;
+			activationSequence: number;
+			configurationFingerprint: string;
+			targets: CapabilityActivationReceiptTarget[];
+	  };
+
+const UUID = /^[0-9a-f]{8}-[0-9a-f]{4}-[1-8][0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/i;
 
 const OPERATION_ID = /^[A-Za-z0-9][A-Za-z0-9._-]{0,127}$/;
 const ARTIFACT_POINTER = /^versions\/[A-Za-z0-9][A-Za-z0-9._-]{0,127}\.sqlite$/;
@@ -479,12 +495,28 @@ export function readValidatedCapabilityActivationReceipt(
 	if (!parsed || typeof parsed !== "object" || Array.isArray(parsed)) {
 		throw new Error("Capability activation receipt is malformed.");
 	}
-	if (!hasOnlyKeys(parsed, ["version", "configurationFingerprint", "targets"])) {
-		throw new Error("Capability activation receipt has unsupported fields.");
-	}
-	const value = parsed as Partial<CapabilityActivationReceipt>;
+	const value = parsed as {
+		version?: unknown;
+		receiptId?: unknown;
+		activationSequence?: unknown;
+		configurationFingerprint?: unknown;
+		targets?: unknown;
+	};
+	const isV1 = value.version === 1;
+	const isV2 = value.version === 2;
 	if (
-		value.version !== 1 ||
+		(!isV1 && !isV2) ||
+		!hasOnlyKeys(
+			parsed,
+			isV2
+				? ["version", "receiptId", "activationSequence", "configurationFingerprint", "targets"]
+				: ["version", "configurationFingerprint", "targets"],
+		) ||
+		(isV2 &&
+			(typeof value.receiptId !== "string" ||
+				!UUID.test(value.receiptId) ||
+				!Number.isSafeInteger(value.activationSequence) ||
+				(value.activationSequence as number) < 1)) ||
 		value.configurationFingerprint !== manifest.configurationFingerprint ||
 		!Array.isArray(value.targets) ||
 		value.targets.length < 1 ||
@@ -592,11 +624,19 @@ export function readValidatedCapabilityActivationReceipt(
 	if (targets.some((target) => !isDeepStrictEqual(target, installById.get(target.id)))) {
 		throw new Error("Capability install manifest target inventory is invalid.");
 	}
-	return {
-		version: 1,
-		configurationFingerprint: manifest.configurationFingerprint,
-		targets,
-	};
+	return isV2
+		? {
+				version: 2,
+				receiptId: (value.receiptId as string).toLowerCase(),
+				activationSequence: value.activationSequence as number,
+				configurationFingerprint: manifest.configurationFingerprint,
+				targets,
+			}
+		: {
+				version: 1,
+				configurationFingerprint: manifest.configurationFingerprint,
+				targets,
+			};
 }
 
 function sameCapabilitySetupState(

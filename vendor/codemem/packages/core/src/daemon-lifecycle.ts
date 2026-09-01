@@ -337,29 +337,55 @@ export async function startDaemon(options: {
 		setupLock = undefined;
 		recoverStorageJournal(layout);
 		const manifest = readCurrentCapabilityManifest(layout);
-		let capability: DaemonCapabilityState = captureOnlyCapabilityProjection();
+		let validatedActivationReceipt: ReturnType<typeof readValidatedCapabilityActivationReceipt> =
+			null;
+		let providerHealth: "available" | "provider_unavailable" | "provider_tls_rejected" =
+			"available";
+		let activationReceiptState: "absent" | "validated" | "rejected" = "absent";
+		let capability: DaemonCapabilityState;
 		if (manifest) {
-			let activationReceipt: "absent" | "validated" | "rejected" = "absent";
 			try {
-				if (readValidatedCapabilityActivationReceipt(layout, manifest)) {
-					activationReceipt = "validated";
+				validatedActivationReceipt = readValidatedCapabilityActivationReceipt(layout, manifest);
+				if (validatedActivationReceipt) {
+					activationReceiptState = "validated";
 				}
 			} catch {
-				activationReceipt = "rejected";
+				activationReceiptState = "rejected";
+				console.error("[codemem] capability activation receipt was rejected.");
 			}
-			let providerHealth: "available" | "provider_unavailable" | "provider_tls_rejected" =
-				"available";
 			try {
 				await preflightProviderTls(manifest.summaryProvider);
 			} catch (error) {
 				providerHealth =
 					error instanceof ProviderTlsPreflightError ? error.reason : "provider_unavailable";
 			}
-			capability = safeManifestProjection(manifest, providerHealth, activationReceipt);
 		}
 		await cutoverLegacyLayoutIfNeeded(layout);
 		recoverDaemonRestoresBeforeOpen(layout.dataDir);
 		canonical = await openCanonicalWriter(layout);
+		if (manifest) {
+			if (validatedActivationReceipt?.version === 2) {
+				canonical.store.importActivationReceipt({
+					receiptId: validatedActivationReceipt.receiptId,
+					activationSequence: validatedActivationReceipt.activationSequence,
+					manifestFingerprint: manifest.configurationFingerprint,
+					providerFingerprint: manifest.summaryProvider.providerFingerprint,
+				});
+			}
+			canonical.store.recordProviderHealth({
+				manifestFingerprint: manifest.configurationFingerprint,
+				providerFingerprint: manifest.summaryProvider.providerFingerprint,
+				health: providerHealth,
+			});
+			capability = safeManifestProjection(
+				manifest,
+				providerHealth,
+				activationReceiptState,
+				"ready",
+			);
+		} else {
+			capability = captureOnlyCapabilityProjection("ready");
+		}
 		const liveIdentity = readProcessIdentity(process.pid);
 		const identity: DaemonIdentity = {
 			version: 1,

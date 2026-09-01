@@ -219,6 +219,34 @@ describe("daemon jobs", () => {
 				await released;
 			},
 		});
+		const rpcContext = {
+			identity: { pid: process.pid, startTime: "test", fingerprint: "test", nonce: "test" },
+			dataDir: dir,
+			onStop: () => {},
+			writer: db,
+			store,
+			viewerAuth: {} as never,
+			viewerRead: async () => ({}),
+			jobs: service,
+		} as DaemonRpcContext;
+		const doctorRetryRequest = JSON.stringify({
+			id: "maintenance-doctor-retry",
+			method: "POST /v1/processing-jobs/:id/doctor-retry",
+			adapter_version: "test",
+			native_cli_version: "test",
+			normalized_schema_version: NORMALIZED_SCHEMA_VERSION,
+			local_api_version: LOCAL_API_VERSION,
+			capability_hash: RPC_CAPABILITY_HASH,
+			body: {
+				id: 1,
+				producerReceiptId: "maintenance-doctor-retry",
+				expectedRole: "summary",
+				expectedProviderFingerprint: `sha256:${"a".repeat(64)}`,
+				expectedManifestFingerprint: `sha256:${"b".repeat(64)}`,
+				expectedAttemptCount: 3,
+				expectedClaimGeneration: 3,
+			},
+		});
 		const invalidRequests: Array<{
 			input: { kind: unknown; args?: unknown; dryRun?: unknown };
 			error: string;
@@ -333,18 +361,12 @@ describe("daemon jobs", () => {
 					body: "do not write during maintenance",
 				},
 			}),
-			{
-				identity: { pid: process.pid, startTime: "test", fingerprint: "test", nonce: "test" },
-				dataDir: dir,
-				onStop: () => {},
-				writer: db,
-				store,
-				viewerAuth: {} as never,
-				viewerRead: async () => ({}),
-				jobs: service,
-			} as DaemonRpcContext,
+			rpcContext,
 		);
 		expect(response).toMatchObject({
+			error: { code: "maintenance_mode", retryable: true },
+		});
+		expect(await dispatchDaemonRpc(doctorRetryRequest, rpcContext)).toMatchObject({
 			error: { code: "maintenance_mode", retryable: true },
 		});
 
@@ -353,6 +375,12 @@ describe("daemon jobs", () => {
 		expect(completed).toMatchObject({ state: "completed", attempts: 1 });
 		expect(service.hasPendingWork()).toBe(false);
 		expect(service.isMaintenanceMode()).toBe(false);
+		expect(
+			await dispatchDaemonRpc(doctorRetryRequest, {
+				...rpcContext,
+				restoreState: { active: true },
+			}),
+		).toMatchObject({ error: { code: "maintenance_mode", retryable: true } });
 		const backupDir = resolveStorageLayout(dir).backupsDir;
 		expect(readdirSync(backupDir).sort()).toEqual([
 			`maintenance-${submitted.jobId}.json`,

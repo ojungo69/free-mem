@@ -1,7 +1,7 @@
 /* Reliability metrics + raw-events gate for the maintenance surface.
  */
 
-import { and, eq, gte, inArray, sql } from "drizzle-orm";
+import { and, eq, gt, gte, sql } from "drizzle-orm";
 import { drizzle } from "drizzle-orm/better-sqlite3";
 import type { Database } from "../db.js";
 import * as schema from "../schema.js";
@@ -10,6 +10,11 @@ export interface ReliabilityMetrics {
 	counts: {
 		inserted_events: number;
 		dropped_events: number;
+		queued_batches: number;
+		processing_batches: number;
+		failed_batches: number;
+		retry_exhausted_batches: number;
+		uncompleted_batches: number;
 		started_batches: number;
 		running_batches: number;
 		completed_batches: number;
@@ -40,30 +45,39 @@ export function getReliabilityMetricsWithDb(
 		cutoffIso
 			? d
 					.select({
-						started: sql<number>`COALESCE(SUM(CASE WHEN ${schema.rawEventFlushBatches.status} IN ('started', 'pending') THEN 1 ELSE 0 END), 0)`,
-						running: sql<number>`COALESCE(SUM(CASE WHEN ${schema.rawEventFlushBatches.status} IN ('running', 'claimed') THEN 1 ELSE 0 END), 0)`,
-						completed: sql<number>`COALESCE(SUM(CASE WHEN ${schema.rawEventFlushBatches.status} = 'completed' THEN 1 ELSE 0 END), 0)`,
-						errored: sql<number>`COALESCE(SUM(CASE WHEN ${schema.rawEventFlushBatches.status} IN ('error', 'failed', 'gave_up') THEN 1 ELSE 0 END), 0)`,
+						queued: sql<number>`COALESCE(SUM(CASE WHEN ${schema.rawEventFlushBatches.status} = 'queued' THEN 1 ELSE 0 END), 0)`,
+						processing: sql<number>`COALESCE(SUM(CASE WHEN ${schema.rawEventFlushBatches.status} = 'processing' THEN 1 ELSE 0 END), 0)`,
+						failed: sql<number>`COALESCE(SUM(CASE WHEN ${schema.rawEventFlushBatches.status} = 'failed' THEN 1 ELSE 0 END), 0)`,
+						retry_exhausted: sql<number>`COALESCE(SUM(CASE WHEN ${schema.rawEventFlushBatches.status} = 'retry_exhausted' THEN 1 ELSE 0 END), 0)`,
+						completed: sql<number>`COALESCE(SUM(CASE WHEN ${schema.rawEventFlushBatches.status} = 'completed' AND ${schema.rawEventFlushBatches.completion_disposition} != 'legacy_unrecoverable' THEN 1 ELSE 0 END), 0)`,
+						legacy_unrecoverable: sql<number>`COALESCE(SUM(CASE WHEN ${schema.rawEventFlushBatches.status} = 'completed' AND ${schema.rawEventFlushBatches.completion_disposition} = 'legacy_unrecoverable' THEN 1 ELSE 0 END), 0)`,
 					})
 					.from(schema.rawEventFlushBatches)
 					.where(gte(schema.rawEventFlushBatches.updated_at, cutoffIso))
 					.get()
 			: d
 					.select({
-						started: sql<number>`COALESCE(SUM(CASE WHEN ${schema.rawEventFlushBatches.status} IN ('started', 'pending') THEN 1 ELSE 0 END), 0)`,
-						running: sql<number>`COALESCE(SUM(CASE WHEN ${schema.rawEventFlushBatches.status} IN ('running', 'claimed') THEN 1 ELSE 0 END), 0)`,
-						completed: sql<number>`COALESCE(SUM(CASE WHEN ${schema.rawEventFlushBatches.status} = 'completed' THEN 1 ELSE 0 END), 0)`,
-						errored: sql<number>`COALESCE(SUM(CASE WHEN ${schema.rawEventFlushBatches.status} IN ('error', 'failed', 'gave_up') THEN 1 ELSE 0 END), 0)`,
+						queued: sql<number>`COALESCE(SUM(CASE WHEN ${schema.rawEventFlushBatches.status} = 'queued' THEN 1 ELSE 0 END), 0)`,
+						processing: sql<number>`COALESCE(SUM(CASE WHEN ${schema.rawEventFlushBatches.status} = 'processing' THEN 1 ELSE 0 END), 0)`,
+						failed: sql<number>`COALESCE(SUM(CASE WHEN ${schema.rawEventFlushBatches.status} = 'failed' THEN 1 ELSE 0 END), 0)`,
+						retry_exhausted: sql<number>`COALESCE(SUM(CASE WHEN ${schema.rawEventFlushBatches.status} = 'retry_exhausted' THEN 1 ELSE 0 END), 0)`,
+						completed: sql<number>`COALESCE(SUM(CASE WHEN ${schema.rawEventFlushBatches.status} = 'completed' AND ${schema.rawEventFlushBatches.completion_disposition} != 'legacy_unrecoverable' THEN 1 ELSE 0 END), 0)`,
+						legacy_unrecoverable: sql<number>`COALESCE(SUM(CASE WHEN ${schema.rawEventFlushBatches.status} = 'completed' AND ${schema.rawEventFlushBatches.completion_disposition} = 'legacy_unrecoverable' THEN 1 ELSE 0 END), 0)`,
 					})
 					.from(schema.rawEventFlushBatches)
 					.get()
 	) as Record<string, number> | undefined;
 
-	const startedBatches = Number(batchRow?.started ?? 0);
-	const runningBatches = Number(batchRow?.running ?? 0);
+	const queuedBatches = Number(batchRow?.queued ?? 0);
+	const processingBatches = Number(batchRow?.processing ?? 0);
+	const failedBatches = Number(batchRow?.failed ?? 0);
+	const retryExhaustedBatches = Number(batchRow?.retry_exhausted ?? 0);
 	const completedBatches = Number(batchRow?.completed ?? 0);
-	const erroredBatches = Number(batchRow?.errored ?? 0);
-	const terminalBatches = completedBatches + erroredBatches;
+	const legacyUnrecoverableBatches = Number(batchRow?.legacy_unrecoverable ?? 0);
+	const uncompletedBatches =
+		queuedBatches + processingBatches + failedBatches + retryExhaustedBatches;
+	const erroredBatches = failedBatches + retryExhaustedBatches + legacyUnrecoverableBatches;
+	const terminalBatches = completedBatches + retryExhaustedBatches + legacyUnrecoverableBatches;
 	const flushSuccessRate = terminalBatches > 0 ? completedBatches / terminalBatches : 1.0;
 
 	// Event counts from raw_event_sessions
@@ -87,47 +101,51 @@ export function getReliabilityMetricsWithDb(
 					.get()
 	) as Record<string, number> | undefined;
 
-	// In-flight events: sum of (end_event_seq - start_event_seq + 1) for active batches
-	const inFlightRow = (
+	// Durable unflushed rows include admitted work and capacity-retained backlog.
+	const retainedRow = (
 		cutoffIso
 			? d
 					.select({
-						in_flight: sql<number>`COALESCE(SUM(${schema.rawEventFlushBatches.end_event_seq} - ${schema.rawEventFlushBatches.start_event_seq} + 1), 0)`,
+						retained: sql<number>`COUNT(${schema.rawEvents.id})`,
 					})
-					.from(schema.rawEventFlushBatches)
+					.from(schema.rawEvents)
+					.innerJoin(
+						schema.rawEventSessions,
+						and(
+							eq(schema.rawEventSessions.source, schema.rawEvents.source),
+							eq(schema.rawEventSessions.stream_id, schema.rawEvents.stream_id),
+						),
+					)
 					.where(
 						and(
-							inArray(schema.rawEventFlushBatches.status, [
-								"started",
-								"pending",
-								"running",
-								"claimed",
-							]),
-							gte(schema.rawEventFlushBatches.updated_at, cutoffIso),
+							gt(schema.rawEvents.event_seq, schema.rawEventSessions.last_flushed_event_seq),
+							gte(schema.rawEventSessions.updated_at, cutoffIso),
 						),
 					)
 					.get()
 			: d
 					.select({
-						in_flight: sql<number>`COALESCE(SUM(${schema.rawEventFlushBatches.end_event_seq} - ${schema.rawEventFlushBatches.start_event_seq} + 1), 0)`,
+						retained: sql<number>`COUNT(${schema.rawEvents.id})`,
 					})
-					.from(schema.rawEventFlushBatches)
-					.where(
-						inArray(schema.rawEventFlushBatches.status, [
-							"started",
-							"pending",
-							"running",
-							"claimed",
-						]),
+					.from(schema.rawEvents)
+					.innerJoin(
+						schema.rawEventSessions,
+						and(
+							eq(schema.rawEventSessions.source, schema.rawEvents.source),
+							eq(schema.rawEventSessions.stream_id, schema.rawEvents.stream_id),
+						),
 					)
+					.where(gt(schema.rawEvents.event_seq, schema.rawEventSessions.last_flushed_event_seq))
 					.get()
 	) as Record<string, number> | undefined;
-	const inFlightEvents = Number(inFlightRow?.in_flight ?? 0);
+	const retainedUnflushedEvents = Number(retainedRow?.retained ?? 0);
 
 	const insertedEvents = Number(eventRow?.total_flushed ?? 0);
 	const droppedEvents = Math.max(
 		0,
-		Number(eventRow?.total_received ?? 0) - Number(eventRow?.total_flushed ?? 0) - inFlightEvents,
+		Number(eventRow?.total_received ?? 0) -
+			Number(eventRow?.total_flushed ?? 0) -
+			retainedUnflushedEvents,
 	);
 	const droppedDenom = insertedEvents + droppedEvents;
 	const droppedEventRate = droppedDenom > 0 ? droppedEvents / droppedDenom : 0.0;
@@ -186,14 +204,19 @@ export function getReliabilityMetricsWithDb(
 					.from(schema.rawEventFlushBatches)
 					.get()
 	) as Record<string, number> | undefined;
-	const retryDepthMax = Math.max(0, Number(retryDepthRow?.retry_depth_max ?? 0) - 1);
+	const retryDepthMax = Math.max(0, Number(retryDepthRow?.retry_depth_max ?? 0));
 
 	return {
 		counts: {
 			inserted_events: insertedEvents,
 			dropped_events: droppedEvents,
-			started_batches: startedBatches,
-			running_batches: runningBatches,
+			queued_batches: queuedBatches,
+			processing_batches: processingBatches,
+			failed_batches: failedBatches,
+			retry_exhausted_batches: retryExhaustedBatches,
+			uncompleted_batches: uncompletedBatches,
+			started_batches: queuedBatches,
+			running_batches: processingBatches,
 			completed_batches: completedBatches,
 			errored_batches: erroredBatches,
 			terminal_batches: terminalBatches,

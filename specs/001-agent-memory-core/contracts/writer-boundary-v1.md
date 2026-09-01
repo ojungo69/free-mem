@@ -639,9 +639,13 @@ whether a failed verification is fatal.
   current DB pointer still equals its target, and the staged artifact has no `-wal`/`-shm` and its hash
   still matches the recorded result, the call is idempotently replayed (no re-copy).
 - Otherwise: re-verifies the source backup (`verifyCanonicalBackup`); checks the backup manifest's
-  `schema_version` falls within `[MIN_COMPATIBLE_SCHEMA, SCHEMA_VERSION]` and its FTS
-  `normalization_version` equals the current `NORMALIZED_SCHEMA_VERSION` — an incompatible manifest is
-  rejected before any file is touched; copies the backup artifact into `db/versions/` with
+  `schema_version` falls within `[MIN_WRITABLE_SCHEMA, SCHEMA_VERSION]` and its FTS
+  `normalization_version` equals the current `NORMALIZED_SCHEMA_VERSION`. A manifest below the writable
+  floor is rejected with `Backup manifest requires the schema 20 bridge before restore.`; a future
+  schema or FTS mismatch uses the generic incompatible-manifest error. Both fail before any file is
+  touched. `MIN_COMPATIBLE_SCHEMA` remains the read-only compatibility floor; it does not authorize a
+  writable restore. The restore then copies the backup artifact into
+  `db/versions/` with
   `COPYFILE_EXCL` (fails if the destination already exists and wasn't already validated as a matching
   stage); rebuilds derived indexes on the staged copy (`rebuildStagedDerivedIndexes`, `:1113-1141`: FTS
   `rebuild` if the tables exist, vector table cleared if the vector extension's on-disk hash matches the
@@ -665,14 +669,28 @@ if version == 0:
     throw "Refusing to migrate a non-empty database without a codemem schema."
 if !tableExists(db,"memory_items") || !tableExists(db,"sessions"):
     throw "Refusing to migrate an unrecognized or partial codemem database."
-if version > SCHEMA_VERSION || isSchemaCompatibilityCurrent(db):
-    return null                                    # no migration needed
+if version > SCHEMA_VERSION:
+    return null                                    # no downgrade attempt
+if version < MIN_WRITABLE_SCHEMA:
+    throw "Direct writable upgrade requires MIN_WRITABLE_SCHEMA."
+if version == V21_MIGRATION_SOURCE_SCHEMA:          # 20
+    return "upgrade"
+if isSchemaCompatibilityCurrent(db): return null
 return "upgrade"
 ```
+
+For schema 21, `isSchemaCompatibilityCurrent` requires both the current marker and the required v21
+table/column shape. An early v21 database missing
+`processing_resume_producer_receipts.target_job_ids_json` therefore enters the verified-backup
+upgrade path; the additive shim restores it as `TEXT NOT NULL DEFAULT '[]'`, so historical receipts
+remain fail-closed and cannot target jobs created later.
+
 `canAutoBootstrapSchema` (`schema-bootstrap.ts:814-816`) requires **both** `version === 0` and
 `isSafeEmptyDatabase(db)` — a `version === 0` file that already contains unrelated (non-codemem) tables
-is refused outright rather than bootstrapped over. `SCHEMA_VERSION = 20`, `MIN_COMPATIBLE_SCHEMA = 6`
-(`db.ts:35`, `db.ts:43`).
+is refused outright rather than bootstrapped over. `SCHEMA_VERSION = 21`,
+`MIN_COMPATIBLE_SCHEMA = 6`, and `MIN_WRITABLE_SCHEMA = 20` (`db.ts`). Schemas 6–19 retain the
+read-only compatibility floor but require a schema-20 bridge before this runtime may migrate or
+restore them.
 
 **A schema version newer than this build's `SCHEMA_VERSION` is treated as "no migration needed", not as
 an error or a downgrade attempt** (`version > SCHEMA_VERSION` short-circuits to `null` alongside the
@@ -686,13 +704,32 @@ if kind == null: return                             # no-op
 verification = backupAndVerify({db, dbPath, schemaVersion, kind})
 if !verification.verified || !verification.evidence.trim():
     throw "Database migration requires a verified backup before schema changes begin."
-if kind == "bootstrap": bootstrapSchema(db)
-ensureAdditiveSchemaCompatibility(db)                # always, both kinds
+if kind == "bootstrap":
+    bootstrapSchema(db)
+    ensureAdditiveSchemaCompatibility(db)
+else if getSchemaVersion(db) == V21_MIGRATION_SOURCE_SCHEMA:
+    migrateV20ToV21(db)                            # includes strict PR2-critical additive DDL
+else if getSchemaVersion(db) == SCHEMA_VERSION:
+    ensureAdditiveSchemaCompatibility(db)
+else:
+    throw "Unsupported database migration path."
 assertSchemaReady(db)
 ```
 
+`migrateV20ToV21` does not call the broad fail-open startup compatibility shim. Inside the same
+immediate transaction, before creating v21 tables, it reconciles the v20 completed-job crash window:
+the frontier advances only through an exact contiguous chain beginning at `frontier + 1` whose source
+rows are all retained and whose ranges do not overlap another legacy batch. An already-advanced
+frontier is unchanged; its completed source rows may already have been removed by the legacy prune
+command and are preserved without replay or retained-range validation. Any incomplete, overlapping,
+or gapped completed candidate that still needs frontier advancement, and every sessionless completed
+row, aborts the migration and rolls every frontier update back to v20. The migration then invokes the canonical
+creators for the PR2-critical retrieval ledger, mutation receipts/quarantine, and daemon-job schema,
+and validates those surfaces and the required memory identity columns without catches; any missing
+required surface likewise aborts and rolls the whole database back to v20.
+
 **The backup-and-verify step always completes and is checked before any DDL statement runs.** This
-ordering is unconditional — `bootstrapSchema`/`ensureAdditiveSchemaCompatibility` are never reached if
+ordering is unconditional — `bootstrapSchema`/`migrateV20ToV21`/`ensureAdditiveSchemaCompatibility` are never reached if
 `verification.verified` is falsy or `evidence` is blank, regardless of `kind`.
 
 ### 11.3 The two `backupAndVerify` strategies actually used
@@ -716,7 +753,10 @@ invoked in production — runs `connect(dbPath)` on either the existing canonica
 `init-<uuid>.sqlite` path, then `runGatedMigration` **before** constructing the `MemoryStore` and before
 the RPC socket is bound (`daemon-lifecycle.ts:285`, called before `bindPrivateSocket` at `:359`) — no
 external caller can reach the daemon through the RPC surface until migration (if any) has already
-completed and been verified. For a brand-new `dataDir` (`!existing`), after migration it additionally
+completed and been verified. `connect()` enables persistent WAL only for a safe empty bootstrap or a
+schema at least `MIN_WRITABLE_SCHEMA`; opening a schema 6–19 database therefore leaves its journal mode
+unchanged before `peekMigrationKind()` rejects the writable upgrade. For a brand-new `dataDir`
+(`!existing`), after migration it additionally
 runs `wal_checkpoint(TRUNCATE)` and calls `activateDatabaseArtifact` to publish the freshly-bootstrapped
 file as the canonical pointer for the first time (`daemon-canonical.ts:35-42`).
 

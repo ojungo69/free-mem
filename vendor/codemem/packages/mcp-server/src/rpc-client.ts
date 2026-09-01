@@ -56,6 +56,16 @@ const RPC_FIELDS = {
 	"POST /v1/jobs": ["kind", "args", "dryRun"],
 	"GET /v1/jobs": ["kind", "state", "submittedAfter"],
 	"GET /v1/jobs/:id": ["id"],
+	"GET /v1/processing-jobs/:id": ["id"],
+	"POST /v1/processing-jobs/:id/doctor-retry": [
+		"id",
+		"producerReceiptId",
+		"expectedRole",
+		"expectedProviderFingerprint",
+		"expectedManifestFingerprint",
+		"expectedAttemptCount",
+		"expectedClaimGeneration",
+	],
 	"POST /v1/operations/export": ["operationId", "payloadHash", "outputPath", "filters"],
 	"POST /v1/operations/import": [
 		"operationId",
@@ -160,9 +170,11 @@ export function createMcpRpcClient(options: McpRpcClientOptions = {}): McpRpcCli
 			method === "POST /v1/operations/import" ||
 			method === "POST /v1/backup/create" ||
 			method === "POST /v1/backup/verify" ||
-			method === "POST /v1/backup/restore"
+			method === "POST /v1/backup/restore" ||
+			method === "GET /v1/processing-jobs/:id" ||
+			method === "POST /v1/processing-jobs/:id/doctor-retry"
 		) {
-			// Keep IDs and filesystem control metadata intact; backup reason is redacted below.
+			// Keep operation, backup, and doctor control metadata intact.
 			const preparedBody = Object.fromEntries(
 				fields.filter((field) => Object.hasOwn(body, field)).map((field) => [field, body[field]]),
 			);

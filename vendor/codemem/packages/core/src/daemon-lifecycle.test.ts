@@ -24,6 +24,7 @@ import {
 	activateCapabilityManifest,
 	writeCapabilityManifestGeneration,
 } from "./storage.js";
+import { ReadOnlyActor } from "./writer-actor.js";
 
 const createdDirs: string[] = [];
 const running: Array<{ stop: () => Promise<void> | void }> = [];
@@ -71,6 +72,67 @@ function localManifest(modelId = "t008-local-model") {
 		endpointUrl: "http://127.0.0.1:1234/v1/chat/completions",
 		credentialRef: { kind: "none" },
 	});
+}
+
+function publishActivationReceipt(
+	layout: ReturnType<typeof core.resolveStorageLayout>,
+	manifest: ReturnType<typeof localManifest>,
+	version: 1 | 2,
+	receiptId = "d5138218-b99a-48f5-9a10-ae632d5d3afb",
+): void {
+	const ids = [
+		"cli-runtime",
+		"claude-mcp",
+		"claude-hooks",
+		"claude-hook-runtime",
+		"codex-mcp",
+		"codex-hooks",
+		"codex-hook-runtime",
+	];
+	const targets = ids.map((id) => {
+		const path = join(layout.dataDir, `${id}.txt`);
+		writeFileSync(path, `${id}\n`, { mode: 0o600 });
+		return { id, path, fingerprint: core.sha256File(path) };
+	});
+	writeFileSync(
+		layout.installManifestPath,
+		`${JSON.stringify({ version: 1, blocks: [], targets })}\n`,
+		{
+			mode: 0o600,
+		},
+	);
+	writeFileSync(
+		layout.capabilityActivationReceiptPath,
+		`${JSON.stringify({
+			version,
+			...(version === 2
+				? {
+						receiptId,
+						activationSequence: 1,
+					}
+				: {}),
+			configurationFingerprint: manifest.configurationFingerprint,
+			targets,
+		})}\n`,
+		{ mode: 0o600 },
+	);
+}
+
+function resumeProducerCount(layout: ReturnType<typeof core.resolveStorageLayout>): number {
+	const pointer = core.readCurrentDatabasePointer(layout);
+	if (!pointer) throw new Error("expected canonical database pointer");
+	const db = ReadOnlyActor.open(join(layout.dbDir, pointer));
+	try {
+		return Number(
+			(
+				db.prepare("SELECT COUNT(*) AS count FROM processing_resume_producer_receipts").get() as {
+					count: number;
+				}
+			).count,
+		);
+	} finally {
+		db.close();
+	}
 }
 
 afterEach(async () => {
@@ -365,6 +427,79 @@ describe("T007 setup recovery boundary", () => {
 });
 
 describe("T008 capability startup boundary", () => {
+	it("logs a safe message and continues capture-only when the activation receipt is rejected", async () => {
+		const dataDir = join(tempDir("codemem-daemon-rejected-receipt-"), "data");
+		const layout = core.resolveStorageLayout(dataDir);
+		const manifest = localManifest("t021-rejected-receipt");
+		core.ensureStorageLayout(layout);
+		writeCapabilityManifestGeneration(layout, manifest);
+		const lifecycle = acquireCapabilityLifecycleLock(layout, 0);
+		try {
+			activateCapabilityManifest(layout, manifest.configurationFingerprint, lifecycle);
+		} finally {
+			lifecycle.close();
+		}
+		writeFileSync(layout.capabilityActivationReceiptPath, "{malformed", { mode: 0o600 });
+		const log = vi.spyOn(console, "error").mockImplementation(() => undefined);
+		try {
+			const handle = await core.startDaemon({ dataDir });
+			running.push(handle);
+			expect(handle.capability).toMatchObject({ activationReceipt: "rejected" });
+			expect(log).toHaveBeenCalledWith("[codemem] capability activation receipt was rejected.");
+		} finally {
+			log.mockRestore();
+		}
+	});
+
+	it("accepts legacy v1 without making it a v21 resume producer, then replays one v2 zero-match import", async () => {
+		const dataDir = join(tempDir("codemem-daemon-v2-receipt-"), "data");
+		const layout = core.resolveStorageLayout(dataDir);
+		const manifest = localManifest("t021-v2-receipt");
+		core.ensureStorageLayout(layout);
+		writeCapabilityManifestGeneration(layout, manifest);
+		const lifecycle = acquireCapabilityLifecycleLock(layout, 0);
+		try {
+			activateCapabilityManifest(layout, manifest.configurationFingerprint, lifecycle);
+		} finally {
+			lifecycle.close();
+		}
+
+		publishActivationReceipt(layout, manifest, 1);
+		const legacy = await core.startDaemon({ dataDir });
+		running.push(legacy);
+		expect(legacy.capability).toMatchObject({ activationReceipt: "validated" });
+		await legacy.stop();
+		running.pop();
+		expect(resumeProducerCount(layout)).toBe(0);
+
+		publishActivationReceipt(layout, manifest, 2, "D5138218-B99A-48F5-9A10-AE632D5D3AFB");
+		const first = await core.startDaemon({ dataDir });
+		running.push(first);
+		expect(first.capability).toMatchObject({
+			activationReceipt: "validated",
+			schemaReadiness: "ready",
+			runtimeReason: "pending_privacy_boundary",
+			providerEnabled: false,
+			sweeperEnabled: false,
+		});
+		await first.stop();
+		running.pop();
+		expect(resumeProducerCount(layout)).toBe(1);
+
+		publishActivationReceipt(layout, manifest, 2);
+		const replay = await core.startDaemon({ dataDir });
+		running.push(replay);
+		expect(replay.capability).toMatchObject({
+			activationReceipt: "validated",
+			schemaReadiness: "ready",
+			providerEnabled: false,
+			sweeperEnabled: false,
+		});
+		await replay.stop();
+		running.pop();
+		expect(resumeProducerCount(layout)).toBe(1);
+	});
+
 	it("releases the spool lock before daemon TLS preflight finishes", async () => {
 		const dataDir = join(tempDir("codemem-daemon-tls-lock-"), "data");
 		let acceptConnection: (socket: Socket) => void = () => {};

@@ -2,6 +2,12 @@ import { createHash } from "node:crypto";
 import { isIP } from "node:net";
 import * as tls from "node:tls";
 
+export const PROCESSING_JOB_CONCURRENCY = 2;
+export const PROCESSING_JOB_CAPACITY = 25;
+export const PROCESSING_JOB_RETRY_LIMIT = 3;
+/** Slice 1 bounded job and legacy-recovery source range. */
+export const PROCESSING_JOB_MAX_SOURCE_EVENTS = 100;
+
 export type ProviderWireProtocol = "anthropic_messages_v1" | "openai_chat_completions_v1";
 
 export type CredentialRefV1 = { kind: "none" } | { kind: "environment"; name: string };
@@ -164,11 +170,11 @@ const RESOURCE_PROFILE_BASE = {
 	profileId: "slice1-short-run",
 	version: 1,
 	captureConcurrencyLimit: 2,
-	processingConcurrencyLimit: 2,
-	processingQueueCapacity: 25,
-	processingRetryLimit: 3,
+	processingConcurrencyLimit: PROCESSING_JOB_CONCURRENCY,
+	processingQueueCapacity: PROCESSING_JOB_CAPACITY,
+	processingRetryLimit: PROCESSING_JOB_RETRY_LIMIT,
 	maxMemoryItemsPerDerivation: 16,
-	maxSourceEventsPerJob: 100,
+	maxSourceEventsPerJob: PROCESSING_JOB_MAX_SOURCE_EVENTS,
 	observerRequestTimeoutMs: 60_000,
 	observerMaxInputChars: 12_000,
 	observerMaxOutputTokens: 4_000,
@@ -578,6 +584,7 @@ export function safeManifestProjection(
 	manifest: EffectiveCapabilityManifestV1,
 	providerHealth: "available" | "provider_unavailable" | "provider_tls_rejected" = "available",
 	activationReceipt: "absent" | "validated" | "rejected" = "absent",
+	schemaReadiness: "pending_schema_v21" | "ready" = "pending_schema_v21",
 ) {
 	const validated = validateCapabilityManifest(manifest);
 	return deepFreeze({
@@ -593,12 +600,14 @@ export function safeManifestProjection(
 		providerEnabled: false,
 		sweeperEnabled: false,
 		lexicalEnabled: true,
-		schemaReadiness: "pending_schema_v21" as const,
+		schemaReadiness,
 		packReadiness: "pending_pack_boundary" as const,
 	});
 }
 
-export function captureOnlyCapabilityProjection() {
+export function captureOnlyCapabilityProjection(
+	schemaReadiness: "pending_schema_v21" | "ready" = "pending_schema_v21",
+) {
 	return deepFreeze({
 		mode: "capture_only" as const,
 		configurationFingerprint: null,
@@ -608,7 +617,7 @@ export function captureOnlyCapabilityProjection() {
 		providerEnabled: false,
 		sweeperEnabled: false,
 		lexicalEnabled: true,
-		schemaReadiness: "pending_schema_v21" as const,
+		schemaReadiness,
 		packReadiness: "pending_pack_boundary" as const,
 	});
 }
