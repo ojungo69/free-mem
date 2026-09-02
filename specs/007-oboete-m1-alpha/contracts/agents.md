@@ -104,9 +104,11 @@ memories counted for the conversation.
    `included`. On `PostToolUse` with a `pending` record and no attempted id (oboete's own
    `PreToolUse` handler did not complete: timeout or crash) the hook emits the pack from
    `PostToolUse` and marks it `emitted` the same way.
-4. No other event changes the record; a denied call simply produces no `PostToolUse`, and the
-   next `PreToolUse` attaches the pack again (step 2). `PermissionDenied` is captured for
-   diagnostics only (payload per R13 probe).
+4. A denied call produces no `PostToolUse`, and the next `PreToolUse` attaches the pack again
+   (step 2). `PermissionDenied` (payload per R13 probe) marks that attempt `execution = denied`,
+   `delivery = dropped`; `PostToolUseFailure` marks it `failed` with delivery `delivered` or
+   `dropped` per the probe; `Stop` marks every pending attempt `dropped`. Execution and delivery
+   are separate fields of `injections.attempts_json`.
 5. At `Stop` (`end_turn`) a record still `pending` or `attempted` becomes `omitted` with reason
    `no_tool_call` when oboete observed no tool hook of any kind in the turn, otherwise
    `not_delivered` (a deny by an earlier handler stops the chain before oboete runs, so "all
@@ -120,12 +122,12 @@ memories counted for the conversation.
 Same repository only (FR-044); never the same memory twice in one conversation (FR-026, counted
 on delivery); the session-start pack is emitted at most once per context epoch (an epoch starts at the root
 session and advances once per compaction, A12; the authoritative compaction event is one per
-agent: Claude Code and Codex `SessionStart` with `source = compact`, Grok Build `PostCompact`,
-Pi the compaction event the R13 probe identifies; the other compaction-related hooks of that
-agent never advance the epoch, and the epoch key is the sha256 of the compaction's stable native value (Claude Code: the
-`compact_summary` text; Codex, Grok, Pi: the field the R13 probe identifies) so a re-delivered
-or companion hook with the same key cannot advance it twice while a second compaction, even in
-the same turn, can; an agent with no stable value is blocked for compaction re-injection), which gives FR-024's "not again on resume" and its
+agent: `PostCompact` on Claude Code (carries `compact_summary`), Codex, and Grok Build, and the
+compaction event the R13 probe identifies on Pi; the companion `SessionStart source = compact`
+never advances the epoch and only reads it. The epoch key is that event's `raw_events.id`, or a
+native per-compaction id when the R13 probe finds one; the R13 probe also records the order of
+`PostCompact` and `SessionStart source = compact`, and an agent whose `PostCompact` reaches the
+hook without any content and without a native id is blocked for compaction re-injection), which gives FR-024's "not again on resume" and its
 re-injection after compaction on every agent; session start
 = latest session summary + pinned memories, bounded to the channel cap, pinned trimmed in pin
 order; prompt submit = memories above the threshold up to a character

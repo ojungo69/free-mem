@@ -229,8 +229,8 @@ approval before implementation starts (task 0).
   sensitivity, every source row, detector result), fixed in the apply transaction. **Language**
   (FR-014): script mismatch → one retry → fallback with `language_mismatch`. Degraded reasons: `no_provider`, `unreachable`,
   `unusable_output`, `language_mismatch`, `daily_cap`, `provider_exhausted`, `provider_paid`,
-  `auth_failed`, `consent_changed`, `model_alias`, `timeout`, `rule_based`, `no_content`,
-  `window_unknown`.
+  `auth_failed`, `consent_changed`, `model_alias`, `timeout`, `rule_based`, `window_unknown`
+  (session summaries aggregate by the fixed precedence in `contracts/observer.md`).
 - **Reviewer changes**: nearby and repo metadata leak closed; batch identity by destination only;
   deterministic session summary with durable reconciliation; fallback bodies as records under a
   2,000-character budget; injection of verbatim output removed; single preset.
@@ -332,7 +332,7 @@ skeleton (task 1).
 | Native tool payload shapes for read/write/edit/bash on all four agents | capture fixtures from headless runs | blocked for that agent/tool: until its fixture exists the adapter stores metadata only (`classification_state = failed`, reason `unmapped_payload`), never an unmapped payload (path rules cannot be applied to unknown fields); a regression test plants a path-rule secret inside an unknown payload |
 | Codex and Grok `PostCompact` payload (summary text field); Grok `Stop` `lastAssistantMessage` field | forced compaction and a normal turn end per agent | if no text is provided: recorded as such, `compaction_summary` / `last_assistant_message` absent for that agent by contract test; FR-010 input then relies on captured events only |
 | Grok parallel batches: whether `additionalContext` attached to several calls of one batch reaches the model once or once per call; `PermissionDenied` payload | parallel batch under the isolated user with a pack attached to two calls | once per batch: pass. Once per call, or a denied call suppressing the other calls' context: **blocked** for the Grok lane until the owner decides A15 (accept counted duplicates or exclude parallel-batch delivery from M1) |
-| Compaction identity per agent: a stable per-compaction value available to the authoritative compaction hook (Claude Code `compact_summary` text, Codex and Grok `PostCompact` payload field, Pi compaction event) | two compactions inside one turn plus a re-delivered hook | blocked for that agent's compaction re-injection (FR-024) until a stable key exists; no turn-ordinal fallback |
+| Compaction identity per agent: whether `PostCompact` (Claude Code, Codex, Grok) or Pi's compaction event carries a native per-compaction id, the summary field it carries, and its order relative to `SessionStart source = compact` | two compactions in one session plus a re-delivered hook | the epoch key falls back to the `PostCompact` event's `raw_events.id` (kind, turn ordinal, content hash), whose only collapse is a byte-identical compaction in the same turn; an agent whose `PostCompact` carries neither content nor an id is blocked for compaction re-injection |
 | Detector: the full detector finishes a 1 MB payload inside the capture hard cutoff on Node 22.16 | replay with 1 MB inputs | blocked: the capture lane stops and the measured bound goes to the owner as A14 (no silent smaller bound) |
 | Codex `SessionStart` fires with `source = compact` and `clear` | forced compaction and `/clear` in headless runs | blocked: FR-024 cannot be met on Codex without an owner amendment |
 | Codex rollout flush at `PostToolUse`; TUI trust path | grep the just-completed `tool_use_id`; interactive trust run | capture from hook stdin only (rollout is never a required source) |

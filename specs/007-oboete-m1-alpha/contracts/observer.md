@@ -91,16 +91,21 @@ under the same 2,000-character budget and trim order: `request` = the first prom
 `investigated` = the distinct files read (up to 20 paths); `learned` = the titles of the
 observations applied for the session (up to 10); `completed` = the distinct files modified with
 tool counts (up to 20); `next_steps` = the last unfinished turn's prompt (200). Sensitivity =
-strictest source row. `degraded_reason` = the most severe reason among the session's batches
-(NULL only when every batch was applied from a provider), so a no-credentials session yields a
-summary labelled `no_provider` and the session-start pack shows `Degraded:` (SC-004). **Durable
+strictest source row. `degraded_reason` = the most severe reason among the session's batches by this fixed precedence:
+`provider_paid` > `provider_exhausted` > `auth_failed` > `consent_changed` > `daily_cap` >
+`unreachable` > `timeout` > `unusable_output` > `language_mismatch` > `model_alias` >
+`no_provider` > `rule_based` (NULL only when every batch was applied from a provider), so a
+no-credentials session yields a summary labelled `no_provider` and the session-start pack shows
+`Degraded:` (SC-004). **Durable
 completion**: an `ended` session with `summary_state = pending` whose batches are all terminal
 is reconciled by every worker run; the summary insert, `latest_summary_memory_id`, and
 `summary_state = done` commit in one fenced transaction, so a crash between the last batch and
-the summary cannot leave the session without one. A session with no non-secret rows is set to
-`summary_state = no_content` with **no memory row and no injection** (spec edge case "nothing is
-produced, nothing is sent"); a test asserts the absence in the database and in the next
-session-start pack and that reconciliation does not revisit it. SC-004 (three
+the summary cannot leave the session without one. A session with zero summarizable events (no
+prompt, tool, assistant-message, or compaction row with non-empty non-secret content after
+`<private>` removal; lifecycle rows never count) is set to `summary_state = no_content` with
+**no memory row and no injection** (spec edge case "nothing is produced, nothing is sent"); a
+fixture with `session_start`, a fully `<private>` prompt, and `session_end` asserts the absence
+in the database and in the next session-start pack and that reconciliation does not revisit it. SC-004 (three
 seeded facts recalled with no credentials) is asserted against the fallback observations plus
 this summary.
 
