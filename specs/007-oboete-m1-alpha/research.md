@@ -220,7 +220,8 @@ approval before implementation starts (task 0).
   neutrality**: the producing agent is provenance only; it is absent from provider inputs,
   fallback bodies, classification decisions, and `material_hash`, and a test asserts identical
   hashes and decisions when only the agent changes. **Deleted content** (FR-035 "not re-created from the same content"): the plan reads "same
-  content" as the same normalized title and body (`material_hash`), enforced by the tombstone row
+  content" as the same (type, normalized title, normalized body), which is `material_hash`,
+  enforced by the tombstone row
   plus the tombstone-aware classification prompt (top 8 nearby includes tombstones); a paraphrase
   of a deleted memory is a new memory by this reading. A source-attribution guard was designed and
   withdrawn because it suppressed correct sibling memories from the same events; the reading is
@@ -330,7 +331,8 @@ skeleton (task 1).
 |---|---|---|
 | Native tool payload shapes for read/write/edit/bash on all four agents | capture fixtures from headless runs | blocked for that agent/tool: until its fixture exists the adapter stores metadata only (`classification_state = failed`, reason `unmapped_payload`), never an unmapped payload (path rules cannot be applied to unknown fields); a regression test plants a path-rule secret inside an unknown payload |
 | Codex and Grok `PostCompact` payload (summary text field); Grok `Stop` `lastAssistantMessage` field | forced compaction and a normal turn end per agent | if no text is provided: recorded as such, `compaction_summary` / `last_assistant_message` absent for that agent by contract test; FR-010 input then relies on captured events only |
-| Grok parallel batches: whether `additionalContext` attached to several calls of one batch reaches the model once or once per call; `PermissionDenied` payload | parallel batch under the isolated user with a pack attached to two calls | the state machine attaches on every call until confirmed regardless; per-call duplication inside one batch is the documented A13 trade-off; if the probe shows a denied call also suppresses the other calls' context, the Grok lane is blocked pending amendment |
+| Grok parallel batches: whether `additionalContext` attached to several calls of one batch reaches the model once or once per call; `PermissionDenied` payload | parallel batch under the isolated user with a pack attached to two calls | once per batch: pass. Once per call, or a denied call suppressing the other calls' context: **blocked** for the Grok lane until the owner decides A15 (accept counted duplicates or exclude parallel-batch delivery from M1) |
+| Compaction identity per agent: a stable per-compaction value available to the authoritative compaction hook (Claude Code `compact_summary` text, Codex and Grok `PostCompact` payload field, Pi compaction event) | two compactions inside one turn plus a re-delivered hook | blocked for that agent's compaction re-injection (FR-024) until a stable key exists; no turn-ordinal fallback |
 | Detector: the full detector finishes a 1 MB payload inside the capture hard cutoff on Node 22.16 | replay with 1 MB inputs | blocked: the capture lane stops and the measured bound goes to the owner as A14 (no silent smaller bound) |
 | Codex `SessionStart` fires with `source = compact` and `clear` | forced compaction and `/clear` in headless runs | blocked: FR-024 cannot be met on Codex without an owner amendment |
 | Codex rollout flush at `PostToolUse`; TUI trust path | grep the just-completed `tool_use_id`; interactive trust run | capture from hook stdin only (rollout is never a required source) |

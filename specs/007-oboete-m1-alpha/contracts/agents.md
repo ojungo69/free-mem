@@ -95,8 +95,10 @@ memories counted for the conversation.
    nothing more is needed; once per call → the Grok lane is **blocked** until the owner decides
    A15 (accept per-call duplication inside one parallel batch, with its effect on FR-026, User
    Story 1 scenario 2, SC-010, FR-028, and Principle IV's injection volume stated in the
-   amendment) or removes parallel-batch delivery from M1. In either case `why` reports the actual
-   number of deliveries per `attempted_tool_call_ids` entry, and the E2E counts them.
+   amendment) or removes parallel-batch delivery from M1. In either case every attempt's outcome is
+   persisted in `injections.attempts_json` (`attached`, `confirmed`, `failed`, `denied`,
+   `unresolved`, with timestamps) so `why` reports actual deliveries per attempt after the raw
+   events have expired, and the E2E counts them.
 3. On `PostToolUse` for any attempted `tool_call_id` (and on `PostToolUseFailure` if the R13
    probe shows the context survives a failed call) the record becomes `emitted` and its items
    `included`. On `PostToolUse` with a `pending` record and no attempted id (oboete's own
@@ -120,8 +122,10 @@ on delivery); the session-start pack is emitted at most once per context epoch (
 session and advances once per compaction, A12; the authoritative compaction event is one per
 agent: Claude Code and Codex `SessionStart` with `source = compact`, Grok Build `PostCompact`,
 Pi the compaction event the R13 probe identifies; the other compaction-related hooks of that
-agent never advance the epoch, and the epoch key is (native session id, that event's turn
-ordinal) so a re-delivery cannot advance it twice while a second compaction in a later turn can), which gives FR-024's "not again on resume" and its
+agent never advance the epoch, and the epoch key is the sha256 of the compaction's stable native value (Claude Code: the
+`compact_summary` text; Codex, Grok, Pi: the field the R13 probe identifies) so a re-delivered
+or companion hook with the same key cannot advance it twice while a second compaction, even in
+the same turn, can; an agent with no stable value is blocked for compaction re-injection), which gives FR-024's "not again on resume" and its
 re-injection after compaction on every agent; session start
 = latest session summary + pinned memories, bounded to the channel cap, pinned trimmed in pin
 order; prompt submit = memories above the threshold up to a character
