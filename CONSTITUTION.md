@@ -20,7 +20,7 @@ Sync Impact Report
 - Follow-up work:
   - write the M1 (self-use Alpha) feature specification with /speckit-specify
   - record verified hook and API contracts in docs/research/ before the M1 plan
-  - move vendor/, specs/, evidence/, harness/ and root spec files under legacy/
+  - (done in the same change) move vendor/, specs/, evidence/, harness/ and root spec files under legacy/
   - route or close Product Reset issues (#136-#139, #148, #150-#153) after M1 is
     authoritative
 -->

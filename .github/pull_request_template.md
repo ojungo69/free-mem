@@ -6,7 +6,7 @@ Describe what changed and why. Keep the scope narrow enough to review and revert
 
 List the commands, fixtures, or manual checks used to validate this change.
 
-- [ ] `npm ci && npm run build && npm test`
+- [ ] `node --test scripts/dco-check.test.mjs` (and `npm ci && npm run build && npm test` once `package.json` exists)
 - [ ] Other validation is documented below, or a reason is given for skipped checks.
 
 ## Constitution compliance

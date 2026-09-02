@@ -38,7 +38,7 @@ The full set of rules is in [`CONSTITUTION.md`](CONSTITUTION.md).
 ## Layout
 
 - `CONSTITUTION.md` — project principles and constraints (authoritative).
-- `docs/research/` — verified third-party contracts (hook payloads, provider APIs).
+- `docs/research/` — verified third-party contracts (hook payloads, provider APIs); created with the M1 specification.
 - `specs/` — Spec Kit features for oboete milestones (created per milestone).
 - `scripts/` — repository gates (DCO checker).
 - `legacy/` — the free-mem era, read-only.

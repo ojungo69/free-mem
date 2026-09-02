@@ -151,15 +151,15 @@ dependency of local capture, search, or injection.
 
 ## Security
 
-Report vulnerabilities privately as described in [`SECURITY.md`](SECURITY.md). Never include real
+Report vulnerabilities privately as described in [`SECURITY.md`](../SECURITY.md). Never include real
 credentials, private memory content, or local artifact paths in an issue or fixture.
 
 ## Licensing
 
-free-mem is licensed under Apache License 2.0; see [`LICENSE`](LICENSE) and [`NOTICE`](NOTICE).
+free-mem is licensed under Apache License 2.0; see [`LICENSE`](../LICENSE) and [`NOTICE`](../NOTICE).
 Third-party material keeps its original license. `vendor/codemem/` is a pinned MIT snapshot and is
 not relicensed by this repository; see [`THIRD_PARTY_NOTICES.md`](THIRD_PARTY_NOTICES.md) and
 [`vendor/codemem/VENDOR.md`](vendor/codemem/VENDOR.md).
 
 Contributions use the same license and require DCO sign-off; see
-[`CONTRIBUTING.md`](CONTRIBUTING.md).
+[`CONTRIBUTING.md`](../CONTRIBUTING.md).

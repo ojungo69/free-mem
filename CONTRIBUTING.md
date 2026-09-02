@@ -80,7 +80,7 @@ will be rejected even if the test passes.
 
 ## Before you open a pull request
 
-- Run `npm ci && npm run build && npm test`, plus any check that covers what you touched.
+- Run `node --test scripts/dco-check.test.mjs`, plus any check that covers what you touched. The `npm ci && npm run build && npm test` step arrives together with `package.json` in the first M1 implementation pull request.
 - Never edit generated files by hand; change the source and regenerate.
 - If you change the SQLite schema, the CLI contract, or a hook payload, update the matching
   specification under `specs/` in the same pull request. Those documents describe what the

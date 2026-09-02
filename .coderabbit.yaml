@@ -1,0 +1,5 @@
+# legacy/ is frozen read-only evidence and is never reviewed. CodeRabbit counts the
+# files-per-review limit after path filters, so excluding it keeps the review runnable.
+reviews:
+  path_filters:
+    - "!legacy/**"
