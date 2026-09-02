@@ -1,0 +1,21 @@
+specs/007-oboete-m1-alpha/contracts/agents.md
+  s_57dbf1dbbfb84e::t_9c729c054cb3a3 89
+specs/007-oboete-m1-alpha/plan.md
+  s_57dbf1dbbfb84e::t_ed714536c5b0c5 140
+---
+{
+  "schema_version": "authorship/3.0.0",
+  "git_ai_version": "1.6.16",
+  "base_commit_sha": "44ef91cb0f11b043c3a9672aa71b78c460161a85",
+  "prompts": {},
+  "sessions": {
+    "s_57dbf1dbbfb84e": {
+      "agent_id": {
+        "tool": "claude",
+        "id": "cccab57b-75af-4932-87f9-5ede4fbf82ca",
+        "model": "claude-fable-5-1"
+      },
+      "human_author": "ojungo69 <210335670+ojungo69@users.noreply.github.com>"
+    }
+  }
+}
