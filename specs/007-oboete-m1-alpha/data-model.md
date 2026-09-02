@@ -23,7 +23,7 @@ tables are `STRICT`; FTS5 virtual tables cannot be. Every write from the worker 
 |---|---|---|
 | id | TEXT PK | first 16 hex of sha256 over the normalized identity (FR-004); the only repository value a remote observer ever receives |
 | identity_kind | TEXT | `remote` or `common_dir` (machine-local; see import mapping) |
-| normalized_identity | TEXT UNIQUE | `host/path` or realpath of the git common dir |
+| normalized_identity | TEXT UNIQUE | `host/path` (userinfo, query, and fragment removed before storage) or realpath of the git common dir |
 | display_root | TEXT | last seen working tree |
 | created_at, last_seen_at | INTEGER | |
 
@@ -77,14 +77,15 @@ Indexes: (session_id, captured_at), (expires_at), (batch_id).
 | id | TEXT PK | |
 | repo_id, session_id | TEXT | |
 | through_event_id | TEXT | |
-| purpose | TEXT | `observations`, `session_summary` (one per session end, local path only) |
+| purpose | TEXT | `observations`, `session_end` (observations + summary in one local call, or fallback summary when the remote batch is the session's one call) |
 | destination | TEXT | `remote_observer`, `local_observer`, `fallback` (batch split by sensitivity, R10) |
 | trigger | TEXT | `ten_turns`, `session_end`, `retention` (forced before purge) |
 | state | TEXT | `pending`, `running`, `applied`, `fallback` |
 | owner_token | TEXT | worker that claimed it; reclaimable after 120 s when the lease changed hands |
 | provider_attempts | INTEGER | incremented per HTTP attempt with its reservation |
 | last_reservation_id | TEXT | reservation of the most recent attempt |
-| degraded_reason | TEXT | `no_provider`, `unreachable`, `unusable_output`, `daily_cap`, `provider_exhausted`, `provider_paid`, `model_alias`, `timeout` |
+| response_json | TEXT | journaled provider response, written before apply; a reclaimed batch with a journal is applied without a new call |
+| degraded_reason | TEXT | `no_provider`, `unreachable`, `unusable_output`, `daily_cap`, `provider_exhausted`, `provider_paid`, `auth_failed`, `consent_changed`, `model_alias`, `timeout` |
 | excerpted | INTEGER | input excerpted to 12,000 characters (FR-015) |
 | claimed_at, completed_at | INTEGER | |
 
@@ -104,7 +105,7 @@ twice is impossible.
 | cjk_bigrams | TEXT | generated shadow column for the CJK FTS table |
 | material_hash | TEXT | sha256 over (type, normalized title, normalized body); repository-independent, kept on tombstones; computed only by `db/identity.ts` |
 | content_hash | TEXT UNIQUE | sha256 over (repo_id, material_hash); same helper on every path (provider, fallback, import, tombstone) |
-| sensitivity | TEXT | strictest of the source rows |
+| sensitivity | TEXT | `add`: strictest source row and detector; `update`: max(target, every source row, detector), fixed in the apply transaction |
 | review_state | TEXT | `unreviewed` (default, injectable at once per FR-042), `reviewed`, `imported` (quarantined: excluded by the shared query function from search, injection, MCP, and the viewer's injectable set until the worker's detector and directive check move it to `unreviewed` or `secret`) |
 | degraded_reason | TEXT | NULL for provider output |
 | source_session_id, source_batch_id | TEXT | provenance; carried by export |
@@ -127,7 +128,8 @@ Indexes: (repo_id, deleted_at, pinned_at), (repo_id, valid_to), (repo_id, review
 | memory_id, raw_event_id | TEXT | index on memory_id |
 | citation_kind | TEXT | `file_read`, `file_modified`, `commit`, NULL |
 | citation_value | TEXT | path or commit id |
-| source_agent | TEXT | |
+| source_content_hash | TEXT | content hash of the source raw event, kept after the event expires; indexed; the resurrection guard suppresses a candidate whose source hashes intersect a tombstoned memory's set |
+| source_agent | TEXT | provenance only |
 
 ## memories_fts, memories_fts_cjk
 
@@ -160,7 +162,7 @@ outbound observer request (`observer/request.ts`), injection, CLI, MCP, viewer.
 | kind | TEXT | `session_start`, `prompt`, `grok_deferred` |
 | channel | TEXT | e.g. `claude:SessionStart`, `codex:UserPromptSubmit`, `grok:PreToolUse`, `grok:PostToolUse`, `pi:before_agent_start` |
 | state | TEXT | `built`, `emitted`, `omitted`; Grok only: `pending`, `attempted` |
-| attempt_tool_call_id | TEXT | Grok: tool call on which the pack was last attempted |
+| context_epoch | INTEGER | 0 at the root session, +1 per compaction (A12) |
 | pack_hash | TEXT | recognized on capture (FR-021) |
 | char_budget, chars_used | INTEGER | |
 | degraded_reason | TEXT | `summary_pending`, `index_unavailable`, `empty`, `window_unknown`, `no_tool_call`, `not_delivered`, plus batch reasons |
@@ -182,12 +184,27 @@ outbound observer request (`observer/request.ts`), injection, CLI, MCP, viewer.
 | score_bm25, score_rrf, score_mmr | REAL | |
 | stale | INTEGER | |
 
-Partial unique index on (conversation_id, memory_id) where decision = `included` and memory_id is
-not NULL (SC-010). Items are written as `planned` when a pack is built and become `included` only
+Partial unique index on (conversation_id, context_epoch, memory_id) where decision = `included`
+and memory_id is not NULL (SC-010; compaction opens a new epoch so FR-024's re-injection and
+FR-026's no-duplicate rule do not conflict, A12). Items are written as `planned` when a pack is built and become `included` only
 when delivery is confirmed (immediately for stdout channels; at `PostToolUse` for Grok), so a Grok
 pack that is never delivered does not consume the memory for the conversation. A pending Grok
 record that is rebuilt on a later prompt merges: items already `planned` stay, new items are added
 under the same budget, and the merged pack gets a new `pack_hash`.
+
+## injection_attempts (Grok)
+
+| column | type | notes |
+|---|---|---|
+| injection_id | TEXT FK | |
+| tool_call_id | TEXT | PK with injection_id |
+| batch_id_native | TEXT | Grok batch identifier when the `PostToolBatch` probe provides one |
+| state | TEXT | `outstanding`, `confirmed`, `closed` |
+| created_at, resolved_at | INTEGER | |
+
+A record attaches the pack only when it has no `outstanding` attempt; `PostToolUse` (and
+`PostToolUseFailure` when the probe shows delivery) confirms; `PostToolBatch` and a verified
+`PermissionDenied` close unconfirmed attempts and return the record to `pending`.
 
 ## worker_lease (single row, seeded by 0001)
 
@@ -273,5 +290,6 @@ classifies it).
   `unreviewed` → `reviewed`.
 - worker_lease: released → held (fenced claim) → released (atomic with the empty-queue check) |
   stale (missed heartbeats, clock jump) → reclaimed.
-- injections.state: `built` → `emitted` | `omitted`; Grok: `pending` → `attempted` → `emitted` |
-  `pending` (deny or failure) → `omitted` (turn end); items `planned` → `included` on confirmation.
+- injections.state: `built` → `emitted` | `omitted`; Grok: `pending` → `attempted` (attempt
+  outstanding) → `emitted` (confirmed) | `pending` (batch closed unconfirmed) → `omitted` (turn
+  end); items `planned` → `included` on confirmation.

@@ -116,7 +116,12 @@ approval before implementation starts (task 0).
   `exhausted_at`, increments `provider_usage.calls` and `observation_batches.provider_attempts`,
   and commits; a 429/3036 result is persisted in its own
   transaction keyed by the reservation (`provider_usage.exhausted_at`, monotonic, not fenced by the
-  lease) so the signal survives a lost lease; the batch apply is fenced separately. Spool entries are
+  lease) so the signal survives a lost lease; the batch apply is fenced separately. **Provider
+  attempts are at-least-once, applied effects exactly-once**: a successful response is journaled
+  to `observation_batches.response_json` in its own transaction before apply, and a reclaimed
+  batch that already has a journaled response is applied from it without a new call; only a crash
+  between the request and the journal write can cause a second call, which the worker-kill test
+  counts separately from applies (spec wording "summarized twice" is read as applied twice, A11). Spool entries are
   one sanitized file per event (write-then-rename). Retention: rows past `expires_at` in `applied`
   or `fallback` batches are deleted in bounded `DELETE ... WHERE id IN (SELECT ... LIMIT 500)` steps;
   rows past `expires_at` in pending batches are forced into a fallback batch first; `secret`
@@ -168,9 +173,14 @@ approval before implementation starts (task 0).
   original mode and owner, and backups of files that may contain credentials are created 0600.
   Consent for a remote preset is a record of the hash of the displayed tuple (preset, host,
   credential source, cost class, egress classes); `--yes` is accepted only when the stored hash
-  matches the tuple setup would display now, otherwise `--accept-egress` is required.
-- **Reviewer changes**: `--git-common-dir`; managed blocks; consent bound to the full tuple;
-  backup mode and owner.
+  matches the tuple setup would display now, otherwise `--accept-egress` is required. The same
+  hash is recomputed from the live configuration before every reservation and again immediately
+  before the request is sent; a mismatch makes no network call and degrades the batch with
+  `consent_changed`. Remote identities are normalized with userinfo, query, and fragment removed
+  before anything is stored, so a credential embedded in a remote URL never reaches the database
+  or a pack.
+- **Reviewer changes**: `--git-common-dir`; managed blocks; consent bound to the full tuple and
+  re-checked at send time; backup mode and owner; userinfo stripped from remotes.
 
 ## R9. Viewer and search surface
 
@@ -204,7 +214,19 @@ approval before implementation starts (task 0).
   be one of the supplied ids or it is treated as `add`; the fallback rule is tombstone hash →
   suppressed, active hash → `noop`, else `add`. Fallback bodies are deterministic records (file
   lists, commit ids, error lines, tool names), never raw paragraphs; verbatim tool output is
-  retained for 7 days as raw evidence (`raw_events`) and is never injected or indexed. Degraded reasons: `no_provider`, `unreachable`,
+  retained for 7 days as raw evidence (`raw_events`) and is never injected or indexed. **Agent
+  neutrality**: the producing agent is provenance only; it is absent from provider inputs,
+  fallback bodies, classification decisions, and `material_hash`, and a test asserts identical
+  hashes and decisions when only the agent changes. **Session end is one provider call**: with a
+  local observer the `session_end` batch produces observations and the summary in one call; with
+  a remote preset the remote `observations` batch is the one call and the summary is produced
+  deterministically by the fallback (all five fields defined in `contracts/observer.md`); SC-004
+  is asserted against the fallback path. **Resurrection guard**: every memory and tombstone keeps
+  its source events' content hashes in `memory_sources.source_content_hash`; a candidate whose
+  source set intersects a tombstone's source set is suppressed before any hash comparison, so a
+  paraphrased re-summary of the same captured content cannot recreate a deleted memory (tested
+  with a provider fixture that paraphrases). **Sensitivity on add/update** = max(target's
+  sensitivity, every source row, detector result), fixed in the apply transaction. Degraded reasons: `no_provider`, `unreachable`,
   `unusable_output`, `daily_cap`, `provider_exhausted`, `provider_paid`, `model_alias`, `timeout`,
   `window_unknown`.
 - **Reviewer changes**: nearby and repo metadata leak closed; batch identity with purpose; single
@@ -248,10 +270,9 @@ approval before implementation starts (task 0).
 - **Context window**: a versioned table `docs/research/context-windows.md` (model id → documented
   window, source URL) maintained under R13; the character budget uses the documented window of the
   reported model; when the model is unknown the budget is min(channel cap, the smallest verified
-  window in the table for that agent) and the pack is labelled `window_unknown`; when the table
-  has no verified entry for that agent, prompt-submit injection is omitted with `window_unknown`
-  (session-start packs are bounded by the channel cap and still delivered); no guessed value is
-  ever used.
+  window in the table for that agent) and the pack is labelled `window_unknown`; an agent with no
+  verified entry at all cannot satisfy FR-025, so its prompt-submit lane is blocked by the R13
+  gate until a window is verified (no omission fallback, no guessed value).
 - **Content identity**: one shared helper (`db/identity.ts`) is the only place that computes
   `material_hash` = sha256(type, normalized title, normalized body) and `content_hash` =
   sha256(repo_id, material_hash); provider output, fallback output, import, and tombstones all go
@@ -288,10 +309,11 @@ approval before implementation starts (task 0).
   `setup/write-*.ts`, `db/queries.ts` (scope and sensitivity filter), `worker/batches.ts`
   (destination split), `observer/request.ts` (outbound request builder), `observer/classify.ts`
   (target restriction, update/delete), `injection/*`, `mcp.ts` (repository boundary),
-  `transfer.ts`, `viewer/server.ts` (auth), and `scripts/build.mjs` (bundle composition). External
-  lanes get UI components, fixture generators, non-boundary adapters (`agents/*.ts` field mapping),
-  retrieval scoring, and test scaffolding; `tasks.md` lists the owned paths as a fence on every
-  delegated task.
+  `transfer.ts`, `viewer/server.ts` (auth), and `scripts/build.mjs` (bundle composition). `agents/*.ts` is also
+  security-owned: adapters extract content and paths from raw payloads and therefore decide what
+  the path rules and the detector see. External lanes get UI components, fixture generators,
+  retrieval scoring, and test scaffolding only; `tasks.md` lists the owned paths as a fence on
+  every delegated task.
 
 ## R13. Verification gate and its failure policy
 
@@ -304,12 +326,15 @@ skeleton (task 1).
 
 | item | probe | if the probe fails |
 |---|---|---|
-| Native tool payload shapes for read/write/edit/bash on all four agents | capture fixtures from headless runs | adapters store whole redacted JSON with `tool_name_native`; field mapping deferred, no requirement lost |
+| Native tool payload shapes for read/write/edit/bash on all four agents | capture fixtures from headless runs | blocked for that agent/tool: until its fixture exists the adapter stores metadata only (`classification_state = failed`, reason `unmapped_payload`), never an unmapped payload (path rules cannot be applied to unknown fields); a regression test plants a path-rule secret inside an unknown payload |
+| Codex and Grok `PostCompact` payload (summary text field); Grok `Stop` `lastAssistantMessage` field | forced compaction and a normal turn end per agent | if no text is provided: recorded as such, `compaction_summary` / `last_assistant_message` absent for that agent by contract test; FR-010 input then relies on captured events only |
+| Grok hook serialization: whether `PreToolUse` hooks of a parallel tool batch all fire before any `PostToolUse`, and the `PostToolBatch` payload | parallel batch under the isolated user | the attempt set and `PostToolBatch` handling in the state machine are designed for either order; if `PostToolBatch` carries no usable call ids the Grok lane is blocked pending amendment |
+| Detector throughput: largest payload the full detector processes inside the capture deadline on 22.16 | replay with growing payloads | sets the content bound (initial 256 KB); payloads between the bound and 1 MB are stored metadata-only |
 | Codex `SessionStart` fires with `source = compact` and `clear` | forced compaction and `/clear` in headless runs | blocked: FR-024 cannot be met on Codex without an owner amendment |
 | Codex rollout flush at `PostToolUse`; TUI trust path | grep the just-completed `tool_use_id`; interactive trust run | capture from hook stdin only (rollout is never a required source) |
 | Grok Build user-scoped MCP registration | write configuration, call `search` headless | blocked for Grok's tool surface (FR-030) pending owner amendment |
 | Pi compaction event; Pi tool registration surface | extension probe on 0.84.4 | compaction re-injection on Pi blocked pending amendment; tools blocked likewise |
-| NIM / OpenRouter / Gemini / Anthropic transport, auth header, model id | one call per preset | blocked: the preset is disabled with a doctor reason until the owner amends or the row passes |
+| NIM / OpenRouter / Gemini / Anthropic transport, auth header, model id | one call per preset | blocked: the preset is listed by the constitution, so M1 completion is blocked until the row passes or the owner approves an exception removing that preset |
 | NIM / OpenRouter / Gemini structured output (`response_format`) | same call, schema requested | text-JSON path for that preset (already compliant) |
 | Grok Build `PreToolUse` context on an executed-but-failed call (`PostToolUseFailure`) | force a failing tool call with an attempted pack; check what the model received | if dropped: the failure branch returns the record to `pending` (already in the state machine); if delivered: `PostToolUseFailure` confirms delivery |
 | Pi `resume` / `fork`: `session_start` firing and `PI_SESSION_ID` continuity | resume and fork a session under the isolated user | if the id does not continue: Pi resume detection is blocked and FR-024/FR-026 on Pi resume go to an owner amendment |
@@ -317,6 +342,6 @@ skeleton (task 1).
 | Hook runner behaviour when the hook exits with unread stdin above 1 MB (all four agents) | feed an oversized tool result | blocked: A7 goes to the owner if a runner treats the hook as failed; a runner's own payload cap narrows A7 |
 | Pi durable error surface for extension throws | throw inside a probe extension, inspect Pi's logs | blocked for the Pi lane pending amendment A8 |
 | Legacy-era MCP server against Claude Code, Codex, Grok clients (raw frames compared) | headless `tools/list` + `tools/call` | blocked for that client pending amendment |
-| Per-model context windows | documented window per model id into `context-windows.md` | `window_unknown` degraded budget (R12) |
+| Per-model context windows | documented window per model id into `context-windows.md` | an agent with no verified window blocks its prompt-submit lane (FR-025) pending owner decision; a known agent with an unknown model uses the smallest verified window and `window_unknown` |
 | Real bundle cold start on 22.16 and 24.x (after task 1) | replay harness | blocked; a split entry point needs a constitution amendment first |
 | Installed size with dependencies (after task 1) | tarball into an empty prefix | blocked above 30 MB pending a written reason approved by the owner |

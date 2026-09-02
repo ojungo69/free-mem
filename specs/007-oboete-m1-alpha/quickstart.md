@@ -59,13 +59,19 @@ for f in db-missing busy corrupt readonly enospc worker-kill provider-unreachabl
          provider-429-3036 provider-403-5035 provider-length provider-malformed cap-boundary \
          lease-lost-after-3036 detector-throw config-malformed pi-throw pi-child-hang pi-spawn-failure clock-jump \
          mixed-sensitivity resume compact fork clear setup-repeat setup-remove lease-steal pause \
-         oversized-payload grok-success grok-exec-failure grok-oboete-deny grok-other-handler-deny grok-no-tool; do
+         oversized-payload deadline-before-detector consent-changed provider-401 update-sensitivity \
+         paraphrase-resurrection worker-kill-after-response agent-swap \
+         grok-success grok-exec-failure grok-oboete-deny grok-other-handler-deny grok-parallel-batch grok-no-tool; do
   NODE_ENV=test OBOETE_TEST_FAULT=$f node --test build/test/fault-*.test.mjs
 done
 ```
 
-Expected: every hook exits 0 within its SLA, spooled events are recovered when the fault clears, no
-batch is applied twice, a lost lease stops the old worker's writes but the 3036 signal persists,
+Expected: every hook exits 0 within its absolute deadline (asserted per event kind, not only at
+p99), spooled events are recovered when the fault clears, no batch is applied twice and a worker
+killed after the provider responded applies the journaled response without a second call (HTTP
+count and apply count asserted separately), a changed consent tuple makes no call, a 401 is
+reported as `auth_failed` not `provider_paid`, an eligible update never relaxes a local-only
+target, a paraphrased re-summary of deleted content creates nothing, a lost lease stops the old worker's writes but the 3036 signal persists,
 attempt 150 is allowed and attempt 151 is refused across presets, a detector failure stores metadata only, the mixed-sensitivity outbound
 body contains only eligible content and an opaque repository id, Grok cases deliver exactly the
 expected number of packs, an oversized payload leaves only a metadata `failed` row and
@@ -78,7 +84,7 @@ no content anywhere, and doctor names the degraded component with `reason`,
 sudo -u oboete-dogfood -H env PATH="$PATH" bash -lc '
   npm install -g ./oboete-<version>.tgz &&
   time oboete setup --agents claude,codex,grok,pi --provider workers-ai --accept-egress &&
-  oboete doctor --json'
+  oboete doctor --probe-provider --json'
 ```
 
 Expected: setup completes in under 2 minutes (probes run in parallel) and reports each agent as

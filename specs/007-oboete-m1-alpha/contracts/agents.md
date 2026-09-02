@@ -30,8 +30,10 @@ reason `oversized`, kind from the `--event` argument, session id from `GROK_SESS
 and when no session id is recoverable only a diagnostics counter is incremented. Such rows are
 never summarized or injected. Runner tolerance of unread stdin is an R13 probe (A7). The 12,000-character limit applies only when a
 batch input is built. Normalized tool names: `read`, `write`, `edit`, `bash`, `grep`, `glob`,
-`task`, `mcp:<server>/<tool>`, `other`; until the R13 payload fixtures exist, adapters store
-`tool_name_native` and the redacted JSON without field mapping.
+`task`, `mcp:<server>/<tool>`, `other`; an agent/tool whose payload fixture (R13) does not exist
+yet is stored metadata-only (`classification_state = failed`, reason `unmapped_payload`), never
+as an unmapped payload. Grok `Stop` maps its verified `lastAssistantMessage` field to
+`last_assistant_message`; Codex and Grok `PostCompact` map the field the R13 probe identifies.
 
 ## Agent identity (fixed selectors)
 
@@ -70,7 +72,7 @@ Grok session whose native id already exists is treated as a resume of that root)
 | Claude Code | SessionStart, UserPromptSubmit, PreToolUse, PostToolUse, PostToolUseFailure → `tool_failure`, Stop → `last_assistant_message` (and `turn_end`), PostCompact → `compaction_summary`, SessionEnd (capture only, 1.5 s shared budget) | plain stdout on SessionStart when `source` is `startup`, `clear`, or `compact`; nothing on `resume` or `fork` (transcript replay); plain stdout on UserPromptSubmit | 10,000 characters per value | oboete-owned handlers (`"oboete": true`) merged into `~/.claude/settings.json`; timeouts 12 s on injection hooks, 3 s on capture hooks; `claude mcp add oboete -- "<node>" "<bundle>" mcp` |
 | Codex CLI | SessionStart, UserPromptSubmit, PreToolUse, PostToolUse, Stop, SessionEnd (1 s default, capture only) | `hookSpecificOutput.additionalContext` on SessionStart with matcher `startup\|clear\|compact` (verified enum; `resume` excluded) and on UserPromptSubmit; `additionalContextLimit = 0` | provider context, no spill | `~/.codex/hooks.json` handlers; managed block in `~/.codex/config.toml` with `[hooks.state."<abs path>:<event>:<group>:<handler>"] trusted_hash = "sha256:<hex of canonical handler json>"` and `[mcp_servers.oboete]` |
 | Grok Build | SessionStart (`source: "new"` when headless; resume value per R13 probe), UserPromptSubmit, PreToolUse, PostToolUse, PostToolUseFailure, Stop (`reason: end_turn` only), SessionEnd | FR-045 state machine below | 10,000 characters (silent clip) | `~/.grok/hooks/oboete.json` with explicit `timeout` per hook (12 s injection, 3 s capture); handlers deduplicated against the Claude compat layer; MCP registration per R13 probe (blocked for FR-030 if the probe fails) |
-| Pi | `session_start` (from `session_start`), `input` (source filter), `tool_result` (input + content + isError), `agent_settled` → `turn_end` + `last_assistant_message` when available, `session_shutdown` (reason `quit|reload|new|resume|fork`), compaction event (R13 probe) | `before_agent_start` returns the pack produced by a bounded child `oboete inject` (`AbortSignal.timeout`: 8 s at session start, 2 s per prompt); capture through a detached child `oboete capture --invocation <id>` that writes a two-phase acknowledgement (`<invocation>.started` before reading stdin → `.done`); the extension itself only try/catches, generates invocation ids, spawns, and counts failures in memory (message code only), handing the counters to the next child it spawns as `--prior-failures`; no in-process file or network write (FR-007; recording guarantee per amendment A8 and the R13 Pi error-surface probe) | provider context | `~/.pi/agent/extensions/oboete.js` loader importing `piExtension` from the bundle; tools call `oboete search\|timeline\|get --json` as child processes |
+| Pi | `session_start` (from `session_start`), `input` (source filter), `tool_result` (input + content + isError), `agent_settled` → `turn_end` + `last_assistant_message` when available, `session_shutdown` (reason `quit|reload|new|resume|fork`), compaction event (R13 probe) | `before_agent_start` returns the pack produced by a bounded child `oboete inject` (`AbortSignal.timeout`: 8 s at session start while a summary is pending, 300 ms otherwise); capture through a detached child `oboete capture --invocation <id>` that writes a two-phase acknowledgement (`<invocation>.started` before reading stdin → `.done`); the extension itself only try/catches, generates invocation ids, spawns, and counts failures in memory (message code only), handing the counters to the next child it spawns as `--prior-failures`; no in-process file or network write (FR-007; recording guarantee per amendment A8 and the R13 Pi error-surface probe) | provider context | `~/.pi/agent/extensions/oboete.js` loader importing `piExtension` from the bundle; tools call `oboete search\|timeline\|get --json` as child processes |
 
 ### Grok Build deferred delivery (FR-045)
 
@@ -82,42 +84,44 @@ memories counted for the conversation.
    record already exists for the conversation (no tool call happened since), the new pack merges
    into it: existing `planned` items stay, new items are added under the same budget, and the
    record gets a new `pack_hash`. One pending record per conversation at any time.
-2. On `PreToolUse` the hook emits the pending pack as `additionalContext`, records
-   `attempt_tool_call_id`, and marks it `attempted`. Grok delivers it with the results of the
-   batch once the call has run (verified wording); a denied call never runs and delivers nothing.
-3. On `PostToolUse` whose `tool_call_id` equals `attempt_tool_call_id` the hook marks the record
-   `emitted`, its items `included`. On `PostToolUse` with a `pending` record and no attempt
+2. On `PreToolUse`, if the record has no outstanding attempt, the hook emits the pending pack as
+   `additionalContext`, adds the `tool_call_id` to the record's attempt set
+   (`injection_attempts`), and marks the record `attempted`. Grok delivers it with the results of
+   the batch once the call has run (verified wording); a denied call never runs and delivers
+   nothing. A `PreToolUse` that arrives while an attempt is outstanding (a parallel batch, or a
+   deny not yet observed) attaches nothing, so the model can never receive two copies.
+3. On `PostToolUse` or, if the R13 probe shows the context survives a failed call,
+   `PostToolUseFailure` for a `tool_call_id` in the attempt set, the record becomes `emitted` and
+   its items `included`. On `PostToolUse` with a `pending` record and an empty attempt set
    (oboete's own `PreToolUse` handler did not complete: timeout or crash) the hook emits the pack
    from `PostToolUse` and marks it `emitted` the same way.
-4. On `PostToolUseFailure` for `attempt_tool_call_id` (the call ran and failed) the R13 probe
-   decides: if the probe shows the context reaches the model with the failed result, this event
-   confirms delivery like step 3; if it shows the context is dropped, the record returns to
-   `pending`. On a `PreToolUse` that arrives while the record is still `attempted` (the previous
-   call was denied and nothing was delivered) the record returns to `pending` and step 2 repeats
-   on this call. The ledger dedupes by `pack_hash`; the model never sees two copies because a
-   denied call delivers nothing.
+4. At `PostToolBatch` (verified event; payload per R13 probe), and on `PermissionDenied` for an
+   attempted call when that payload is verified, every attempt of the batch that was not
+   confirmed is closed and the record returns to `pending`, so the next batch's first
+   `PreToolUse` attaches it again. If the R13 probe shows a failed call drops the context,
+   `PostToolUseFailure` closes that attempt the same way.
 5. At `Stop` (`end_turn`) a record still `pending` or `attempted` becomes `omitted` with reason
    `no_tool_call` when oboete observed no tool hook of any kind in the turn, otherwise
    `not_delivered` (a deny by an earlier handler stops the chain before oboete runs, so "all
    denied" is not distinguishable and is not claimed); its items become `omitted` /
    `not_delivered`, so the memories remain injectable in the next turn. Tests count the packs the
-   model received in the success, execution-failure, oboete-deny, other-handler-deny, and no-tool
-   cases.
+   model received in the success, execution-failure, oboete-deny, other-handler-deny, parallel
+   batch, and no-tool cases.
 
 ## Injection policy shared by all agents
 
 Same repository only (FR-044); never the same memory twice in one conversation (FR-026, counted
-on delivery); the session-start pack is emitted at most once per conversation except after
-compaction (FR-024's "not again on resume", enforced by the ledger on every agent); session start
+on delivery); the session-start pack is emitted at most once per context epoch (an epoch starts at the root
+session and at each compaction, A12), which gives FR-024's "not again on resume" and its
+re-injection after compaction on every agent; session start
 = latest session summary + pinned memories, bounded to the channel cap, pinned trimmed in pin
 order; prompt submit = memories above the threshold up to a character
 budget = min(channel cap, `context_fraction` × context window), `context_fraction` default 0.05.
 The context window is the documented window of the reported `model` from
 `docs/research/context-windows.md` (R12, maintained under R13); when the model is unknown or
 absent, the budget uses the smallest verified window for that agent and the pack carries
-`Degraded: window_unknown`; when the table has no verified window for that agent at all, the
-prompt-submit pack is omitted with reason `window_unknown` (session-start packs, bounded by the
-channel cap, are still delivered). Tokens convert at 4 characters per token for English and 1.5 for CJK.
+`Degraded: window_unknown`; an agent with no verified window at all is blocked by the R13 gate
+(no injection lane ships for it until a window is verified or the owner decides). Tokens convert at 4 characters per token for English and 1.5 for CJK.
 Every pack builder runs the same staleness check (paths via `fs.existsSync`; commits via the
 worker's `HEAD`-keyed cache) and records the outcome. Retrieval reads memories only, from applied
 or fallback batches, never `secret` rows or rows with `classification_state = failed`, so another
@@ -127,32 +131,43 @@ session's unfinished turn and verbatim tool output are never injected.
 
 ```text
 oboete memory context
-Repository: <normalized identity>
-Session summary (<agent>, <relative time>):
+> repository: <normalized identity, userinfo removed>
+> session summary (<relative time>):
 > <text, one line per paragraph>
-Pinned: <title>
+> pinned: <title>
 > <body>
-Related: <title> [<path or commit>; <stale note>]
+> related: <title> [<path or commit>; <stale note>]
 > <body>
-Degraded: <reason>            (only when applicable)
+> degraded: <reason>            (only when applicable)
 end of oboete memory context
 ```
 
-The first and last lines are labels, not instructions; every quoted body line is prefixed with
-`> ` as data framing; the pack never starts with `{`; bodies are summarizer output or fallback
-records, never verbatim tool output; a directive-corpus test (`test/corpus/directives.jsonl`)
-asserts that no corpus phrase reaches accepted observer output, a stored memory, or a pack from
-either summarizer (the phrases legitimately exist in raw events and the spool).
+The first and last lines are the only unprefixed lines and are labels, not instructions; every
+other line, including repository identity, titles, citations, and bodies, is prefixed with `> `
+as data framing, and every external string is canonicalized to a single line first (newlines and
+control characters removed), so no title, path, or remote can produce an unprefixed line. The
+pack never starts with `{`; bodies are summarizer output or fallback records, never verbatim tool
+output; the producing agent is not named in the pack. The finished pack is validated as a whole
+(secret detector, directive corpus, control characters) before it is emitted; a directive-corpus
+test (`test/corpus/directives.jsonl`) plus malicious title, path, and remote-URL cases assert
+that nothing escapes the framing (the directive phrases legitimately exist in raw events and the
+spool).
 
 ## Hook process rules and SLAs
 
 - Always exit `0`; never print anything but the pack to stdout; log to `~/.oboete/logs/hook.log`.
-- Capture hooks (`PreToolUse`, `PostToolUse`, `PostToolUseFailure`, `Stop`, `PostCompact`,
-  `SessionEnd`, Pi capture child): 300 ms end to end, busy timeout 150 ms, spool on any storage
-  failure; detector or config failure stores metadata only (`classification_state = failed`).
+- Every hook has an absolute deadline measured from process start and passes the remaining
+  budget to each stage (parse, detector, database, spool). Capture hooks (`PreToolUse`,
+  `PostToolUse`, `PostToolUseFailure`, `Stop`, `PostCompact`, `SessionEnd`, Pi capture child):
+  300 ms; busy timeout 150 ms; storage failure or an exhausted budget after the detector →
+  spool; a budget exhausted before the detector completes → metadata-only row
+  (`classification_state = failed`, reason `deadline`), never unsanitized content. Content above
+  the detector's verified bound (R13, initial 256 KB) is stored metadata-only without running
+  the detector. Tests assert the maximum time per event kind and 100% in-deadline exits under
+  every fault; the replay p99 is an additional SC-002 measurement, not the guarantee.
 - Injection hooks (`SessionStart`, `UserPromptSubmit`, Grok delivery hooks, Pi inject child):
-  300 ms when the previous summary is ready; at session start, up to 8 s while it is pending, then
-  the latest raw activity labelled `summary pending`.
+  300 ms when the previous summary is ready; at session start only, up to 8 s while it is
+  pending, then the latest raw activity labelled `summary pending`.
 - The detector (stdin cap, private strip, path rules, secretlint core + gated entropy) runs before
   the first write anywhere, including the spool.
 - The paused marker is checked before the database is opened.
