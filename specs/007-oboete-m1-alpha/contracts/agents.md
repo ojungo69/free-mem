@@ -91,9 +91,12 @@ memories counted for the conversation.
    every call until confirmation is what makes "the first call that actually runs" (FR-045) hold
    whatever the order of denies and executions inside a parallel batch; the price is that two
    calls of one parallel batch may both carry the pack. Whether Grok delivers `additionalContext`
-   once per batch or once per call is the R13 probe; per-call duplication inside a single batch is
-   accepted as documented (A13) because delivery outranks de-duplication for a pack of at most
-   10,000 characters, and the ledger records one `emitted` regardless.
+   once per batch or once per call is the R13 probe: once per batch → no duplication exists and
+   nothing more is needed; once per call → the Grok lane is **blocked** until the owner decides
+   A15 (accept per-call duplication inside one parallel batch, with its effect on FR-026, User
+   Story 1 scenario 2, SC-010, FR-028, and Principle IV's injection volume stated in the
+   amendment) or removes parallel-batch delivery from M1. In either case `why` reports the actual
+   number of deliveries per `attempted_tool_call_ids` entry, and the E2E counts them.
 3. On `PostToolUse` for any attempted `tool_call_id` (and on `PostToolUseFailure` if the R13
    probe shows the context survives a failed call) the record becomes `emitted` and its items
    `included`. On `PostToolUse` with a `pending` record and no attempted id (oboete's own
@@ -114,7 +117,11 @@ memories counted for the conversation.
 
 Same repository only (FR-044); never the same memory twice in one conversation (FR-026, counted
 on delivery); the session-start pack is emitted at most once per context epoch (an epoch starts at the root
-session and at each compaction, A12), which gives FR-024's "not again on resume" and its
+session and advances once per compaction, A12; the authoritative compaction event is one per
+agent: Claude Code and Codex `SessionStart` with `source = compact`, Grok Build `PostCompact`,
+Pi the compaction event the R13 probe identifies; the other compaction-related hooks of that
+agent never advance the epoch, and the epoch key is (native session id, that event's turn
+ordinal) so a re-delivery cannot advance it twice while a second compaction in a later turn can), which gives FR-024's "not again on resume" and its
 re-injection after compaction on every agent; session start
 = latest session summary + pinned memories, bounded to the channel cap, pinned trimmed in pin
 order; prompt submit = memories above the threshold up to a character
@@ -160,10 +167,14 @@ spool).
 - Always exit `0`; never print anything but the pack to stdout; log to `~/.oboete/logs/hook.log`.
 - Every hook has an absolute deadline measured from process start. Capture hooks (`PreToolUse`,
   `PostToolUse`, `PostToolUseFailure`, `Stop`, `PostCompact`, `SessionEnd`, Pi capture child):
-  300 ms. The detector runs in a `worker_threads` Worker that the main thread terminates at a
-  hard cutoff (deadline minus a 40 ms write margin); a terminated detector yields a
-  metadata-only row (`classification_state = failed`, reason `deadline`), never unsanitized
-  content; a storage failure after the detector → spool; busy timeout 150 ms. The full detector
+  300 ms. The budget is allocated in order: a spool reserve of 40 ms is held back
+  first; the detector runs in a `worker_threads` Worker that the main thread terminates at a
+  hard cutoff (deadline minus the spool reserve minus a 20 ms row-build margin); a terminated
+  detector yields a metadata-only row (`classification_state = failed`, reason `deadline`),
+  never unsanitized content. The database busy timeout is min(150 ms, remaining budget minus the
+  spool reserve); when the remaining budget after the detector is below the reserve the database
+  is not opened and the sanitized event goes straight to the spool; a storage failure after the
+  detector → spool. A wall-time test combines a slow detector with a busy database. The full detector
   must finish a 1 MB payload inside the cutoff on Node 22.16 (R13 probe); if it cannot, no
   smaller bound is introduced silently: the capture lane is blocked and the measured bound goes
   to the owner as A14. Tests assert process wall time per event kind (worst-case 1 MB input and a

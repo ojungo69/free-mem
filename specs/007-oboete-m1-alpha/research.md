@@ -54,9 +54,10 @@ approval before implementation starts (task 0).
   supports `response_format`; text-JSON (prompt for one JSON object, parse, validate with zod) for
   `anthropic` and for any preset whose R13 probe shows no schema support. Every HTTP attempt:
   `maxRetries: 0`, `abortSignal: AbortSignal.timeout(60_000)`, its own reservation (R6), and
-  oboete's error classification (429/3036 exhausted, 403/5035 paid, 408/3007 and 429/3040 one
-  retry, `length`/null/invalid JSON one retry then `unusable_output`, model id mismatch
-  `model_alias`, abort `timeout`, network `unreachable`). Neurons from the `cf-ai-neurons` header
+  oboete's error classification by status and body code (429/3036 exhausted, 403/5035 paid,
+  401 or 403 without 5035 `auth_failed`, 408/3007 and 429/3040 one retry, `length`/null/invalid
+  JSON one retry then `unusable_output`, model id mismatch `model_alias`, abort `timeout`,
+  network `unreachable`). One observer preset is enabled at a time in M1. Neurons from the `cf-ai-neurons` header
   when exposed, else estimated from tokens (5,500 / 36,400 per million).
 - **Reviewer changes**: retries disabled; error table only on the binding path; deadline mandatory;
   Anthropic kept as text-JSON; Anthropic compatibility, model and auth added to R13.
@@ -226,10 +227,12 @@ approval before implementation starts (task 0).
   recorded for owner confirmation as A13. **Sensitivity on add/update** = max(target's
   sensitivity, every source row, detector result), fixed in the apply transaction. **Language**
   (FR-014): script mismatch → one retry → fallback with `language_mismatch`. Degraded reasons: `no_provider`, `unreachable`,
-  `unusable_output`, `daily_cap`, `provider_exhausted`, `provider_paid`, `model_alias`, `timeout`,
+  `unusable_output`, `language_mismatch`, `daily_cap`, `provider_exhausted`, `provider_paid`,
+  `auth_failed`, `consent_changed`, `model_alias`, `timeout`, `rule_based`, `no_content`,
   `window_unknown`.
-- **Reviewer changes**: nearby and repo metadata leak closed; batch identity with purpose; single
-  session summary source; fallback bodies as records; injection of verbatim output removed.
+- **Reviewer changes**: nearby and repo metadata leak closed; batch identity by destination only;
+  deterministic session summary with durable reconciliation; fallback bodies as records under a
+  2,000-character budget; injection of verbatim output removed; single preset.
 
 ## R11. Fixture, measurement, tests, isolated E2E
 

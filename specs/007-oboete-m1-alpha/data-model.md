@@ -40,9 +40,9 @@ tables are `STRICT`; FTS5 virtual tables cannot be. Every write from the worker 
 | started_at, ended_at | INTEGER | |
 | status | TEXT | `active`, `ended` |
 | turn_count | INTEGER | |
-| latest_summary_memory_id | TEXT | set once by the worker's deterministic session summary at session end (R10) |
+| latest_summary_memory_id | TEXT | set once by the worker's deterministic session summary, in the same transaction as the summary insert; every worker run reconciles `ended` sessions whose batches are all terminal and whose id is NULL (R10) |
 | context_epoch | INTEGER | authoritative epoch of the conversation root: 0 at start, +1 per compaction (A12); stored on the root session row |
-| last_compaction_event_id | TEXT | the compaction event that produced the current epoch; a `PostCompact` / `SessionStart source=compact` whose event id equals it does not increment again (idempotent) |
+| last_compaction_key | TEXT | (native session id, turn ordinal) of the authoritative compaction event that produced the current epoch; one authoritative event per agent (Claude Code and Codex `SessionStart source=compact`, Grok `PostCompact`, Pi per R13), so a re-delivered or companion hook with the same key does not increment and a compaction in a later turn does |
 
 ## turns
 
@@ -107,7 +107,7 @@ and `state = applied` commit in one fenced transaction.
 | content_hash | TEXT UNIQUE | sha256 over (repo_id, material_hash); same helper on every path (provider, fallback, import, tombstone) |
 | sensitivity | TEXT | `add`: strictest source row and detector; `update`: max(target, every source row, detector), fixed in the apply transaction |
 | review_state | TEXT | `unreviewed` (default, injectable at once per FR-042), `reviewed`, `imported` (quarantined: excluded by the shared query function from search, injection, MCP, and the viewer's injectable set until the worker's detector and directive check move it to `unreviewed` or `secret`) |
-| degraded_reason | TEXT | NULL for provider output |
+| degraded_reason | TEXT | NULL for provider output; on a session summary the most severe reason among the session's batches, or `no_content` |
 | source_session_id, source_batch_id | TEXT | provenance; carried by export |
 | valid_from, valid_to | INTEGER | bitemporal validity; `valid_to` set on supersession |
 | superseded_by | TEXT | |
@@ -280,4 +280,4 @@ classifies it).
 - injections.state: `built` → `emitted` | `omitted`; Grok: `pending` → `attempted` (attached on
   every `PreToolUse` until confirmed) → `emitted` (a `PostToolUse` for an attempted call) |
   `omitted` (turn end); items `planned` → `included` on confirmation.
-- sessions.context_epoch: incremented once per distinct compaction event id.
+- sessions.context_epoch: incremented once per distinct `last_compaction_key`.

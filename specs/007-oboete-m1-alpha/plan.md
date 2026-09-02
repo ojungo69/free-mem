@@ -94,8 +94,9 @@ repositories, memories in the low thousands during M1.
 | A10 | CONSTITUTION Product Constraints (Pi integration) | Pi's in-process extension only enqueues to a detached child under a cooperative deadline, per FR-007; the child imports the capture functions | PATCH wording aligned with FR-007 |
 | A11 | spec User Story 2 ("no event is summarized twice") | read as applied twice: provider attempts are at-least-once (a worker crash between response and apply causes one extra call), applied effects exactly-once | spec clarification |
 | A12 | spec FR-024 / FR-026, User Story 1 scenario 2, SC-010 | compaction opens a new context epoch; "never the same memory twice" is scoped to (conversation, epoch), so the post-compaction re-injection FR-024 requires is allowed and resume stays deduplicated; SC-010 counts duplicates per epoch | spec clarification (if rejected: FR-024 re-injects only items not yet injected in the conversation) |
-| A13 | spec FR-035 ("not re-created from the same content"); FR-045 | "same content" = identical normalized title and body (`material_hash`), so a paraphrase is a new memory; on Grok Build the pack is attached to every call of a turn until one confirms, so two calls of one parallel batch may both carry it | spec clarification (if rejected: source-attribution guard returns to research; Grok single-attach returns to research) |
-| A14 | spec FR-002 | only if the R13 detector probe shows the full detector cannot finish 1 MB inside the capture cutoff: the measured bound becomes the content limit above which events are metadata-only | spec amendment (conditional) |
+| A13 | spec FR-035 ("not re-created from the same content") | "same content" = identical (type, normalized title, normalized body), which is `material_hash`, so a paraphrase or the same text under another type is a new memory; a tombstone test covers same title/body with a different type | spec clarification (owner may instead drop `type` from the identity, which changes `material_hash`) |
+| A14 | spec FR-002, FR-001, edge case "tool output larger than the summarizer's input limit", Independent Test of User Story 2 | only if the R13 detector probe shows the full detector cannot finish 1 MB inside the capture cutoff: the measured bound becomes the content limit; events at or below it are captured whole, above it metadata-only | spec amendment (conditional) |
+| A15 | spec FR-045, FR-026, User Story 1 scenario 2, SC-010, FR-028; CONSTITUTION Principle IV (injection volume) | only if the R13 probe shows Grok delivers `additionalContext` once per call: either accept that the two calls of one parallel batch both carry the pack (duplicates counted in `why` and SC-010 scoped to distinct calls) or exclude parallel-batch delivery from M1 | spec + constitution exception (conditional) |
 
 Implementation starts only after these are approved or rejected in writing; a rejection returns
 the affected decision to research. A8 is raised only if the R13 Pi error-surface probe fails.
@@ -136,7 +137,7 @@ section, "verified" names the test or evidence document that fails when the requ
 | FR-025 | prompt-submit lexical retrieval incl. CJK; threshold; cap proportional to documented context, not fixed | R5; R12 context window; injection/budget.ts; R13 window row (lane block) | ja/en retrieval; threshold; window table; unknown-model `window_unknown` budget |
 | FR-026 | no memory twice in one conversation, resumes included | injection_items partial index on (conversation, epoch, memory); sessions.conversation_id | resume/compact/fork/clear duplicate tests |
 | FR-027 | Codex injection only at session start and prompt submit | agents.md Codex row | Codex handler set test |
-| FR-045 | Grok deferred delivery with the first executed call; attempt, confirm, retry after deny; labelled deferred; omission recorded | agents.md state machine (attach on every call until confirmed, A13); data-model injections.attempted_tool_call_ids; R13 parallel-batch probe | Grok success / execution-failure / oboete-deny / other-handler-deny / parallel-batch / no-tool tests counting packs received |
+| FR-045 | Grok deferred delivery with the first executed call; attempt, confirm, retry after deny; labelled deferred; omission recorded | agents.md state machine (attach on every call until confirmed; A15 if per-call delivery); data-model injections.attempted_tool_call_ids; R13 parallel-batch probe | Grok success / execution-failure / oboete-deny / other-handler-deny / parallel-batch / no-tool tests counting packs received |
 | FR-028 | every pack records included, omitted with reason, degraded state; `why` shows it | injections, injection_items; cli.md `why` | ledger tests |
 | FR-029 | citations carried; checked against current repository state before injection | memory_sources; memories.citations_head/ok; R12 staleness | stale path and stale commit tests |
 | FR-030 | search, timeline, get via tool interface and CLI under injection boundaries | mcp.md; agents.md Pi tools; cli.md; db/queries.ts | MCP client probes (R13); `mcp-clients.mjs`; boundary tests |
@@ -246,8 +247,8 @@ task, and a delegated result that touches one is returned to Claude Code.
 
 ## Delivery order (input to /speckit-tasks)
 
-0. **Amendments and verification gate**: owner decision on A1-A7 and A9-A13 (A8 and A14 only if
-   their R13 probes fail); R13 probe scaffolding and the probes that need no oboete code, run under the
+0. **Amendments and verification gate**: owner decision on A1-A7 and A9-A13 (A8, A14, A15 only
+   if their R13 probes fail); R13 probe scaffolding and the probes that need no oboete code, run under the
    isolated user and recorded in `docs/research/`; a failed probe blocks its dependents (R13
    table) rather than switching to a fallback.
 1. **Foundation**: package, build, lint, migrations 0001-0003 with smoke tests on 22.16 and 24.x,
@@ -256,7 +257,7 @@ task, and a delegated result that touches one is returned to Claude Code.
 2. **Capture kernel and privacy boundary**: normalized events, fixed agent selectors, size cap,
    detector in the hook with fail-closed failure handling, path rules, insert-or-spool, egress rule
    table, both-direction privacy tests, mixed-sensitivity batch split with outbound body assertions.
-3. **Worker and observer**: fenced lease, spool recovery, batches by destination and purpose, purge, checkpoint;
+3. **Worker and observer**: fenced lease, spool recovery, batches by destination, purge, checkpoint;
    provider presets with deadlines and per-attempt reservations, durable exhaustion signal,
    allowance table, catalog check; fallback summarizer emitting records; classification with target
    restriction; tombstone-aware insert; single session-summary source.

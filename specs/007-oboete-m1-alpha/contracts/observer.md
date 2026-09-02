@@ -11,11 +11,13 @@ summary is never a provider output in M1: at session end the worker derives it d
 from the session's rows and the observations just applied (rules below), so session end costs
 exactly one provider call (the observations batch) and the summary has one source. The matrix:
 
+M1 enables exactly one observer preset at a time (the spec speaks of "the configured provider
+preset"); the matrix:
+
 | configuration | session end provider calls | observations from | summary from |
 |---|---|---|---|
-| remote preset only | 1 (remote batch, eligible rows) | remote batch + fallback batch for the remaining rows | deterministic summary |
-| local preset only | 1 (local batch, non-secret rows) | local batch | deterministic summary |
-| remote + local | 1 remote (eligible) + 1 local (remaining rows); the Clarifications' "one call" is per batch (FR-010) | both, disjoint rows | deterministic summary |
+| remote preset | 1 (remote batch, eligible rows) | remote batch + fallback batch for the remaining rows | deterministic summary |
+| local preset | 1 (local batch, non-secret rows) | local batch | deterministic summary |
 | no preset / degraded | 0 | fallback batch | deterministic summary |
 
 Rows are assigned to exactly one destination, so no observation is generated twice (tested with
@@ -42,7 +44,7 @@ those rows.
 {
   "repo_ref": "<repository id>",
   "session": { "started_at": 0, "turns": [ ... ] },
-  "events": [ { "kind": "prompt", "text": "..." }, { "kind": "tool_call", "tool_name": "edit", "input": { ... } } ],
+  "events": [ { "id": "e1", "kind": "prompt", "text": "..." }, { "id": "e2", "kind": "tool_call", "tool_name": "edit", "input": { ... } } ],
   "free_summaries": { "last_assistant_message": "...", "compaction_summary": "..." },
   "nearby": [ { "id": "m1", "type": "decision", "title": "...", "body": "...", "deleted": false } ],
   "language_hint": "ja"
@@ -63,24 +65,38 @@ tool inputs and outputs by recency; `observation_batches.excerpted` records it.
       "body": "<= 2000 chars",
       "concepts": ["how-it-works", "why-it-exists", "what-changed", "problem-solution", "gotcha", "pattern", "trade-off"],
       "citations": { "files_read": [], "files_modified": [], "commits": [] },
+      "source_event_ids": ["e1", "e2"],
       "classification": { "decision": "add | update | delete | noop", "target": "<nearby id or null>", "reason": "<short reason>" }
     }
   ]
 }
 ```
 
-Every observation must carry `source_event_ids`, a non-empty subset of the `id` values supplied
-in `events`; an observation citing an unknown id is rejected as `unusable_output` (one retry).
+`source_event_ids` is required on every observation and must be a non-empty subset of the `id`
+values supplied in `events` (same batch, same repository); an observation citing an unknown,
+empty, or foreign id is rejected as `unusable_output` (one retry). The fallback fills it by rule
+(the events of the turn for `change`, the failed and the retried call for `bugfix`, the failed
+call for `discovery`, the message event for `decision`). **Output budget**: every title is
+trimmed to 120 characters and every body to 2,000 characters by a deterministic order (paths are
+shortened to their last 60 characters, lists are cut from the end, and an `... (+N omitted)`
+suffix records the omission); citations are capped at 20 paths and 10 commits per observation.
 
 **Session summary (deterministic, worker-side, no provider call)**: `type = session_summary`,
-`title` = the session's first prompt truncated to 120 characters, `body` = five labelled lines:
-`request` = the first prompt truncated to 200 characters; `investigated` = the distinct files read
-(up to 20 paths); `learned` = the titles of the observations applied for the session (up to 10);
-`completed` = the distinct files modified with tool counts (up to 20); `next_steps` = the last
-unfinished turn's prompt truncated to 200 characters. Sensitivity = strictest source row;
-`degraded_reason` = NULL (this is the designed path, not a degradation); language = the dominant
-script of the copied text, which is preserved verbatim. SC-004 (three seeded facts recalled with
-no credentials) is asserted against the fallback observations plus this summary.
+`title` = the session's first prompt truncated to 120 characters, `body` = five labelled lines
+under the same 2,000-character budget and trim order: `request` = the first prompt (200);
+`investigated` = the distinct files read (up to 20 paths); `learned` = the titles of the
+observations applied for the session (up to 10); `completed` = the distinct files modified with
+tool counts (up to 20); `next_steps` = the last unfinished turn's prompt (200). Sensitivity =
+strictest source row. `degraded_reason` = the most severe reason among the session's batches
+(NULL only when every batch was applied from a provider), so a no-credentials session yields a
+summary labelled `no_provider` and the session-start pack shows `Degraded:` (SC-004). **Durable
+completion**: an `ended` session whose batches are all terminal and whose
+`latest_summary_memory_id` is NULL is reconciled by every worker run; the summary insert and the
+id update commit in one fenced transaction, so a crash between the last batch and the summary
+cannot leave the session without one. A session with no non-secret rows gets a summary whose five
+lines are empty and `degraded_reason = no_content`, which is the terminal state. SC-004 (three
+seeded facts recalled with no credentials) is asserted against the fallback observations plus
+this summary.
 
 Worker rules after either path: the detector runs again on every title and body; the
 directive-corpus check rejects bodies that read as instructions; sensitivity on `add` = strictest
@@ -145,7 +161,7 @@ rule:
 
 | record | when | title | body | concepts | citations | classification |
 |---|---|---|---|---|---|---|
-| `change` | per turn with file modifications | the modified paths joined by `, ` (<= 120 chars) | one line per tool call: `<tool> <path> (+<added>/-<removed>)` | `what-changed` | `files_modified` = the paths; `commits` = commit ids seen in tool output | see below |
+| `change` | per turn with file modifications | the modified paths joined by `, ` (<= 120 chars) | one line per tool call: `<tool> <path> (+<added>/-<removed>)`, at most 40 lines then `... (+N omitted)` | `what-changed` | `files_modified` = the paths (<= 20); `commits` = commit ids seen in tool output (<= 10) | see below |
 | `bugfix` | a `tool_failure` followed by a successful call of the same tool in the same turn | `<tool>: <first error line truncated to 80>` | first error line (200) + the successful call's first line (200) | `problem-solution` | `files_modified` of the retry | see below |
 | `discovery` | a `tool_failure` with no successful retry | same as `bugfix` | first error line (200) | `gotcha` | `files_read` of the failed call | see below |
 | `decision` | per `last_assistant_message` or `compaction_summary` | first sentence (120) | first paragraph (2,000), verbatim | `why-it-exists` | none | see below |
