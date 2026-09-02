@@ -74,8 +74,9 @@ be written immediately are recovered once the failure is removed.
 3. **Given** the summarization provider is unreachable, **When** a session ends, **Then** the
    session is still summarized by the rule-based fallback and the resulting memories are labelled
    as degraded.
-4. **Given** the Pi extension throws or hangs, **When** a Pi event fires, **Then** the error is
-   contained, Pi continues its turn, and the failure is recorded for `doctor`.
+4. **Given** the Pi extension's handler throws or its detached capture child hangs, **When** a Pi
+   event fires, **Then** Pi continues its turn (handlers never wait on storage or network), the
+   error is contained, and the failure is recorded for `doctor`.
 
 ---
 
@@ -124,7 +125,7 @@ every part of the pipeline is healthy and, if not, exactly what is degraded and 
 
 **Independent Test**: On a fresh isolated user account with the four agents installed, run setup
 non-interactively selecting all agents, then run doctor. Passes when doctor reports every agent's
-hook wiring, storage health, worker health, provider reachability, and remaining daily allowance as
+hook wiring, storage health, worker health, provider reachability, and estimated daily allowance as
 healthy; then break each item in turn and confirm doctor names it.
 
 **Acceptance Scenarios**:
@@ -137,7 +138,8 @@ healthy; then break each item in turn and confirm doctor names it.
 3. **Given** oboete is installed, **When** the developer runs doctor, **Then** the report lists,
    per agent, whether capture and injection are wired; whether the storage file is healthy and
    full-text search is available; whether a worker is alive or stale; whether the configured
-   provider answers; and how much of the daily allowance remains.
+   provider answers; and the estimated daily allowance remaining together with whether the
+   provider has reported exhaustion.
 4. **Given** any component is degraded, **When** doctor runs, **Then** each degraded item states the
    reason and the user-facing consequence.
 5. **Given** the developer runs pause, **When** sessions occur, **Then** nothing is captured or
@@ -161,9 +163,10 @@ packs carry a degraded flag with the reason, and `why` explains the reduced qual
 
 1. **Given** no provider credentials are configured, **When** a session ends, **Then** memories are
    produced by the rule-based summarizer and are marked as such.
-2. **Given** the daily allowance is exhausted, **When** the worker runs, **Then** it switches to the
-   fallback summarizer until the allowance resets at UTC midnight and the switch is visible in
-   doctor and in every injection pack produced meanwhile.
+2. **Given** the provider reports that the daily allowance is exhausted, **When** the worker runs,
+   **Then** it stops calling the provider without retrying, switches to the fallback summarizer
+   until the allowance resets at UTC midnight, and the switch is visible in doctor and in every
+   injection pack produced meanwhile.
 3. **Given** a search returned nothing or the index is unavailable, **When** an injection pack is
    built, **Then** the pack states that it is empty or degraded rather than presenting an empty
    result as a healthy one.
@@ -272,8 +275,10 @@ Capture
   influence eligibility for summarization or injection.
 - **FR-006**: The capture command MUST determine which agent invoked it and MUST NOT assume Claude
   Code when the same configuration is executed by Grok Build.
-- **FR-007**: The Pi integration MUST run inside Pi's process with every call bounded by a timeout
-  and every failure contained so that Pi's turn continues.
+- **FR-007**: The Pi integration runs inside Pi's process, which has no handler timeout; therefore
+  its handlers MUST NOT perform storage or network work in-process. Capture is handed to a detached
+  child process, the in-process step is a bounded enqueue with a cooperative deadline, and every
+  thrown error is contained and recorded so that Pi's turn continues.
 - **FR-008**: Raw captured events MUST be retained for 7 days and then removed; memories MUST be
   permanent except through explicit deletion (tombstone) or supersession by a newer memory.
 - **FR-009**: The system MUST NOT run a resident background service; all background work MUST be
@@ -287,8 +292,10 @@ Summarization
 - **FR-011**: Exactly one worker MUST be active per machine at a time; a stale or crashed worker's
   work MUST be taken over by the next worker without loss or duplication.
 - **FR-012**: The summarizer MUST use the configured provider preset; the default preset MUST be a
-  free-tier remote service whose daily allowance the system counts itself and resets at UTC
-  midnight; the presets MUST include at least one local-model option.
+  free-tier remote service. The system MUST count its own usage as a pacing estimate that resets
+  at UTC midnight and MUST label it as an estimate (the allowance is account-wide and no interface
+  returns the true remainder); the authoritative exhaustion signal is the provider's account-limit
+  error, which MUST NOT be retried. The presets MUST include at least one local-model option.
 - **FR-013**: When no provider is configured, the provider is unreachable, the provider's output is
   unusable, or the allowance is exhausted, the system MUST produce memories with a rule-based
   summarizer in the same shape, and MUST label those memories and the affected injection packs as
@@ -313,7 +320,9 @@ Privacy and sensitivity
   injection receives rows of the same repository only; secret rows are never sent to any
   destination.
 - **FR-021**: Text injected by the system MUST be marked so that it is recognized on capture and
-  not summarized as new activity.
+  not summarized as new activity. The marker and the pack MUST be plain factual text: the payload
+  MUST NOT begin with `{` and end with `}` (Claude Code parses such output as JSON and silently
+  drops it on failure) and MUST NOT be phrased as instructions to the agent.
 - **FR-022**: Before enabling any remote destination, setup MUST display the destination host, the
   credential source, the cost class, and the sensitivity classes that would be sent, and MUST
   require confirmation.
@@ -322,15 +331,20 @@ Privacy and sensitivity
 
 Retrieval and injection
 
-- **FR-024**: At session start the system MUST inject the most recent session summary of the same
-  repository plus all pinned memories of that repository; when the previous session's summary is
+- **FR-024**: At the start of a fresh session, and again after context compaction, the system MUST
+  inject the most recent session summary of the same repository plus the pinned memories of that
+  repository; on a resumed session it MUST NOT inject again, because the agent replays the earlier
+  injection from its transcript. The pack MUST be bounded to the delivering channel's per-value
+  ceiling (10,000 characters on the Claude Code and Grok Build hook channel), pinned memories
+  trimmed in pin order with the trim recorded per FR-028. When the previous session's summary is
   still pending it MUST wait at most 8 seconds and then inject the latest raw activity labelled
   "summary pending".
 - **FR-025**: At prompt submit the system MUST retrieve memories of the same repository by lexical
   relevance to the prompt, including Japanese and other CJK text, and inject those above a
   relevance threshold up to a cap proportional to the agent's documented context limit; the
   amount MUST NOT be a fixed token count.
-- **FR-026**: The system MUST NOT inject the same memory twice within one session.
+- **FR-026**: The system MUST NOT inject the same memory twice within one agent conversation,
+  counting resumed continuations of that conversation as the same conversation.
 - **FR-027**: For Codex, injection MUST occur only at session start and prompt submit.
 - **FR-028**: Every injection pack MUST record what was included, what was omitted and why, and any
   degraded state; `why` MUST present that record for a session.
@@ -344,11 +358,21 @@ Setup, doctor, and lifecycle
 
 - **FR-031**: Setup MUST detect installed agents, let the developer select which to wire, and write
   the three hook installations (Claude Code and Grok Build shared, Codex, Pi) without disturbing
-  unrelated configuration; setup MUST be repeatable and MUST offer removal.
+  unrelated configuration; setup MUST be repeatable and MUST offer removal. Each installation MUST
+  be complete enough to fire: user-global locations that need no per-project trust (Pi's global
+  extension directory), the trust entry Codex requires before it runs a hook (a hash of the
+  canonical handler definition, written next to the hook), an explicit per-hook timeout no smaller
+  than the work the hook serves (the 8-second session-start wait plus margin; Grok Build's default
+  is 5 seconds), and per-hook output limits set so that the pack oboete computes is what reaches
+  the model (Codex's default 2,500-token spill MUST be disabled). Setup MUST verify by a probe that
+  each hook actually fires and MUST report each agent's trust state before reporting success.
 - **FR-032**: Setup MUST warn when Grok Build's native memory is enabled and MUST NOT change it.
 - **FR-033**: Doctor MUST report, with reasons, the health of: per-agent capture and injection
-  wiring, storage integrity, full-text search availability, worker liveness, provider
-  reachability, remaining daily allowance, spool backlog, and any unrecognized agent.
+  wiring (verified by a probe that the hook actually fires, including each agent's trust state,
+  not by the presence of a configuration file), storage integrity, full-text search availability,
+  worker liveness, provider reachability, the estimated daily allowance remaining (labelled as an
+  estimate) and whether the provider has reported exhaustion, spool backlog, and any unrecognized
+  agent.
 - **FR-034**: The developer MUST be able to pause and resume capture and injection without losing
   or altering existing memories.
 - **FR-035**: The developer MUST be able to pin, unpin, and delete memories; deleted memories MUST
@@ -436,8 +460,8 @@ Clarifications required
   out of scope, and M1 decisions must not preclude them.
 - Storage lives in one file under the user's oboete directory, following the platform's user
   directory conventions; no server process is ever left running.
-- The default summarizer is a remote free-tier service; its daily allowance is counted by oboete
-  itself and assumed to reset at UTC midnight.
+- The default summarizer is a remote free-tier service; its daily allowance is account-wide,
+  oboete's own count is a pacing estimate, and the reset is assumed at UTC midnight.
 - Staleness policy default: a memory whose citations no longer resolve at the repository's current
   state is injected with a staleness note rather than dropped; a memory not injected for 90 days is
   retired from automatic injection but remains searchable, and any injection resets the counter.
@@ -456,3 +480,6 @@ Clarifications required
   output behavior) are verified and recorded under `docs/research/` before the plan depends on
   them; where a contract turns out narrower than assumed, the affected requirement is adjusted in
   the plan with a note here.
+- Adjusted from the verified contracts in `docs/research/oboete-contracts-2026-09-02.md`
+  (2026-09-02): FR-007, FR-012, FR-021, FR-024, FR-026, FR-031, FR-033, and the related
+  acceptance scenarios in User Stories 2, 4, and 5.
