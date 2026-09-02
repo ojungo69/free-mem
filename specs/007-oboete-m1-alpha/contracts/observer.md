@@ -3,26 +3,33 @@
 One JSON schema is produced by the LLM observer and by the rule-based fallback; the worker treats
 both identically except for `degraded_reason`.
 
-## Batch composition
+## Batch composition and the outbound boundary
 
-After classification, a session batch is split by destination using `destination_rules`:
+After classification, a session batch is split by destination; batch identity is
+(session, through event, destination):
 
 | destination | receives | when |
 |---|---|---|
 | `remote_observer` | `eligible` rows only | a remote preset is configured and consented |
 | `local_observer` | `eligible`, `local_only`, `private` rows of the same repository | a local preset (Ollama) is configured |
-| `fallback` | whatever the other destinations did not take | always available |
+| `fallback` | rows no other destination took | always |
 
-`secret` rows are never summarized. Each memory records the rows it came from in `memory_sources`
-and takes the strictest sensitivity of those rows. Tests assert the outbound request body of a
-mixed batch contains only eligible content, and that the resulting memories carry the right
-sensitivity and sources.
+`secret` rows are never summarized. **One request builder** (`observer/request.ts`,
+security-owned) assembles every outbound request and applies `destination_rules` to every field:
+`events`, `free_summaries`, `nearby` (a remote request contains only `eligible` memories),
+`citations`, and repository metadata (a remote request carries an opaque `repo_ref` = the repository
+id, never the normalized remote or path). Tests assert the actual request body of a mixed batch.
+
+The session summary is produced exactly once per session end by the local path (local observer if
+configured, otherwise the fallback) over all non-secret rows; remote batches produce observations
+only. Each memory records its source rows in `memory_sources` and takes the strictest sensitivity of
+those rows.
 
 ## Input (worker → summarizer)
 
 ```json
 {
-  "repo": "<normalized identity>",
+  "repo_ref": "<repository id>",
   "session": { "agent": "claude", "started_at": 0, "turns": [ ... ] },
   "events": [ { "kind": "prompt", "text": "..." }, { "kind": "tool_call", "tool_name": "edit", "input": { ... } } ],
   "free_summaries": { "last_assistant_message": "...", "compaction_summary": "..." },
@@ -48,57 +55,58 @@ tool inputs and outputs by recency; `observation_batches.excerpted` records it.
       "classification": { "decision": "add | update | delete | noop", "target": "<nearby id or null>", "reason": "<short reason>" }
     }
   ],
-  "session_summary": {
-    "request": "", "investigated": "", "learned": "", "completed": "", "next_steps": ""
-  }
+  "session_summary": { "request": "", "investigated": "", "learned": "", "completed": "", "next_steps": "" }
 }
 ```
 
-Worker rules after either path: the detector runs again on every title and body; sensitivity =
-strictest source row; `content_hash` = sha256(repo_id, type, normalized title, normalized body);
-`target` must be one of the supplied `nearby` ids from the same repository, otherwise the decision
-is treated as `add`; a hash matching a tombstoned memory suppresses the insert and is recorded for
-`why`; `update` sets `valid_to` and `superseded_by` on the target; `delete` tombstones the target
-only with a non-empty `reason`; the session summary becomes one `session_summary` memory linked from
-`sessions.latest_summary_memory_id`. The observer is instructed to answer in the dominant language
-of the input (FR-014) and the worker checks the dominant script of the output against the input.
+Worker rules after either path: the detector runs again on every title and body; the
+directive-corpus check rejects bodies that read as instructions; sensitivity = strictest source
+row; `content_hash` = sha256(repo_id, type, normalized title, normalized body); `target` must be
+one of the supplied `nearby` ids from the same repository, otherwise the decision is `add`; a hash
+matching a tombstoned memory suppresses the insert and is recorded for `why`; `update` sets
+`valid_to` and `superseded_by`; `delete` tombstones the target only with a non-empty `reason`; the
+observer answers in the dominant language of the input (FR-014) and the worker compares the
+dominant script of the output with the input.
 
 ## Provider presets
 
 | preset | package | endpoint | credential | cost class | structured output |
 |---|---|---|---|---|---|
-| `workers-ai` (default) | `workers-ai-provider` REST | `api.cloudflare.com/client/v4/accounts/<id>/ai/run/@cf/zai-org/glm-4.7-flash` | `OBOETE_CF_API_TOKEN` + `OBOETE_CF_ACCOUNT_ID` | free tier, 10,000 neurons/day, ~45 neurons per call | JSON schema (verified live) |
+| `workers-ai` (default) | `workers-ai-provider` REST | `.../accounts/<id>/ai/run/@cf/zai-org/glm-4.7-flash` | `OBOETE_CF_API_TOKEN` + `OBOETE_CF_ACCOUNT_ID` | free tier, ~45 neurons per call | JSON schema (verified live) |
 | `ollama` | `@ai-sdk/openai-compatible` | `http://127.0.0.1:11434/v1` | none | local | `response_format` |
-| `nim`, `openrouter`, `gemini` | `@ai-sdk/openai-compatible` | provider base URL | `OBOETE_PROVIDER_API_KEY` | remote, provider-billed | `response_format` where the R13 probe confirms it, else text-JSON |
-| `anthropic` | `@ai-sdk/openai-compatible` | `https://api.anthropic.com/v1` | `OBOETE_PROVIDER_API_KEY` | remote, provider-billed | text-JSON only (`response_format` is ignored by the endpoint) |
+| `nim`, `openrouter`, `gemini` | `@ai-sdk/openai-compatible` | provider base URL | `OBOETE_PROVIDER_API_KEY` | remote | `response_format` where the R13 probe confirms it, else text-JSON |
+| `anthropic` | `@ai-sdk/openai-compatible` | `https://api.anthropic.com/v1` (R13 verifies path, model ids, auth header) | `OBOETE_PROVIDER_API_KEY` | remote | text-JSON only |
 
 Text-JSON path: the prompt asks for exactly one JSON object; the reply is parsed and validated with
 the same zod schema; failure counts as `unusable_output`.
 
 ## Call policy
 
-1. Reservation: in one short `BEGIN IMMEDIATE` transaction, check the daily cap (150 calls) and
-   `exhausted_at`, increment `provider_usage.calls`, mark the batch `running` with the worker's
-   `owner_token`; commit.
-2. Network call outside any transaction with `maxRetries: 0` and `abortSignal:
-   AbortSignal.timeout(60_000)`.
-3. Classification of the result: HTTP 429 with body code 3036 → `provider_exhausted` (set
-   `exhausted_at`, never retry today); 403 or body code 5035 → `provider_paid`; 408/3007 or
-   429/3040 → one retry; `finish_reason: length`, null content, or invalid JSON → one retry then
-   `unusable_output`; abort → `timeout`; a returned model id different from the requested id →
-   `model_alias`; network error → `unreachable`.
-4. Apply in a separate fenced transaction (`... WHERE owner_token = ?`); a fenced statement that
-   changes zero rows means the lease was lost and the result is discarded.
-5. Neurons: `cf-ai-neurons` header when exposed, otherwise tokens × (5,500 / 36,400 per million),
-   stored as an estimate.
+1. **Per attempt**: in one short `BEGIN IMMEDIATE` transaction, check the daily cap (150 calls per
+   preset per UTC day, tunable) and `exhausted_at`; if either blocks, mark the batch degraded
+   (`daily_cap` or `provider_exhausted`) and route it to the fallback; otherwise increment
+   `provider_usage.calls` and `observation_batches.provider_attempts`, record a reservation id,
+   set the batch `running`; commit. A retry is a new attempt and a new reservation.
+2. Network call outside any transaction, `maxRetries: 0`, `abortSignal: AbortSignal.timeout(60_000)`.
+3. Classify: 429 + body code 3036 → `provider_exhausted`; 403 or 5035 → `provider_paid`; 408/3007
+   or 429/3040 → one retry; `length`, null content, invalid JSON → one retry then `unusable_output`;
+   abort → `timeout`; returned model id mismatch → `model_alias`; network error → `unreachable`.
+4. **Exhaustion persistence**: a 3036 result writes `provider_usage.exhausted_at` (idempotent,
+   monotonic, keyed by the reservation id) in its own transaction that is **not** fenced by the
+   lease, so the signal survives a lost lease.
+5. Apply results in a separate transaction fenced by `owner_token`; zero rows changed means the
+   lease was lost and the result is discarded (the exhaustion signal from step 4 is not).
+6. Neurons: `cf-ai-neurons` header when exposed, else tokens × (5,500 / 36,400 per million).
 
 ## Rule-based fallback
 
-Deterministic, no network, language-neutral. Produces: one `change` observation per cluster of
-files modified in a turn (title = file list, body = quoted tool inputs prefixed with `> `), one
-`bugfix` or `discovery` per `tool_failure` followed by a successful retry of the same tool, one
-`decision` per paragraph of `last_assistant_message` or `compaction_summary`, and `next_steps`
-quoted from the last unfinished turn. No generated labels or sentences; only quoted source text,
-file lists, and commit ids. Classification: exact `content_hash` match on a tombstoned row →
-suppressed, on an active row → `noop`, otherwise `add`; the fallback never emits `update` or
-`delete`. `degraded_reason` is set by the worker.
+Deterministic, no network, language-neutral, emits records rather than prose: one `change`
+observation per cluster of files modified in a turn (title = file list; body = tool names, file
+paths, line counts), one `bugfix` or `discovery` per `tool_failure` followed by a successful retry
+of the same tool (body = tool name, first error line truncated to 200 characters, retried command
+name), one `decision` per `last_assistant_message` or `compaction_summary` (body = the first
+sentence, truncated to 200 characters, prefixed by the agent name), and `next_steps` = the last
+unfinished turn's prompt truncated to 200 characters. Verbatim tool output is never placed in a
+body. Classification: exact `content_hash` match on a tombstoned row → suppressed, on an active
+row → `noop`, otherwise `add`; the fallback never emits `update` or `delete`. `degraded_reason` is
+set by the worker.

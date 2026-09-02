@@ -7,7 +7,7 @@ commands; the hook never migrates and spools when `PRAGMA user_version` is older
 latest migration. A smoke test applies every migration on an empty database and on the previous
 version's fixture database on Node 22.16 and 24.x. Time columns are Unix milliseconds. Ordinary
 tables are `STRICT`; FTS5 virtual tables cannot be. Every write from the worker is fenced by
-`worker_lease.owner_token`.
+`worker_lease.owner_token` except the exhaustion signal in `provider_usage` (R6).
 
 ## schema_migrations
 
@@ -21,7 +21,7 @@ tables are `STRICT`; FTS5 virtual tables cannot be. Every write from the worker 
 
 | column | type | notes |
 |---|---|---|
-| id | TEXT PK | first 16 hex of sha256 over the normalized identity (FR-004) |
+| id | TEXT PK | first 16 hex of sha256 over the normalized identity (FR-004); the only repository value a remote observer ever receives |
 | identity_kind | TEXT | `remote` or `common_dir` (machine-local; see import mapping) |
 | normalized_identity | TEXT UNIQUE | `host/path` or realpath of the git common dir |
 | display_root | TEXT | last seen working tree |
@@ -35,12 +35,12 @@ tables are `STRICT`; FTS5 virtual tables cannot be. Every write from the worker 
 | repo_id | TEXT FK | |
 | agent | TEXT | `claude`, `codex`, `grok`, `pi`, `unknown`; provenance only |
 | native_session_id | TEXT | UNIQUE with agent |
-| conversation_id | TEXT | equals `id` for a fresh session; inherited on resume; new on fork |
-| model | TEXT | reported model when the agent supplies one (context window lookup) |
+| conversation_id | TEXT | oboete id of the root session: `id` for a fresh session; the root's id when the agent resumes (Claude Code `resume` with the same `session_id`, Codex `resume`); a new root on `fork`, Grok `new`, and Pi (no resume in M1) |
+| model | TEXT | reported model when the agent supplies one (context window lookup, R12) |
 | started_at, ended_at | INTEGER | |
 | status | TEXT | `active`, `ended` |
 | turn_count | INTEGER | |
-| latest_summary_memory_id | TEXT | set when the session-end batch is applied |
+| latest_summary_memory_id | TEXT | set once by the local-path session-end batch (R10) |
 
 ## turns
 
@@ -55,15 +55,16 @@ tables are `STRICT`; FTS5 virtual tables cannot be. Every write from the worker 
 
 | column | type | notes |
 |---|---|---|
-| id | TEXT PK | sha256 over (agent, native_session_id, kind, native event id or tool_call_id, turn ordinal, delivery ordinal, content_hash); identical re-delivery collapses, a repeated identical prompt does not |
+| id | TEXT PK | sha256 over the most specific stable key (R7): (agent, native_session_id, tool_call_id or native event id) → (agent, native_session_id, prompt_id, kind) → (agent, native_session_id, turn ordinal, kind, content_hash, delivery_ordinal); `delivery_ordinal` is kept by oboete per session in `runtime_state`, so an identical event re-delivered inside one turn collapses and a repeated identical prompt in a later turn does not |
 | repo_id, session_id, turn_id | TEXT | |
 | agent | TEXT | |
 | kind | TEXT | `session_start`, `prompt`, `tool_call`, `tool_result`, `tool_failure`, `turn_end`, `session_end`, `compaction_summary`, `last_assistant_message`, `probe` |
-| content | TEXT | stored whole after `<private>` removal and redaction; NULL for path-rule hits |
+| content | TEXT | stored after `<private>` removal and redaction; NULL for path-rule hits and for `classification_state = failed`; fields above 1 MB stored as redacted head (64 KB) + tail (16 KB) |
+| truncated_bytes | INTEGER | NULL unless the size cap applied |
 | payload_json | TEXT | normalized fields (zod-validated); no raw passthrough |
 | content_hash | TEXT | |
 | sensitivity | TEXT | `local_only` (default), `eligible`, `secret`, `private` |
-| classification_state | TEXT | `pending`, `done` |
+| classification_state | TEXT | `pending`, `done`, `failed` (detector or config failure: metadata only, never summarized or injected) |
 | captured_at, expires_at | INTEGER | `expires_at` = captured_at + 7 days |
 | batch_id | TEXT | set when claimed |
 | via_spool | INTEGER | |
@@ -76,15 +77,19 @@ Indexes: (session_id, captured_at), (expires_at), (batch_id).
 |---|---|---|
 | id | TEXT PK | |
 | repo_id, session_id | TEXT | |
-| through_event_id | TEXT | UNIQUE (session_id, through_event_id) makes apply idempotent |
+| through_event_id | TEXT | |
 | destination | TEXT | `remote_observer`, `local_observer`, `fallback` (batch split by sensitivity, R10) |
 | trigger | TEXT | `ten_turns`, `session_end`, `retention` (forced before purge) |
 | state | TEXT | `pending`, `running`, `applied`, `fallback` |
 | owner_token | TEXT | worker that claimed it; reclaimable after 120 s when the lease changed hands |
-| provider_attempts | INTEGER | |
+| provider_attempts | INTEGER | incremented per HTTP attempt with its reservation |
+| last_reservation_id | TEXT | reservation of the most recent attempt |
 | degraded_reason | TEXT | `no_provider`, `unreachable`, `unusable_output`, `daily_cap`, `provider_exhausted`, `provider_paid`, `model_alias`, `timeout` |
 | excerpted | INTEGER | input excerpted to 12,000 characters (FR-015) |
 | claimed_at, completed_at | INTEGER | |
+
+UNIQUE (session_id, through_event_id, destination): a remote batch and a fallback batch over the
+same range coexist, and applying either twice is impossible.
 
 ## memories
 
@@ -98,8 +103,9 @@ Indexes: (session_id, captured_at), (expires_at), (batch_id).
 | cjk_bigrams | TEXT | generated shadow column for the CJK FTS table |
 | content_hash | TEXT UNIQUE | sha256 over (repo_id, type, normalized title, normalized body) |
 | sensitivity | TEXT | strictest of the source rows |
+| review_state | TEXT | `unreviewed` (default, FR-042 store-then-review), `reviewed`, `imported` (active imported row, `local_only` until the worker reclassifies it) |
 | degraded_reason | TEXT | NULL for provider output |
-| source_session_id, source_batch_id | TEXT | |
+| source_session_id, source_batch_id | TEXT | provenance; carried by export |
 | valid_from, valid_to | INTEGER | bitemporal validity; `valid_to` set on supersession |
 | superseded_by | TEXT | |
 | pinned_at, pin_order | INTEGER | |
@@ -109,7 +115,7 @@ Indexes: (session_id, captured_at), (expires_at), (batch_id).
 | deleted_at | INTEGER | tombstone; the row stays so the same content never resurrects |
 | created_at | INTEGER | |
 
-Indexes: (repo_id, deleted_at, pinned_at), (repo_id, valid_to).
+Indexes: (repo_id, deleted_at, pinned_at), (repo_id, valid_to), (repo_id, review_state).
 
 ## memory_sources
 
@@ -126,7 +132,7 @@ Indexes: (repo_id, deleted_at, pinned_at), (repo_id, valid_to).
 External-content FTS5 tables over `memories` (`content = 'memories'`, `content_rowid = rowid`):
 `memories_fts (title, body)` with `tokenize = 'trigram'`; `memories_fts_cjk (cjk_bigrams)` with
 `tokenize = 'unicode61'`. Maintained by triggers on insert, update, delete. Queries join back to
-`memories` for scope, tombstone, sensitivity, and validity.
+`memories` for scope, tombstone, sensitivity, review state, and validity.
 
 ## destination_rules (seeded)
 
@@ -140,7 +146,8 @@ External-content FTS5 tables over `memories` (`content = 'memories'`, `content_r
 | injection | secret | 0 | - |
 | sync (M2) | everything except secret | 1 | 0 |
 
-One function evaluates the table for every egress decision, including batch composition.
+One function evaluates the table for every egress decision: batch composition, every field of an
+outbound observer request (`observer/request.ts`), injection, CLI, MCP, viewer.
 
 ## injections
 
@@ -149,12 +156,13 @@ One function evaluates the table for every egress decision, including batch comp
 | id | TEXT PK | |
 | repo_id, session_id, conversation_id, turn_id | TEXT | |
 | kind | TEXT | `session_start`, `prompt`, `grok_deferred` |
-| channel | TEXT | e.g. `claude:SessionStart`, `codex:UserPromptSubmit`, `grok:PostToolUse`, `pi:before_agent_start` |
-| state | TEXT | `built`, `attempted` (Grok PreToolUse emitted), `emitted`, `omitted`, `pending` (Grok, awaiting a tool call) |
+| channel | TEXT | e.g. `claude:SessionStart`, `codex:UserPromptSubmit`, `grok:PreToolUse`, `grok:PostToolUse`, `pi:before_agent_start` |
+| state | TEXT | `built`, `emitted`, `omitted`; Grok only: `pending`, `attempted` |
+| attempt_tool_call_id | TEXT | Grok: tool call on which the pack was last attempted |
 | pack_hash | TEXT | recognized on capture (FR-021) |
 | char_budget, chars_used | INTEGER | |
-| degraded_reason | TEXT | `summary_pending`, `index_unavailable`, `empty`, `no_tool_call`, `all_denied`, plus batch reasons |
-| created_at, emitted_at | INTEGER | |
+| degraded_reason | TEXT | `summary_pending`, `index_unavailable`, `empty`, `window_unknown`, `no_tool_call`, `all_denied`, plus batch reasons |
+| created_at, attempted_at, emitted_at | INTEGER | |
 
 ## injection_items
 
@@ -166,14 +174,18 @@ One function evaluates the table for every egress decision, including batch comp
 | source_kind | TEXT | `memory`, `raw_activity` (summary-pending fallback), `session_summary` |
 | memory_id | TEXT | NULL for raw activity |
 | raw_event_id | TEXT | NULL for memories |
-| decision | TEXT | `included`, `omitted` |
-| reason | TEXT | `below_threshold`, `budget`, `duplicate_in_conversation`, `stale_path`, `stale_commit`, `retired`, `mmr_redundant`, `pinned`, `summary` |
+| decision | TEXT | `planned` (built, not yet delivered), `included` (delivered), `omitted` |
+| reason | TEXT | `below_threshold`, `budget`, `duplicate_in_conversation`, `stale_path`, `stale_commit`, `retired`, `mmr_redundant`, `pinned`, `summary`, `not_delivered` |
 | rank | INTEGER | |
 | score_bm25, score_rrf, score_mmr | REAL | |
 | stale | INTEGER | |
 
 Partial unique index on (conversation_id, memory_id) where decision = `included` and memory_id is
-not NULL (SC-010).
+not NULL (SC-010). Items are written as `planned` when a pack is built and become `included` only
+when delivery is confirmed (immediately for stdout channels; at `PostToolUse` for Grok), so a Grok
+pack that is never delivered does not consume the memory for the conversation. A pending Grok
+record that is rebuilt on a later prompt merges: items already `planned` stay, new items are added
+under the same budget, and the merged pack gets a new `pack_hash`.
 
 ## worker_lease (single row, seeded by 0001)
 
@@ -189,17 +201,19 @@ not NULL (SC-010).
 | column | type | notes |
 |---|---|---|
 | utc_day, preset | TEXT | PK pair |
-| calls | INTEGER | reserved before the outbound call in its own transaction |
+| calls | INTEGER | incremented per HTTP attempt before the call, in its own transaction |
 | neurons_estimate | REAL | |
 | reset_at | INTEGER | stored reset instant; day boundary compares against it |
-| exhausted_at | INTEGER | set on 3036 |
+| exhausted_at | INTEGER | set on 3036 by an unfenced, monotonic write keyed by the reservation |
+| exhausted_reservation_id | TEXT | reservation that observed 3036 (idempotency key) |
 | resolved_model | TEXT | model id returned by the provider |
 
 ## runtime_state
 
 Key/value (`key TEXT PK`, `value_json TEXT`, `updated_at INTEGER`): last purge, last checkpoint,
-catalog cache, per-agent context window table, consent record mirror. The pause flag is the file
-`~/.oboete/paused`.
+catalog cache, per-session `delivery_ordinal`, consent record mirror, Pi last-success marker. The
+pause flag is the file `~/.oboete/paused`. The context-window table is the versioned document
+`docs/research/context-windows.md` embedded at build time (R12), not a runtime row.
 
 ## diagnostics
 
@@ -211,8 +225,10 @@ catalog cache, per-agent context window table, consent record mirror. The pause 
 | count | INTEGER | |
 | first_seen_at, last_seen_at, cleared_at | INTEGER | |
 
-Pi's extension writes its own diagnostics (handler throw, child timeout) to
-`~/.oboete/logs/pi.jsonl` best-effort; the worker folds that file into `diagnostics` on each run.
+Pi: the in-process extension writes nothing durable; the capture child writes an acknowledgement
+file `~/.oboete/spool/pi-ack/<event id>` before exiting and diagnostics rows on its own failures;
+doctor reports `pi_spawn_failed` when the extension's stderr marker exists without acknowledgements
+and `pi_child_hang` from acknowledgements older than the last-success marker (R12).
 
 ## sync_conflicts (M2 reservation)
 
@@ -222,25 +238,31 @@ writes it.
 ## Spool entry (filesystem)
 
 `~/.oboete/spool/<captured_at>-<event_id>.json`, written to a temporary name and renamed; content is
-the normalized, already redacted event. Recovered in name order with the same deterministic id.
+the normalized, already redacted event (never an event whose detector run failed). Recovered in
+name order with the same deterministic id.
 
 ## Export line (JSONL, `oboete-export/1`)
 
 Header line `{ "format": "oboete-export/1", "exported_at": ..., "repos": [ { id, identity_kind,
 normalized_identity } ] }`, then one line per memory: `{ id, repo_id, type, title, body, concepts,
-sensitivity, degraded_reason, valid_from, valid_to, superseded_by, pinned_at, pin_order,
-deleted_at, created_at, sources: [ { citation_kind, citation_value, source_agent } ] }`.
-Tombstones are exported as lines with `deleted_at` set and empty `body`. Import validates each
-line (64 KB max), recomputes `content_hash`, `cjk_bigrams`, and ids, unions on `content_hash`,
-keeps the stricter sensitivity, and lets tombstones win over active rows.
+content_hash, sensitivity, review_state, degraded_reason, source_session_id, source_batch_id,
+source_agent, valid_from, valid_to, superseded_by, pinned_at, pin_order, deleted_at, created_at,
+sources: [ { citation_kind, citation_value, source_agent } ] }`. Tombstones are exported with
+`deleted_at` set, an empty `body`, and the original `content_hash` so they suppress the same
+content on the importing side. Import validates each line (64 KB max) and the file (256 MB max),
+recomputes ids and `cjk_bigrams`, verifies `content_hash` against the material when a body is
+present (mismatch rejects the line), unions on `content_hash`, applies the lattice `secret >
+private > local_only > eligible` (the stricter wins), lets tombstones win over active rows, and
+inserts every active imported row as `local_only` with `review_state = imported`.
 
 ## State transitions
 
 - raw_events.sensitivity: `local_only` → `eligible` (worker checks pass) | `secret`; `private` is
-  set at capture and never promoted.
+  set at capture and never promoted; `classification_state = failed` rows are purged unread.
 - observation_batches.state: `pending` → `running` → `applied` | `fallback`.
-- memories: active → superseded | deleted; deleted never returns to active.
+- memories: active → superseded | deleted; deleted never returns to active;
+  review_state `unreviewed` | `imported` → `reviewed`.
 - worker_lease: released → held (fenced claim) → released (atomic with the empty-queue check) |
   stale (missed heartbeats, clock jump) → reclaimed.
 - injections.state: `built` → `emitted` | `omitted`; Grok: `pending` → `attempted` → `emitted` |
-  `pending` (deny) → `omitted` (turn end).
+  `pending` (deny or failure) → `omitted` (turn end); items `planned` → `included` on confirmation.

@@ -262,8 +262,9 @@ committed evidence.
   stay stable for the same clone and must not silently merge unrelated repositories.
 - Two agents active in the same repository at the same time: both sessions are captured, one
   worker summarizes both, and neither session's injection includes the other's unfinished turn.
-- A tool output larger than the summarizer's input limit: the event is stored whole, the summarizer
-  receives a bounded excerpt, and the truncation is recorded.
+- A tool output larger than the summarizer's input limit: the event is stored and the summarizer
+  receives an excerpt; a single text field larger than 1 MB is stored as a redacted head and tail
+  with a marker of how many bytes were dropped, so the capture budget stays measurable
 - A session whose entire content was `<private>`: no memory is produced and nothing is sent
   anywhere.
 - The provider returns malformed or non-conforming output: the worker retries once, then falls back

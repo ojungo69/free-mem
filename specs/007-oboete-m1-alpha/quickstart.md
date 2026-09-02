@@ -4,8 +4,10 @@
 
 - Node.js 22.16 or newer for the engine; Node.js 24.x for the four-agent E2E (Pi 0.84.4 requires
   >= 22.19).
-- For the E2E only: a separate Linux user (`oboete-dogfood`) on this WSL host with its own home and
-  its own logins for all four agents. The maintainer's own agent environment is never used (FR-041).
+- For every probe and E2E run: a separate Linux user (`oboete-dogfood`) on this WSL host with its
+  own home and its own logins for all four agents. The maintainer's own agent environment is never
+  used (FR-041); a temporary `--home` is not isolation because Grok Build reads Claude-compat hooks
+  from `$HOME`.
 
 ## Build, lint, and tests
 
@@ -23,13 +25,15 @@ Expected: green on 22.16 and 24.x; `pack-check` prints the installed size includ
 ## Verification gate (research R13)
 
 ```bash
-node scripts/e2e/probe-contracts.mjs --home $(mktemp -d)   # headless runs per agent; appends results to docs/research/
+sudo -u oboete-dogfood -H env PATH="$PATH" node scripts/e2e/probe-contracts.mjs   # appends results to docs/research/
 ```
 
 Expected: a dated section per probe item (tool payload fixtures, Codex SessionStart sources and
-rollout flush, Grok MCP registration, Pi compaction event, NIM/OpenRouter/Gemini structured
-output, MCP `initialize`-only server against each client, bundle cold start, installed size).
-Dependent implementation tasks stay blocked until their row exists.
+rollout flush, Grok MCP registration, Pi compaction event and tool registration,
+NIM/OpenRouter/Gemini/Anthropic structured output and auth, MCP legacy server against each client
+with raw frames, per-model context windows, bundle cold start, installed size). A failed probe
+prints the R13 row's consequence; dependent implementation tasks stay blocked until the owner
+approves an amendment or the row passes.
 
 ## Fixture replay (SC-002, SC-003, SC-005, SC-009, SC-010)
 
@@ -39,24 +43,29 @@ OBOETE_HOME=$(mktemp -d) node dist/oboete.mjs fixture replay test/fixtures/event
 ```
 
 Expected (`docs/evidence/m1-resource-envelope.md`): capture-hook p99 under 300 ms with at least
-99% under budget; session-start injection measured on both the ready path (under 300 ms) and the
-pending path (under 8 s); worker peak RSS under 150 MB; database growth per 1,000 events; zero
-secret corpus items in the database, spool, logs, or packs; at least 90% of seeded Japanese and
-English facts retrieved; zero duplicate injections per conversation.
+99% under budget, including events at the 1 MB field cap; session-start injection measured on both
+the ready path (under 300 ms) and the pending path (under 8 s); worker peak RSS under 150 MB;
+database growth per 1,000 events; zero secret corpus items and zero directive corpus phrases in the
+database, spool, logs, or packs; at least 90% of seeded Japanese and English facts retrieved; zero
+duplicate injections per conversation.
 
 ## Failure injection (User Story 2)
 
 ```bash
 for f in db-missing busy corrupt readonly enospc worker-kill provider-unreachable provider-hang \
-         provider-429-3036 provider-403-5035 provider-length provider-malformed pi-throw pi-child-hang \
-         clock-jump mixed-sensitivity resume compact fork clear setup-repeat setup-remove lease-steal pause; do
+         provider-429-3036 provider-403-5035 provider-length provider-malformed cap-boundary \
+         lease-lost-after-3036 detector-throw config-malformed pi-throw pi-child-hang clock-jump \
+         mixed-sensitivity resume compact fork clear setup-repeat setup-remove lease-steal pause \
+         grok-success grok-exec-failure grok-deny grok-all-denied grok-no-tool; do
   NODE_ENV=test OBOETE_TEST_FAULT=$f node --test build/test/fault-*.test.mjs
 done
 ```
 
 Expected: every hook exits 0 within its SLA, spooled events are recovered when the fault clears, no
-batch is applied twice, a lost lease stops the old worker's writes, and doctor names the degraded
-component with a reason.
+batch is applied twice, a lost lease stops the old worker's writes but the 3036 signal persists,
+the 150th call is refused, a detector failure stores metadata only, the mixed-sensitivity outbound
+body contains only eligible content and an opaque repository id, Grok cases deliver exactly the
+expected number of packs, and doctor names the degraded component with a reason.
 
 ## Setup and doctor on the isolated account (User Story 4, SC-008)
 
@@ -69,10 +78,11 @@ sudo -u oboete-dogfood -H env PATH="$PATH" bash -lc '
 
 Expected: setup completes in under 2 minutes (probes run in parallel) and reports each agent as
 wired with a passed probe and its trust state; re-running setup leaves the foreign configuration
-files byte-identical outside the managed blocks; `--remove` restores them; doctor reports every
-item healthy; break one item at a time (remove a hook entry, chmod the database, kill the worker,
-point the provider at an unreachable host, set the allowance counter to exhausted) and confirm
-doctor names it.
+files byte-identical outside the managed blocks with mode and owner preserved; `--remove` restores
+them; `--yes` is refused when the consent tuple changed; doctor reports every item healthy; break
+one item at a time (remove a hook entry, chmod the database, kill the worker, point the provider at
+an unreachable host, set the allowance counter to exhausted, delete a Pi acknowledgement) and
+confirm doctor names it.
 
 ## Cross-agent memory (User Story 1, SC-001, SC-004)
 
@@ -92,22 +102,22 @@ removed still passes with `Degraded:` lines in every pack.
 npm test -- --test-name-pattern "privacy"
 ```
 
-Expected: fail-closed tests block secret and local-only rows from the remote observer and
-cross-repository injection, including a mixed-sensitivity batch whose outbound body contains only
-eligible content; fail-open tests deliver eligible rows; eligibility decisions are identical when
-only the producing agent changes; credential values never appear in logs, spool, doctor output, or
-packs.
+Expected: fail-closed tests block secret and local-only rows from the remote observer (events,
+nearby candidates, citations, repository metadata) and cross-repository injection; fail-open tests
+deliver eligible rows; eligibility decisions are identical when only the producing agent changes;
+credential values never appear in logs, spool, doctor output, or packs.
 
 ## Viewer and MCP (User Story 6, SC-011)
 
 ```bash
 oboete view      # prints http://127.0.0.1:<port>/?token=...
-node scripts/e2e/mcp-clients.mjs   # tools/list + tools/call through each agent's MCP client
+sudo -u oboete-dogfood -H env PATH="$PATH" node scripts/e2e/mcp-clients.mjs   # tools/list + tools/call through each agent's MCP client, raw frames recorded
 ```
 
-Expected: a memory created by the worker appears in the viewer within 2 seconds; pin, delete, and
-search work; the URL without the token and any non-loopback bind are refused; each supported
-client lists and calls `search`, `timeline`, `get`.
+Expected: a memory created by the worker appears in the viewer within 2 seconds as unreviewed;
+review, pin, delete, and search work; the URL without the token and any non-loopback bind are
+refused; each supported client lists and calls `search`, `timeline`, `get`; a `repo` argument is
+rejected.
 
 ## Export / import (User Story 7)
 
@@ -116,8 +126,9 @@ oboete export > memories.jsonl
 OBOETE_HOME=$(mktemp -d) oboete import memories.jsonl --dry-run
 ```
 
-Expected: counts match, tombstones are preserved, an imported row never lowers sensitivity, an
-oversized or malformed line is rejected with exit `2`.
+Expected: counts match, tombstones are preserved with their original hash, an imported row never
+lowers sensitivity and lands as `local_only` / `imported`, a body whose hash does not match, an
+oversized line, or a malformed line is rejected with exit `2`.
 
 ## Dogfood gate (SC-007)
 
