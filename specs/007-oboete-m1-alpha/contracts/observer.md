@@ -66,7 +66,9 @@ tool inputs and outputs by recency; `observation_batches.excerpted` records it.
 
 Worker rules after either path: the detector runs again on every title and body; the
 directive-corpus check rejects bodies that read as instructions; sensitivity = strictest source
-row; `content_hash` = sha256(repo_id, type, normalized title, normalized body); `target` must be
+row; `material_hash` and `content_hash` come from the shared identity helper (`material_hash` =
+sha256(type, normalized title, normalized body), `content_hash` = sha256(repo_id, material_hash);
+the same function serves import and tombstones); `target` must be
 one of the supplied `nearby` ids from the same repository, otherwise the decision is `add`; a hash
 matching a tombstoned memory suppresses the insert and is recorded for `why`; `update` sets
 `valid_to` and `superseded_by`; `delete` tombstones the target only with a non-empty `reason`; the

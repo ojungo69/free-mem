@@ -57,7 +57,7 @@ for f in db-missing busy corrupt readonly enospc worker-kill provider-unreachabl
          provider-429-3036 provider-403-5035 provider-length provider-malformed cap-boundary \
          lease-lost-after-3036 detector-throw config-malformed pi-throw pi-child-hang pi-spawn-failure clock-jump \
          mixed-sensitivity resume compact fork clear setup-repeat setup-remove lease-steal pause \
-         grok-success grok-exec-failure grok-deny grok-all-denied grok-no-tool; do
+         oversized-payload grok-success grok-exec-failure grok-oboete-deny grok-other-handler-deny grok-no-tool; do
   NODE_ENV=test OBOETE_TEST_FAULT=$f node --test build/test/fault-*.test.mjs
 done
 ```
@@ -66,7 +66,9 @@ Expected: every hook exits 0 within its SLA, spooled events are recovered when t
 batch is applied twice, a lost lease stops the old worker's writes but the 3036 signal persists,
 attempt 150 is allowed and attempt 151 is refused across presets, a detector failure stores metadata only, the mixed-sensitivity outbound
 body contains only eligible content and an opaque repository id, Grok cases deliver exactly the
-expected number of packs, and doctor names the degraded component with a reason.
+expected number of packs, an oversized payload lands as a `partial` row with exact
+`truncated_bytes` and is never promoted, and doctor names the degraded component with `reason`,
+`consequence`, and `recovery`.
 
 ## Setup and doctor on the isolated account (User Story 4, SC-008)
 
@@ -81,9 +83,11 @@ Expected: setup completes in under 2 minutes (probes run in parallel) and report
 wired with a passed probe and its trust state; re-running setup leaves the foreign configuration
 files byte-identical outside the managed blocks with mode and owner preserved; `--remove` restores
 them; `--yes` is refused when the consent tuple changed; doctor reports every item healthy; break
-one item at a time (remove a hook entry, chmod the database, kill the worker, point the provider at
-an unreachable host, set the allowance counter to exhausted, delete a Pi acknowledgement) and
-confirm doctor names it.
+one item at a time (remove a hook entry, chmod the database, corrupt the database header, kill the
+worker, point the provider at an unreachable host, set the allowance counter to exhausted, leave a
+stale Pi `.started` file, break the Pi extension so it cannot spawn) and confirm doctor names it
+with a `reason`, the user-facing `consequence`, and a `recovery` step that, when followed, turns
+the item green again.
 
 ## Cross-agent memory (User Story 1, SC-001, SC-004)
 

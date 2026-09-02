@@ -58,13 +58,13 @@ tables are `STRICT`; FTS5 virtual tables cannot be. Every write from the worker 
 | id | TEXT PK | sha256 over the most specific stable key (R7): (agent, native_session_id, kind, tool_call_id or native event id) → (agent, native_session_id, kind, prompt_id) → (agent, native_session_id, turn ordinal, kind, content_hash); no delivery counter, so re-delivery always collapses; two byte-identical events of the last form inside one turn also collapse (accepted) |
 | repo_id, session_id, turn_id | TEXT | |
 | agent | TEXT | |
-| kind | TEXT | `session_start`, `prompt`, `tool_call`, `tool_result`, `tool_failure`, `turn_end`, `session_end`, `compaction_summary`, `last_assistant_message`, `probe`, `oversized` (stdin above 1 MB: unparsed, redacted 64 KB prefix as opaque text) |
+| kind | TEXT | `session_start`, `prompt`, `tool_call`, `tool_result`, `tool_failure`, `turn_end`, `session_end`, `compaction_summary`, `last_assistant_message`, `probe`, `oversized` (payload above 1 MB: unparsed, redacted 64 KB prefix as opaque text; `payload_json.original_kind` from the `--event` argument) |
 | content | TEXT | stored after `<private>` removal and redaction; NULL for path-rule hits and for `classification_state = failed` |
-| truncated_bytes | INTEGER | NULL unless the stdin cap applied |
+| truncated_bytes | INTEGER | exact count of bytes drained beyond the retained 1 MB; NULL unless the cap applied |
 | payload_json | TEXT | normalized fields (zod-validated); no raw passthrough |
 | content_hash | TEXT | |
 | sensitivity | TEXT | `local_only` (default), `eligible`, `secret`, `private` |
-| classification_state | TEXT | `pending`, `done`, `failed` (detector or config failure: metadata only, never summarized or injected) |
+| classification_state | TEXT | `pending`, `done`, `partial` (oversized: path rules not evaluable, never promoted, local path only), `failed` (detector or config failure: metadata only, never summarized or injected) |
 | captured_at, expires_at | INTEGER | `expires_at` = captured_at + 7 days |
 | batch_id | TEXT | set when claimed |
 | via_spool | INTEGER | |
@@ -103,8 +103,8 @@ twice is impossible.
 | title, body | TEXT | <= 120 / <= 2,000 characters |
 | concepts | TEXT | JSON array |
 | cjk_bigrams | TEXT | generated shadow column for the CJK FTS table |
-| material_hash | TEXT | sha256 over (type, normalized title, normalized body); repository-independent, kept on tombstones |
-| content_hash | TEXT UNIQUE | sha256 over (repo_id, material_hash) |
+| material_hash | TEXT | sha256 over (type, normalized title, normalized body); repository-independent, kept on tombstones; computed only by `db/identity.ts` |
+| content_hash | TEXT UNIQUE | sha256 over (repo_id, material_hash); same helper on every path (provider, fallback, import, tombstone) |
 | sensitivity | TEXT | strictest of the source rows |
 | review_state | TEXT | `unreviewed` (default, injectable at once per FR-042), `reviewed`, `imported` (quarantined: excluded by the shared query function from search, injection, MCP, and the viewer's injectable set until the worker's detector and directive check move it to `unreviewed` or `secret`) |
 | degraded_reason | TEXT | NULL for provider output |
@@ -164,7 +164,7 @@ outbound observer request (`observer/request.ts`), injection, CLI, MCP, viewer.
 | attempt_tool_call_id | TEXT | Grok: tool call on which the pack was last attempted |
 | pack_hash | TEXT | recognized on capture (FR-021) |
 | char_budget, chars_used | INTEGER | |
-| degraded_reason | TEXT | `summary_pending`, `index_unavailable`, `empty`, `window_unknown`, `no_tool_call`, `all_denied`, plus batch reasons |
+| degraded_reason | TEXT | `summary_pending`, `index_unavailable`, `empty`, `window_unknown`, `no_tool_call`, `not_delivered`, plus batch reasons |
 | created_at, attempted_at, emitted_at | INTEGER | |
 
 ## injection_items
@@ -214,7 +214,8 @@ under the same budget, and the merged pack gets a new `pack_hash`.
 ## runtime_state
 
 Key/value (`key TEXT PK`, `value_json TEXT`, `updated_at INTEGER`): last purge, last checkpoint,
-catalog cache, consent record mirror. The
+catalog cache, consent record mirror. Sessions of kind `orphan` (oversized payloads whose session
+id could not be recovered) are ordinary `sessions` rows with `native_session_id = orphan:<cwd>`. The
 pause flag is the file `~/.oboete/paused`. The context-window table is the versioned document
 `docs/research/context-windows.md` embedded at build time (R12), not a runtime row.
 
@@ -228,11 +229,12 @@ pause flag is the file `~/.oboete/paused`. The context-window table is the versi
 | count | INTEGER | |
 | first_seen_at, last_seen_at, cleared_at | INTEGER | |
 
-Pi: the extension's only durable write is a bounded synchronous append to
-`~/.oboete/logs/pi-extension.log` on spawn error or handler throw; the capture child writes
-`~/.oboete/spool/pi-ack/<event id>.started` first and renames it to `.done` on success, and writes
-diagnostics rows on its own failures; doctor reports `pi_spawn_failed` from the extension log,
-`pi_child_hang` from `.started` files older than 30 s, `pi_child_failed` from the rows (R12).
+Pi: the extension performs no file or network write; it keeps in-memory failure counters
+(message codes) and passes them to the next child as `--prior-failures`, which records them here.
+The capture child writes `~/.oboete/spool/pi-ack/<event id>.started` first and renames it to
+`.done` on success; the worker folds and deletes `.done` files, records `pi_child_hang` for
+`.started` files older than 30 s and deletes them after 24 h. Doctor reports `pi_child_hang` and
+`pi_child_failed` from these rows and `pi_spawn_failed` from its own wiring probe (R12).
 
 ## sync_conflicts (M2 reservation)
 

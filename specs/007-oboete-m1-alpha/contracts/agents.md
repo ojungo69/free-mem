@@ -6,9 +6,10 @@ Code 2.1.258, Codex CLI 0.152.1, Grok Build 1.0.17, Pi 0.84.4 (requires Node >= 
 
 ## Normalized events (zod discriminated union)
 
-Envelope on every event: `event` (kind), `agent` (`claude|codex|grok|pi|unknown`, from the fixed
-selector below, never from the payload), `native_session_id`, `conversation_id`, `cwd`,
-`captured_at`, `delivery_ordinal`, optional `agent_id`, `agent_type` (subagents), optional `model`.
+Envelope on every event: `event` (kind, from the handler's fixed `--event` argument written by
+setup, cross-checked against the payload when one is parsed), `agent` (`claude|codex|grok|pi|unknown`,
+from the fixed selector below, never from the payload), `native_session_id`, `conversation_id`,
+`cwd`, `captured_at`, optional `agent_id`, `agent_type` (subagents), optional `model`.
 
 | kind | fields |
 |---|---|
@@ -22,9 +23,14 @@ selector below, never from the payload), `native_session_id`, `conversation_id`,
 | compaction_summary | `text` |
 | last_assistant_message | `text` |
 
-Size cap (R4): the hook reads at most 1 MB from stdin; a larger payload is not parsed and is
-stored as an `oversized` event (redacted 64 KB prefix as opaque text, `truncated_bytes`, session
-and event name from the environment or the hook argument). The 12,000-character limit applies only when a
+Size cap (R4): the hook drains stdin completely while counting bytes but retains only the first
+1 MB (no EPIPE for the runner, exact `truncated_bytes`); a payload above the cap is not parsed as
+JSON and is stored as an `oversized` event: the event kind comes from the `--event` argument, the
+session id from `GROK_SESSION_ID` / `PI_SESSION_ID` or, for Claude Code and Codex, from a bounded
+scan of the retained prefix for the top-level `session_id` and `cwd` strings; when the scan finds
+none the row is filed under an `orphan` session of that agent and cwd. Oversized rows keep a
+redacted 64 KB prefix, `classification_state = partial`, stay `local_only` for life (path rules
+cannot be evaluated, so promotion is forbidden), and reach only local or fallback summaries. The 12,000-character limit applies only when a
 batch input is built. Normalized tool names: `read`, `write`, `edit`, `bash`, `grep`, `glob`,
 `task`, `mcp:<server>/<tool>`, `other`; until the R13 payload fixtures exist, adapters store
 `tool_name_native` and the redacted JSON without field mapping.
@@ -36,9 +42,9 @@ never by payload heuristics:
 
 | agent | handler written by setup | resolution |
 |---|---|---|
-| Codex | `oboete hook --agent codex` | fixed |
-| Pi | `oboete capture --agent pi`, `oboete inject --agent pi` | fixed |
-| Claude Code, Grok Build | `oboete hook --agent claude-or-grok` (Grok Build also reads Claude-compat hooks from `$HOME`) | `GROK_HOOK_EVENT` or `GROK_SESSION_ID` present → grok; else claude |
+| Codex | `oboete hook --agent codex --event <name>` | fixed |
+| Pi | `oboete capture --agent pi --event <name>`, `oboete inject --agent pi` | fixed |
+| Claude Code, Grok Build | `oboete hook --agent claude-or-grok --event <name>` (Grok Build also reads Claude-compat hooks from `$HOME`) | `GROK_HOOK_EVENT` or `GROK_SESSION_ID` present → grok; else claude |
 
 An invocation without `--agent` is stored as `unknown` and reported by doctor; payload shape is
 used only to label it for diagnosis.
@@ -54,8 +60,10 @@ byte-identical events of the last form inside one turn collapse to one row; a re
 prompt in a later turn does not.
 
 `conversation_id` is the oboete id of the root session. Claude Code `resume` (same `session_id`),
-Codex `resume`, and Pi `resume` (when `PI_SESSION_ID` continues, R13 probe) keep the root; `fork`
-and Grok `new` start a new root.
+Codex `resume`, Pi `resume` (when `PI_SESSION_ID` continues, R13 probe), and Grok Build resume
+(the `SessionStart` source value and session id continuity are an R13 probe; until it passes a
+Grok session whose native id already exists is treated as a resume of that root) keep the root;
+`fork` and Grok `new` start a new root.
 
 ## Capture and injection per agent
 
@@ -63,8 +71,8 @@ and Grok `new` start a new root.
 |---|---|---|---|---|
 | Claude Code | SessionStart, UserPromptSubmit, PreToolUse, PostToolUse, PostToolUseFailure → `tool_failure`, Stop → `last_assistant_message` (and `turn_end`), PostCompact → `compaction_summary`, SessionEnd (capture only, 1.5 s shared budget) | plain stdout on SessionStart when `source` is `startup`, `clear`, or `compact`; nothing on `resume` or `fork` (transcript replay); plain stdout on UserPromptSubmit | 10,000 characters per value | oboete-owned handlers (`"oboete": true`) merged into `~/.claude/settings.json`; timeouts 12 s on injection hooks, 3 s on capture hooks; `claude mcp add oboete -- "<node>" "<bundle>" mcp` |
 | Codex CLI | SessionStart, UserPromptSubmit, PreToolUse, PostToolUse, Stop, SessionEnd (1 s default, capture only) | `hookSpecificOutput.additionalContext` on SessionStart with matcher `startup\|clear\|compact` (verified enum; `resume` excluded) and on UserPromptSubmit; `additionalContextLimit = 0` | provider context, no spill | `~/.codex/hooks.json` handlers; managed block in `~/.codex/config.toml` with `[hooks.state."<abs path>:<event>:<group>:<handler>"] trusted_hash = "sha256:<hex of canonical handler json>"` and `[mcp_servers.oboete]` |
-| Grok Build | SessionStart (`source: "new"` when headless), UserPromptSubmit, PreToolUse, PostToolUse, PostToolUseFailure, Stop (`reason: end_turn` only), SessionEnd | FR-045 state machine below | 10,000 characters (silent clip) | `~/.grok/hooks/oboete.json` with explicit `timeout` per hook (12 s injection, 3 s capture); handlers deduplicated against the Claude compat layer; MCP registration per R13 probe (blocked for FR-030 if the probe fails) |
-| Pi | `session_start` (from `session_start`), `input` (source filter), `tool_result` (input + content + isError), `agent_settled` → `turn_end` + `last_assistant_message` when available, `session_shutdown` (reason `quit|reload|new|resume|fork`), compaction event (R13 probe) | `before_agent_start` returns the pack produced by a bounded child `oboete inject` (`AbortSignal.timeout`: 8 s at session start, 2 s per prompt); capture through a detached child `oboete capture` that writes a two-phase acknowledgement (`.started` → `.done`); the extension itself only try/catches, spawns, and on spawn error or throw appends one bounded line to `~/.oboete/logs/pi-extension.log` | provider context | `~/.pi/agent/extensions/oboete.js` loader importing `piExtension` from the bundle; tools call `oboete search\|timeline\|get --json` as child processes |
+| Grok Build | SessionStart (`source: "new"` when headless; resume value per R13 probe), UserPromptSubmit, PreToolUse, PostToolUse, PostToolUseFailure, Stop (`reason: end_turn` only), SessionEnd | FR-045 state machine below | 10,000 characters (silent clip) | `~/.grok/hooks/oboete.json` with explicit `timeout` per hook (12 s injection, 3 s capture); handlers deduplicated against the Claude compat layer; MCP registration per R13 probe (blocked for FR-030 if the probe fails) |
+| Pi | `session_start` (from `session_start`), `input` (source filter), `tool_result` (input + content + isError), `agent_settled` → `turn_end` + `last_assistant_message` when available, `session_shutdown` (reason `quit|reload|new|resume|fork`), compaction event (R13 probe) | `before_agent_start` returns the pack produced by a bounded child `oboete inject` (`AbortSignal.timeout`: 8 s at session start, 2 s per prompt); capture through a detached child `oboete capture` that writes a two-phase acknowledgement (`.started` → `.done`); the extension itself only try/catches, spawns, and counts failures in memory (message code only), handing the counters to the next child it spawns as `--prior-failures`; no in-process file or network write (FR-007) | provider context | `~/.pi/agent/extensions/oboete.js` loader importing `piExtension` from the bundle; tools call `oboete search\|timeline\|get --json` as child processes |
 
 ### Grok Build deferred delivery (FR-045)
 
@@ -91,9 +99,12 @@ memories counted for the conversation.
    on this call. The ledger dedupes by `pack_hash`; the model never sees two copies because a
    denied call delivers nothing.
 5. At `Stop` (`end_turn`) a record still `pending` or `attempted` becomes `omitted` with reason
-   `no_tool_call` or `all_denied`; its items become `omitted` / `not_delivered`, so the memories
-   remain injectable in the next turn. Tests count the packs the model received in the success,
-   execution-failure, deny, all-denied, and no-tool cases.
+   `no_tool_call` when oboete observed no tool hook of any kind in the turn, otherwise
+   `not_delivered` (a deny by an earlier handler stops the chain before oboete runs, so "all
+   denied" is not distinguishable and is not claimed); its items become `omitted` /
+   `not_delivered`, so the memories remain injectable in the next turn. Tests count the packs the
+   model received in the success, execution-failure, oboete-deny, other-handler-deny, and no-tool
+   cases.
 
 ## Injection policy shared by all agents
 
