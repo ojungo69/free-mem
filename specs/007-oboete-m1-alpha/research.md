@@ -80,7 +80,9 @@ approval before implementation starts (task 0).
   by 1 MB regardless of payload size (spec edge case amended, A7; the summarizer input bound
   stays 12,000 characters). Whether each agent's runner tolerates a hook that exits with unread
   stdin, and whether the runner caps payloads itself, is an R13 probe; a runner that fails the
-  hook in that case blocks A7 for an owner decision (no drain fallback). **Detector or config failure** (secretlint throws, `.oboete.toml` malformed,
+  hook in that case blocks A7 for an owner decision (no drain fallback). The detector runs in a `worker_threads` Worker terminated at a hard cutoff so the hook's wall
+  time is bounded even when secretlint never returns (a terminated run is a detector failure).
+  **Detector or config failure** (secretlint throws, `.oboete.toml` malformed,
   bundle mismatch): fail closed, store metadata only with `classification_state = failed`, write a
   diagnostic, exit 0; the unsanitized text is never written to the spool.
 - **Rationale**: FR-018 and Principle III require redaction before storage; `@secretlint/node` costs
@@ -117,11 +119,12 @@ approval before implementation starts (task 0).
   and commits; a 429/3036 result is persisted in its own
   transaction keyed by the reservation (`provider_usage.exhausted_at`, monotonic, not fenced by the
   lease) so the signal survives a lost lease; the batch apply is fenced separately. **Provider
-  attempts are at-least-once, applied effects exactly-once**: a successful response is journaled
-  to `observation_batches.response_json` in its own transaction before apply, and a reclaimed
-  batch that already has a journaled response is applied from it without a new call; only a crash
-  between the request and the journal write can cause a second call, which the worker-kill test
-  counts separately from applies (spec wording "summarized twice" is read as applied twice, A11). Spool entries are
+  attempts are at-least-once, applied effects exactly-once**: memory mutations and `state =
+  applied` commit in one fenced transaction; a worker that dies between the response and that
+  commit leaves the batch `running`, and the reclaiming worker makes a new call. No response
+  journal (a journal needs its own fencing, sanitizing, and retention rules for a rare crash
+  window); the worker-kill test asserts HTTP count 2 and apply count 1 for that window (spec
+  wording "summarized twice" is read as applied twice, A11). Spool entries are
   one sanitized file per event (write-then-rename). Retention: rows past `expires_at` in `applied`
   or `fallback` batches are deleted in bounded `DELETE ... WHERE id IN (SELECT ... LIMIT 500)` steps;
   rows past `expires_at` in pending batches are forced into a fallback batch first; `secret`
@@ -200,16 +203,14 @@ approval before implementation starts (task 0).
 ## R10. Summarizer contract, batch composition, egress boundary
 
 - **Decision**: One JSON contract (`contracts/observer.md`). A session batch is split by
-  destination after classification; batch identity is (session, through event, destination,
-  purpose) where purpose is `observations` or `session_summary`, so a remote batch and a fallback
-  batch over the same range coexist and the summary job never collides with them. **One request builder applies
+  destination after classification; batch identity is (session, through event, destination), so a
+  remote batch and a fallback batch over the same range coexist with disjoint rows. **One request builder applies
   `destination_rules` to every field of an outbound request**: events, free summaries, nearby
   candidates (remote receives only `eligible` memories), citations, and repository metadata (the
   remote observer receives an opaque repository id, never the normalized remote or path). The
-  session summary is a separate `session_summary` batch created once per session end, run by the
-  local path (local observer if configured, else the fallback) over all non-secret rows, so
-  `sessions.latest_summary_memory_id` has one source; `observations` batches ignore any
-  `session_summary` field in provider output and the summary batch ignores `observations`. Classification candidates are the top
+  session summary is never a provider output: the worker derives it deterministically at session
+  end from the session's rows and the observations just applied (rules in `contracts/observer.md`),
+  so `sessions.latest_summary_memory_id` has one source and session end costs one provider call. Classification candidates are the top
   8 same-repository memories from R5 (including tombstones); a provider decision's `target` must
   be one of the supplied ids or it is treated as `add`; the fallback rule is tombstone hash →
   suppressed, active hash → `noop`, else `add`. Fallback bodies are deterministic records (file
@@ -217,16 +218,14 @@ approval before implementation starts (task 0).
   retained for 7 days as raw evidence (`raw_events`) and is never injected or indexed. **Agent
   neutrality**: the producing agent is provenance only; it is absent from provider inputs,
   fallback bodies, classification decisions, and `material_hash`, and a test asserts identical
-  hashes and decisions when only the agent changes. **Session end is one provider call**: with a
-  local observer the `session_end` batch produces observations and the summary in one call; with
-  a remote preset the remote `observations` batch is the one call and the summary is produced
-  deterministically by the fallback (all five fields defined in `contracts/observer.md`); SC-004
-  is asserted against the fallback path. **Resurrection guard**: every memory and tombstone keeps
-  its source events' content hashes in `memory_sources.source_content_hash`; a candidate whose
-  source set intersects a tombstone's source set is suppressed before any hash comparison, so a
-  paraphrased re-summary of the same captured content cannot recreate a deleted memory (tested
-  with a provider fixture that paraphrases). **Sensitivity on add/update** = max(target's
-  sensitivity, every source row, detector result), fixed in the apply transaction. Degraded reasons: `no_provider`, `unreachable`,
+  hashes and decisions when only the agent changes. **Deleted content** (FR-035 "not re-created from the same content"): the plan reads "same
+  content" as the same normalized title and body (`material_hash`), enforced by the tombstone row
+  plus the tombstone-aware classification prompt (top 8 nearby includes tombstones); a paraphrase
+  of a deleted memory is a new memory by this reading. A source-attribution guard was designed and
+  withdrawn because it suppressed correct sibling memories from the same events; the reading is
+  recorded for owner confirmation as A13. **Sensitivity on add/update** = max(target's
+  sensitivity, every source row, detector result), fixed in the apply transaction. **Language**
+  (FR-014): script mismatch → one retry → fallback with `language_mismatch`. Degraded reasons: `no_provider`, `unreachable`,
   `unusable_output`, `daily_cap`, `provider_exhausted`, `provider_paid`, `model_alias`, `timeout`,
   `window_unknown`.
 - **Reviewer changes**: nearby and repo metadata leak closed; batch identity with purpose; single
@@ -328,8 +327,8 @@ skeleton (task 1).
 |---|---|---|
 | Native tool payload shapes for read/write/edit/bash on all four agents | capture fixtures from headless runs | blocked for that agent/tool: until its fixture exists the adapter stores metadata only (`classification_state = failed`, reason `unmapped_payload`), never an unmapped payload (path rules cannot be applied to unknown fields); a regression test plants a path-rule secret inside an unknown payload |
 | Codex and Grok `PostCompact` payload (summary text field); Grok `Stop` `lastAssistantMessage` field | forced compaction and a normal turn end per agent | if no text is provided: recorded as such, `compaction_summary` / `last_assistant_message` absent for that agent by contract test; FR-010 input then relies on captured events only |
-| Grok hook serialization: whether `PreToolUse` hooks of a parallel tool batch all fire before any `PostToolUse`, and the `PostToolBatch` payload | parallel batch under the isolated user | the attempt set and `PostToolBatch` handling in the state machine are designed for either order; if `PostToolBatch` carries no usable call ids the Grok lane is blocked pending amendment |
-| Detector throughput: largest payload the full detector processes inside the capture deadline on 22.16 | replay with growing payloads | sets the content bound (initial 256 KB); payloads between the bound and 1 MB are stored metadata-only |
+| Grok parallel batches: whether `additionalContext` attached to several calls of one batch reaches the model once or once per call; `PermissionDenied` payload | parallel batch under the isolated user with a pack attached to two calls | the state machine attaches on every call until confirmed regardless; per-call duplication inside one batch is the documented A13 trade-off; if the probe shows a denied call also suppresses the other calls' context, the Grok lane is blocked pending amendment |
+| Detector: the full detector finishes a 1 MB payload inside the capture hard cutoff on Node 22.16 | replay with 1 MB inputs | blocked: the capture lane stops and the measured bound goes to the owner as A14 (no silent smaller bound) |
 | Codex `SessionStart` fires with `source = compact` and `clear` | forced compaction and `/clear` in headless runs | blocked: FR-024 cannot be met on Codex without an owner amendment |
 | Codex rollout flush at `PostToolUse`; TUI trust path | grep the just-completed `tool_use_id`; interactive trust run | capture from hook stdin only (rollout is never a required source) |
 | Grok Build user-scoped MCP registration | write configuration, call `search` headless | blocked for Grok's tool surface (FR-030) pending owner amendment |

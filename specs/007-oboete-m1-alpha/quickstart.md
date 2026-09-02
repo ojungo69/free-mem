@@ -29,11 +29,13 @@ sudo -u oboete-dogfood -H env PATH="$PATH" node scripts/e2e/probe-contracts.mjs 
 ```
 
 Expected: a dated section per probe item, one per row of the R13 table (tool payload fixtures,
-Codex SessionStart sources and rollout flush, Grok MCP registration, Pi compaction event and tool
-registration, provider transport/auth/model and structured output, Grok context on a failed call,
-Pi and Grok resume continuity, runner behaviour on unread stdin above 1 MB, Pi durable error
-surface, MCP legacy server against each client with raw frames, per-model context windows, bundle
-cold start, installed size). A failed probe
+Codex and Grok PostCompact payload and Grok Stop lastAssistantMessage, Grok parallel-batch
+delivery and PermissionDenied payload, detector 1 MB inside the cutoff, Codex SessionStart
+sources and rollout flush, Grok MCP registration, Pi compaction event and tool registration,
+provider transport/auth/model and structured output, Grok context on a failed call, Pi and Grok
+resume continuity, runner behaviour on unread stdin above 1 MB, Pi durable error surface, MCP
+legacy server against each client with raw frames, per-model context windows, bundle cold start,
+installed size). A failed probe
 prints the R13 row's consequence; dependent implementation tasks stay blocked until the owner
 approves an amendment or the row passes.
 
@@ -59,19 +61,22 @@ for f in db-missing busy corrupt readonly enospc worker-kill provider-unreachabl
          provider-429-3036 provider-403-5035 provider-length provider-malformed cap-boundary \
          lease-lost-after-3036 detector-throw config-malformed pi-throw pi-child-hang pi-spawn-failure clock-jump \
          mixed-sensitivity resume compact fork clear setup-repeat setup-remove lease-steal pause \
-         oversized-payload deadline-before-detector consent-changed provider-401 update-sensitivity \
-         paraphrase-resurrection worker-kill-after-response agent-swap \
+         oversized-payload detector-never-returns consent-changed provider-401 provider-wrong-language \
+         update-sensitivity tombstone-identical-content worker-kill-after-response agent-swap remote-no-duplicate \
          grok-success grok-exec-failure grok-oboete-deny grok-other-handler-deny grok-parallel-batch grok-no-tool; do
   NODE_ENV=test OBOETE_TEST_FAULT=$f node --test build/test/fault-*.test.mjs
 done
 ```
 
-Expected: every hook exits 0 within its absolute deadline (asserted per event kind, not only at
-p99), spooled events are recovered when the fault clears, no batch is applied twice and a worker
-killed after the provider responded applies the journaled response without a second call (HTTP
-count and apply count asserted separately), a changed consent tuple makes no call, a 401 is
-reported as `auth_failed` not `provider_paid`, an eligible update never relaxes a local-only
-target, a paraphrased re-summary of deleted content creates nothing, a lost lease stops the old worker's writes but the 3036 signal persists,
+Expected: every hook exits 0 within its absolute deadline (process wall time asserted per event
+kind, including a 1 MB input and a detector that never returns), spooled events are recovered
+when the fault clears, no batch is applied twice and a worker killed after the provider responded
+but before apply causes exactly one extra call and one apply (HTTP count and apply count asserted
+separately), a changed consent tuple makes no call, a 401 is reported as `auth_failed` not
+`provider_paid`, English output for Japanese input is retried once then replaced by the fallback,
+an eligible update never relaxes a local-only target, identical deleted content is never
+re-created on either path, a remote preset never yields the same observation from the fallback
+batch, a lost lease stops the old worker's writes but the 3036 signal persists,
 attempt 150 is allowed and attempt 151 is refused across presets, a detector failure stores metadata only, the mixed-sensitivity outbound
 body contains only eligible content and an opaque repository id, Grok cases deliver exactly the
 expected number of packs, an oversized payload leaves only a metadata `failed` row and

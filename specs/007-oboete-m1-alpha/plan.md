@@ -90,11 +90,12 @@ repositories, memories in the low thousands during M1.
 | A6 | CONSTITUTION Development Workflow (dogfood command list) | headless Grok Build is `grok -p` (the verified flag), not `grok --print` | PATCH wording |
 | A7 | spec edge case "tool output larger than the summarizer's input limit" | the hook reads at most 1 MB of stdin and stops; a larger payload is recorded as a metadata-only failed row (fail closed) and its content is dropped; runner tolerance verified by R13 | spec amendment |
 | A8 | spec FR-007 | "every thrown error is recorded" is satisfied by in-memory counters handed to the next child spawn plus the doctor wiring probe, or by Pi's own durable error log when the R13 probe finds one; a failure that stops every later spawn is detected by the probe rather than recorded | spec amendment (only if the R13 probe finds no Pi-owned durable error surface) |
-
 | A9 | CONSTITUTION Principle II ("no listening port") | a resident or background port stays forbidden; `oboete view` may bind a loopback-only port for the lifetime of the foreground command | PATCH clarification (if rejected: portless viewer design returns to research) |
 | A10 | CONSTITUTION Product Constraints (Pi integration) | Pi's in-process extension only enqueues to a detached child under a cooperative deadline, per FR-007; the child imports the capture functions | PATCH wording aligned with FR-007 |
-| A11 | spec User Story 2 ("no event is summarized twice") | read as applied twice: provider attempts are at-least-once (bounded by the response journal), applied effects exactly-once | spec clarification |
-| A12 | spec FR-024 / FR-026 | compaction opens a new context epoch; "never the same memory twice" is scoped to (conversation, epoch), so the post-compaction re-injection FR-024 requires is allowed and resume stays deduplicated | spec clarification (if rejected: FR-024 re-injects only items not yet injected in the conversation) |
+| A11 | spec User Story 2 ("no event is summarized twice") | read as applied twice: provider attempts are at-least-once (a worker crash between response and apply causes one extra call), applied effects exactly-once | spec clarification |
+| A12 | spec FR-024 / FR-026, User Story 1 scenario 2, SC-010 | compaction opens a new context epoch; "never the same memory twice" is scoped to (conversation, epoch), so the post-compaction re-injection FR-024 requires is allowed and resume stays deduplicated; SC-010 counts duplicates per epoch | spec clarification (if rejected: FR-024 re-injects only items not yet injected in the conversation) |
+| A13 | spec FR-035 ("not re-created from the same content"); FR-045 | "same content" = identical normalized title and body (`material_hash`), so a paraphrase is a new memory; on Grok Build the pack is attached to every call of a turn until one confirms, so two calls of one parallel batch may both carry it | spec clarification (if rejected: source-attribution guard returns to research; Grok single-attach returns to research) |
+| A14 | spec FR-002 | only if the R13 detector probe shows the full detector cannot finish 1 MB inside the capture cutoff: the measured bound becomes the content limit above which events are metadata-only | spec amendment (conditional) |
 
 Implementation starts only after these are approved or rejected in writing; a rejection returns
 the affected decision to research. A8 is raised only if the R13 Pi error-surface probe fails.
@@ -117,11 +118,11 @@ section, "verified" names the test or evidence document that fails when the requ
 | FR-007 | Pi handlers do no in-process storage or network; bounded enqueue; errors contained and recorded | R12 Pi diagnostics (A8); agents.md Pi row; data-model Pi ack | pi-throw, pi-child-hang, pi-spawn-failure tests; fs/network access assertion on the extension |
 | FR-008 | raw events kept 7 days; memories permanent except tombstone or supersession | R6 retention; raw_events.expires_at; memories deleted_at, superseded_by | purge tests; tombstone round trip |
 | FR-009 | no resident service; detached worker exits when its queue is empty | R6 lease; cli.md `observe` | process-tree assertion in replay; atomic release test |
-| FR-010 | batch at session end and every 10 turns, one call per batch, claude-mem types, add/update/delete/noop against nearby, hook-supplied summaries as input | R10; observer.md (`session_end` = one call); data-model observation_batches; R13 PostCompact / lastAssistantMessage probes | trigger tests; one-call-at-session-end test; classification tests; free-summary input tests per agent |
+| FR-010 | batch at session end and every 10 turns, one call per batch, claude-mem types, add/update/delete/noop against nearby, hook-supplied summaries as input | R10; observer.md (session-end matrix, deterministic summary); data-model observation_batches; R13 PostCompact / lastAssistantMessage probes; agents.md capture table (PostCompact on Codex and Grok) | trigger tests; one-call-at-session-end test; no-duplicate-observation test with a remote preset; classification tests; free-summary input tests per agent; handler-set contract test per agent |
 | FR-011 | exactly one worker per machine; stale worker's work taken over without loss or duplication | R6 lease, owner fencing | lease-steal, worker-kill, reclaim-after-120 s tests |
 | FR-012 | configured preset, free remote default, usage estimate reset at UTC midnight, exhaustion error never retried, 150 calls per day, local preset | R3, R6; observer.md presets and call policy; data-model provider_usage | 429/3036 no-retry test; cap boundary 150 allowed / 151 refused across presets; ollama preset test |
 | FR-013 | rule-based fallback in the same shape; memories and packs labelled degraded with reason | R10 fallback; observer.md; agents.md pack `Degraded:` | fallback tests; degraded-label tests |
-| FR-014 | summaries in the language of the content | observer.md worker rules | ja/en pair tests |
+| FR-014 | summaries in the language of the content | observer.md worker rules (retry once, then `language_mismatch` fallback) | ja/en pair tests; English-for-Japanese provider fixture |
 | FR-015 | summarizer input bounded to 12,000 characters; excerpting recorded | observer.md input; observation_batches.excerpted | excerpt tests |
 | FR-016 | credentials only from oboete's config or a named environment variable | cli.md environment; config.ts | fs-access assertion (no agent session files read); config and log scans |
 | FR-017 | local-only by default; promotion only after worker checks; secret on rule or path hit | R4; raw_events.sensitivity; privacy/classify.ts | promotion tests; path-rule tests; detector-throw fail-closed test |
@@ -132,10 +133,10 @@ section, "verified" names the test or evidence document that fails when the requ
 | FR-022 | setup shows host, credential source, cost class, sensitivity classes; requires confirmation | R8 consent (re-checked before every send); cli.md setup; observer.md call policy | consent tuple hash tests; `--yes` mismatch refused; host / credential source / egress class changed after setup → no call |
 | FR-023 | privacy tests in both directions | R11; quickstart privacy | fail-closed and fail-open suites |
 | FR-024 | session-start and post-compaction injection of latest summary + pinned; none on resume; channel ceiling; pin-order trim recorded; 8 s wait then raw activity | agents.md injection policy and SLAs; R12; injections.context_epoch (A12) | ready/pending timing; resume no-reinject; compact reinject in a new epoch; pinned trim ledger |
-| FR-025 | prompt-submit lexical retrieval incl. CJK; threshold; cap proportional to documented context, not fixed | R5; R12 context window; injection/budget.ts | ja/en retrieval; threshold; window table; `window_unknown` omission |
+| FR-025 | prompt-submit lexical retrieval incl. CJK; threshold; cap proportional to documented context, not fixed | R5; R12 context window; injection/budget.ts; R13 window row (lane block) | ja/en retrieval; threshold; window table; unknown-model `window_unknown` budget |
 | FR-026 | no memory twice in one conversation, resumes included | injection_items partial index on (conversation, epoch, memory); sessions.conversation_id | resume/compact/fork/clear duplicate tests |
 | FR-027 | Codex injection only at session start and prompt submit | agents.md Codex row | Codex handler set test |
-| FR-045 | Grok deferred delivery with the first executed call; attempt, confirm, retry after deny; labelled deferred; omission recorded | agents.md state machine; data-model injections | Grok success / execution-failure / deny / all-denied / no-tool tests counting packs received |
+| FR-045 | Grok deferred delivery with the first executed call; attempt, confirm, retry after deny; labelled deferred; omission recorded | agents.md state machine (attach on every call until confirmed, A13); data-model injections.attempted_tool_call_ids; R13 parallel-batch probe | Grok success / execution-failure / oboete-deny / other-handler-deny / parallel-batch / no-tool tests counting packs received |
 | FR-028 | every pack records included, omitted with reason, degraded state; `why` shows it | injections, injection_items; cli.md `why` | ledger tests |
 | FR-029 | citations carried; checked against current repository state before injection | memory_sources; memories.citations_head/ok; R12 staleness | stale path and stale commit tests |
 | FR-030 | search, timeline, get via tool interface and CLI under injection boundaries | mcp.md; agents.md Pi tools; cli.md; db/queries.ts | MCP client probes (R13); `mcp-clients.mjs`; boundary tests |
@@ -143,7 +144,7 @@ section, "verified" names the test or evidence document that fails when the requ
 | FR-032 | warn on agents' native memory, never change it | cli.md setup/doctor | native-memory detection tests |
 | FR-033 | doctor reports wiring by probe with trust state, storage, FTS, worker, provider, estimate, exhaustion, spool, unrecognized agents | cli.md doctor; R12 Pi diagnostics | break-one-at-a-time tests |
 | FR-034 | pause and resume without touching memories | R12 pause | pause test (no db open, memories unchanged) |
-| FR-035 | pin, unpin, delete; deleted content never re-created | memories tombstone; content_hash; memory_sources.source_content_hash resurrection guard | tombstone resurrection test incl. a paraphrasing provider fixture |
+| FR-035 | pin, unpin, delete; deleted content never re-created | memories tombstone; content_hash / material_hash (A13); tombstone-aware classification | tombstone resurrection test (identical content on both paths); A13 documents that a paraphrase is new |
 | FR-036 | export with sensitivity, provenance, repository identity; import merges by content, keeps deletions, never lowers sensitivity | R12 export/import; data-model export line; cli.md import | round trip; lattice; tombstone under `--map-repo`; hash mismatch; quarantine |
 | FR-037 | viewer: sessions by turn, memories with sensitivity and provenance, updates within 2 s, search/pin/delete | R9 | SC-011 timing; viewer tests |
 | FR-038 | viewer reachable only locally | R9 | bind and token refusal tests |
@@ -165,7 +166,7 @@ section, "verified" names the test or evidence document that fails when the requ
 | SC-007 | `isolated-user.mjs --daily` × 7 | 7 consecutive green days | `m1-dogfood.md` |
 | SC-008 | setup timing + break-one-at-a-time | setup < 2 min; doctor names each broken item | `m1-dogfood.md` |
 | SC-009 | replay seeded facts | correct memory injected for >= 90% of matching ja/en prompts | `m1-resource-envelope.md` |
-| SC-010 | replay ledger | zero duplicate injections per conversation | `m1-resource-envelope.md` |
+| SC-010 | replay ledger | zero duplicate injections per (conversation, context epoch) (A12) | `m1-resource-envelope.md` |
 | SC-011 | viewer test | new memory visible within 2 s | test output in CI |
 
 ## Project Structure
@@ -245,8 +246,8 @@ task, and a delegated result that touches one is returned to Claude Code.
 
 ## Delivery order (input to /speckit-tasks)
 
-0. **Amendments and verification gate**: owner decision on A1-A7 and A9-A12 (and A8 if the Pi
-   error-surface probe fails); R13 probe scaffolding and the probes that need no oboete code, run under the
+0. **Amendments and verification gate**: owner decision on A1-A7 and A9-A13 (A8 and A14 only if
+   their R13 probes fail); R13 probe scaffolding and the probes that need no oboete code, run under the
    isolated user and recorded in `docs/research/`; a failed probe blocks its dependents (R13
    table) rather than switching to a fallback.
 1. **Foundation**: package, build, lint, migrations 0001-0003 with smoke tests on 22.16 and 24.x,

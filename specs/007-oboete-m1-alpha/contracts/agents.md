@@ -70,8 +70,8 @@ Grok session whose native id already exists is treated as a resume of that root)
 | Agent | Capture events | Injection channel and policy | Cap | Setup writes |
 |---|---|---|---|---|
 | Claude Code | SessionStart, UserPromptSubmit, PreToolUse, PostToolUse, PostToolUseFailure → `tool_failure`, Stop → `last_assistant_message` (and `turn_end`), PostCompact → `compaction_summary`, SessionEnd (capture only, 1.5 s shared budget) | plain stdout on SessionStart when `source` is `startup`, `clear`, or `compact`; nothing on `resume` or `fork` (transcript replay); plain stdout on UserPromptSubmit | 10,000 characters per value | oboete-owned handlers (`"oboete": true`) merged into `~/.claude/settings.json`; timeouts 12 s on injection hooks, 3 s on capture hooks; `claude mcp add oboete -- "<node>" "<bundle>" mcp` |
-| Codex CLI | SessionStart, UserPromptSubmit, PreToolUse, PostToolUse, Stop, SessionEnd (1 s default, capture only) | `hookSpecificOutput.additionalContext` on SessionStart with matcher `startup\|clear\|compact` (verified enum; `resume` excluded) and on UserPromptSubmit; `additionalContextLimit = 0` | provider context, no spill | `~/.codex/hooks.json` handlers; managed block in `~/.codex/config.toml` with `[hooks.state."<abs path>:<event>:<group>:<handler>"] trusted_hash = "sha256:<hex of canonical handler json>"` and `[mcp_servers.oboete]` |
-| Grok Build | SessionStart (`source: "new"` when headless; resume value per R13 probe), UserPromptSubmit, PreToolUse, PostToolUse, PostToolUseFailure, Stop (`reason: end_turn` only), SessionEnd | FR-045 state machine below | 10,000 characters (silent clip) | `~/.grok/hooks/oboete.json` with explicit `timeout` per hook (12 s injection, 3 s capture); handlers deduplicated against the Claude compat layer; MCP registration per R13 probe (blocked for FR-030 if the probe fails) |
+| Codex CLI | SessionStart, UserPromptSubmit, PreToolUse, PostToolUse, Stop, PostCompact → `compaction_summary` (field per R13 probe), SessionEnd (1 s default, capture only) | `hookSpecificOutput.additionalContext` on SessionStart with matcher `startup\|clear\|compact` (verified enum; `resume` excluded) and on UserPromptSubmit; `additionalContextLimit = 0` | provider context, no spill | `~/.codex/hooks.json` handlers; managed block in `~/.codex/config.toml` with `[hooks.state."<abs path>:<event>:<group>:<handler>"] trusted_hash = "sha256:<hex of canonical handler json>"` and `[mcp_servers.oboete]` |
+| Grok Build | SessionStart (`source: "new"` when headless; resume value per R13 probe), UserPromptSubmit, PreToolUse, PostToolUse, PostToolUseFailure, PermissionDenied (payload per R13 probe), Stop (`reason: end_turn` only) → `last_assistant_message` from the verified `lastAssistantMessage` field, PostCompact → `compaction_summary` (field per R13 probe), SessionEnd | FR-045 state machine below | 10,000 characters (silent clip) | `~/.grok/hooks/oboete.json` with explicit `timeout` per hook (12 s injection, 3 s capture); handlers deduplicated against the Claude compat layer; MCP registration per R13 probe (blocked for FR-030 if the probe fails) |
 | Pi | `session_start` (from `session_start`), `input` (source filter), `tool_result` (input + content + isError), `agent_settled` → `turn_end` + `last_assistant_message` when available, `session_shutdown` (reason `quit|reload|new|resume|fork`), compaction event (R13 probe) | `before_agent_start` returns the pack produced by a bounded child `oboete inject` (`AbortSignal.timeout`: 8 s at session start while a summary is pending, 300 ms otherwise); capture through a detached child `oboete capture --invocation <id>` that writes a two-phase acknowledgement (`<invocation>.started` before reading stdin → `.done`); the extension itself only try/catches, generates invocation ids, spawns, and counts failures in memory (message code only), handing the counters to the next child it spawns as `--prior-failures`; no in-process file or network write (FR-007; recording guarantee per amendment A8 and the R13 Pi error-surface probe) | provider context | `~/.pi/agent/extensions/oboete.js` loader importing `piExtension` from the bundle; tools call `oboete search\|timeline\|get --json` as child processes |
 
 ### Grok Build deferred delivery (FR-045)
@@ -84,22 +84,24 @@ memories counted for the conversation.
    record already exists for the conversation (no tool call happened since), the new pack merges
    into it: existing `planned` items stay, new items are added under the same budget, and the
    record gets a new `pack_hash`. One pending record per conversation at any time.
-2. On `PreToolUse`, if the record has no outstanding attempt, the hook emits the pending pack as
-   `additionalContext`, adds the `tool_call_id` to the record's attempt set
-   (`injection_attempts`), and marks the record `attempted`. Grok delivers it with the results of
-   the batch once the call has run (verified wording); a denied call never runs and delivers
-   nothing. A `PreToolUse` that arrives while an attempt is outstanding (a parallel batch, or a
-   deny not yet observed) attaches nothing, so the model can never receive two copies.
-3. On `PostToolUse` or, if the R13 probe shows the context survives a failed call,
-   `PostToolUseFailure` for a `tool_call_id` in the attempt set, the record becomes `emitted` and
-   its items `included`. On `PostToolUse` with a `pending` record and an empty attempt set
-   (oboete's own `PreToolUse` handler did not complete: timeout or crash) the hook emits the pack
-   from `PostToolUse` and marks it `emitted` the same way.
-4. At `PostToolBatch` (verified event; payload per R13 probe), and on `PermissionDenied` for an
-   attempted call when that payload is verified, every attempt of the batch that was not
-   confirmed is closed and the record returns to `pending`, so the next batch's first
-   `PreToolUse` attaches it again. If the R13 probe shows a failed call drops the context,
-   `PostToolUseFailure` closes that attempt the same way.
+2. On every `PreToolUse` of the turn while the record is not yet `emitted`, the hook emits the
+   pending pack as `additionalContext` and appends the `tool_call_id` to
+   `injections.attempted_tool_call_ids`. Grok delivers it with the results of the batch once the
+   call has run (verified wording); a denied call never runs and delivers nothing. Attaching on
+   every call until confirmation is what makes "the first call that actually runs" (FR-045) hold
+   whatever the order of denies and executions inside a parallel batch; the price is that two
+   calls of one parallel batch may both carry the pack. Whether Grok delivers `additionalContext`
+   once per batch or once per call is the R13 probe; per-call duplication inside a single batch is
+   accepted as documented (A13) because delivery outranks de-duplication for a pack of at most
+   10,000 characters, and the ledger records one `emitted` regardless.
+3. On `PostToolUse` for any attempted `tool_call_id` (and on `PostToolUseFailure` if the R13
+   probe shows the context survives a failed call) the record becomes `emitted` and its items
+   `included`. On `PostToolUse` with a `pending` record and no attempted id (oboete's own
+   `PreToolUse` handler did not complete: timeout or crash) the hook emits the pack from
+   `PostToolUse` and marks it `emitted` the same way.
+4. No other event changes the record; a denied call simply produces no `PostToolUse`, and the
+   next `PreToolUse` attaches the pack again (step 2). `PermissionDenied` is captured for
+   diagnostics only (payload per R13 probe).
 5. At `Stop` (`end_turn`) a record still `pending` or `attempted` becomes `omitted` with reason
    `no_tool_call` when oboete observed no tool hook of any kind in the turn, otherwise
    `not_delivered` (a deny by an earlier handler stops the chain before oboete runs, so "all
@@ -156,15 +158,17 @@ spool).
 ## Hook process rules and SLAs
 
 - Always exit `0`; never print anything but the pack to stdout; log to `~/.oboete/logs/hook.log`.
-- Every hook has an absolute deadline measured from process start and passes the remaining
-  budget to each stage (parse, detector, database, spool). Capture hooks (`PreToolUse`,
+- Every hook has an absolute deadline measured from process start. Capture hooks (`PreToolUse`,
   `PostToolUse`, `PostToolUseFailure`, `Stop`, `PostCompact`, `SessionEnd`, Pi capture child):
-  300 ms; busy timeout 150 ms; storage failure or an exhausted budget after the detector →
-  spool; a budget exhausted before the detector completes → metadata-only row
-  (`classification_state = failed`, reason `deadline`), never unsanitized content. Content above
-  the detector's verified bound (R13, initial 256 KB) is stored metadata-only without running
-  the detector. Tests assert the maximum time per event kind and 100% in-deadline exits under
-  every fault; the replay p99 is an additional SC-002 measurement, not the guarantee.
+  300 ms. The detector runs in a `worker_threads` Worker that the main thread terminates at a
+  hard cutoff (deadline minus a 40 ms write margin); a terminated detector yields a
+  metadata-only row (`classification_state = failed`, reason `deadline`), never unsanitized
+  content; a storage failure after the detector → spool; busy timeout 150 ms. The full detector
+  must finish a 1 MB payload inside the cutoff on Node 22.16 (R13 probe); if it cannot, no
+  smaller bound is introduced silently: the capture lane is blocked and the measured bound goes
+  to the owner as A14. Tests assert process wall time per event kind (worst-case 1 MB input and a
+  detector that never returns) and 100% in-deadline exits under every fault; the replay p99 is an
+  additional SC-002 measurement, not the guarantee.
 - Injection hooks (`SessionStart`, `UserPromptSubmit`, Grok delivery hooks, Pi inject child):
   300 ms when the previous summary is ready; at session start only, up to 8 s while it is
   pending, then the latest raw activity labelled `summary pending`.

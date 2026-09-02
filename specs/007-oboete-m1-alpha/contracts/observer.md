@@ -6,11 +6,20 @@ both identically except for `degraded_reason`.
 ## Batch composition and the outbound boundary
 
 After classification, a session batch is split by destination; batch identity is
-(session, through event, destination, purpose). Purpose `observations` produces memories. Purpose
-`session_end` is the session-end batch: with a local observer it produces observations and the
-session summary in **one** provider call over all non-secret rows; with a remote preset the remote
-`observations` batch is the one provider call and the summary is produced by the fallback with no
-call. Session end therefore costs exactly one provider call (Clarifications):
+(session, through event, destination). Every batch produces observations only. The session
+summary is never a provider output in M1: at session end the worker derives it deterministically
+from the session's rows and the observations just applied (rules below), so session end costs
+exactly one provider call (the observations batch) and the summary has one source. The matrix:
+
+| configuration | session end provider calls | observations from | summary from |
+|---|---|---|---|
+| remote preset only | 1 (remote batch, eligible rows) | remote batch + fallback batch for the remaining rows | deterministic summary |
+| local preset only | 1 (local batch, non-secret rows) | local batch | deterministic summary |
+| remote + local | 1 remote (eligible) + 1 local (remaining rows); the Clarifications' "one call" is per batch (FR-010) | both, disjoint rows | deterministic summary |
+| no preset / degraded | 0 | fallback batch | deterministic summary |
+
+Rows are assigned to exactly one destination, so no observation is generated twice (tested with
+a remote preset by asserting that the fallback batch of the same range contains no eligible row):
 
 | destination | receives | when |
 |---|---|---|
@@ -24,9 +33,7 @@ security-owned) assembles every outbound request and applies `destination_rules`
 `citations`, and repository metadata (a remote request carries an opaque `repo_ref` = the repository
 id, never the normalized remote or path). Tests assert the actual request body of a mixed batch.
 
-An `observations` batch ignores any `session_summary` field in the output; a `session_end` batch
-reads both, so the shared schema below serves both purposes without double generation. The
-producing agent is provenance only and never appears in the request. Each memory records its source rows in `memory_sources` and takes the strictest sensitivity of
+The producing agent is provenance only and never appears in the request. Each memory records its source rows in `memory_sources` and takes the strictest sensitivity of
 those rows.
 
 ## Input (worker → summarizer)
@@ -58,21 +65,26 @@ tool inputs and outputs by recency; `observation_batches.excerpted` records it.
       "citations": { "files_read": [], "files_modified": [], "commits": [] },
       "classification": { "decision": "add | update | delete | noop", "target": "<nearby id or null>", "reason": "<short reason>" }
     }
-  ],
-  "session_summary": { "request": "", "investigated": "", "learned": "", "completed": "", "next_steps": "" }
+  ]
 }
 ```
 
-`observations` is read for both purposes; `session_summary` only for purpose `session_end`. The
-request carries `"purpose"` so the prompt asks for the right output. A `session_summary` memory
-is serialized with the five fields as labelled lines in `body`, `type = session_summary`,
-sensitivity = strictest source row, and the batch's `degraded_reason`.
+Every observation must carry `source_event_ids`, a non-empty subset of the `id` values supplied
+in `events`; an observation citing an unknown id is rejected as `unusable_output` (one retry).
+
+**Session summary (deterministic, worker-side, no provider call)**: `type = session_summary`,
+`title` = the session's first prompt truncated to 120 characters, `body` = five labelled lines:
+`request` = the first prompt truncated to 200 characters; `investigated` = the distinct files read
+(up to 20 paths); `learned` = the titles of the observations applied for the session (up to 10);
+`completed` = the distinct files modified with tool counts (up to 20); `next_steps` = the last
+unfinished turn's prompt truncated to 200 characters. Sensitivity = strictest source row;
+`degraded_reason` = NULL (this is the designed path, not a degradation); language = the dominant
+script of the copied text, which is preserved verbatim. SC-004 (three seeded facts recalled with
+no credentials) is asserted against the fallback observations plus this summary.
 
 Worker rules after either path: the detector runs again on every title and body; the
-directive-corpus check rejects bodies that read as instructions; the resurrection guard runs
-first (a candidate whose source events' content hashes intersect a tombstone's
-`memory_sources.source_content_hash` set is suppressed); sensitivity on `add` = strictest source
-row and detector result, on `update` = max(target's sensitivity, every source row, detector
+directive-corpus check rejects bodies that read as instructions; sensitivity on `add` = strictest
+source row and detector result, on `update` = max(target's sensitivity, every source row, detector
 result), fixed in the apply transaction so a `local_only` or `private` target can never be
 relaxed by an eligible update (tested against the outbound body); `material_hash` and `content_hash` come from the shared identity helper (`material_hash` =
 sha256(type, normalized title, normalized body), `content_hash` = sha256(repo_id, material_hash);
@@ -80,8 +92,11 @@ the same function serves import and tombstones); `target` must be
 one of the supplied `nearby` ids from the same repository, otherwise the decision is `add`; a hash
 matching a tombstoned memory suppresses the insert and is recorded for `why`; `update` sets
 `valid_to` and `superseded_by`; `delete` tombstones the target only with a non-empty `reason`; the
-observer answers in the dominant language of the input (FR-014) and the worker compares the
-dominant script of the output with the input.
+observer answers in the dominant language of the input (FR-014); the worker compares the
+dominant script of every title and body with the input's, retries once on mismatch, and on a
+second mismatch discards the output and routes the batch to the fallback with
+`language_mismatch` (fallback records copy input text verbatim, so their language is the
+input's); a provider fixture returning English for Japanese input verifies this.
 
 ## Provider presets
 
@@ -113,29 +128,33 @@ the same zod schema; failure counts as `unusable_output`.
 4. **Exhaustion persistence**: a 3036 result writes `provider_usage.exhausted_at` (idempotent,
    monotonic, keyed by the reservation id) in its own transaction that is **not** fenced by the
    lease, so the signal survives a lost lease.
-5. **Journal**: a successful response is written to `observation_batches.response_json` in its own
-   transaction before apply; a reclaimed batch with a journaled response is applied from it and
-   makes no new call (at-least-once attempts, exactly-once applied effects, A11).
-6. Apply results in a separate transaction fenced by `owner_token`; zero rows changed means the
-   lease was lost and the result is discarded (the exhaustion signal from step 4 is not).
-7. **Consent**: the consent tuple hash is recomputed from live configuration before step 1 and
+5. Apply: memory mutations (add, update, delete) and `state = applied` are written in **one**
+   transaction fenced by `owner_token`; zero rows changed means the lease was lost and the whole
+   result is discarded (the exhaustion signal from step 4 is not). A worker that dies after the
+   response and before this transaction leaves the batch `running`; the next worker reclaims it
+   after 120 s and makes a new call (at-least-once attempts, exactly-once applied effects, A11).
+6. **Consent**: the consent tuple hash is recomputed from live configuration before step 1 and
    again immediately before step 2; a mismatch makes no call and degrades with `consent_changed`.
-8. Neurons: `cf-ai-neurons` header when exposed, else tokens × (5,500 / 36,400 per million).
+7. Neurons: `cf-ai-neurons` header when exposed, else tokens × (5,500 / 36,400 per million).
 
 ## Rule-based fallback
 
-Deterministic, no network, language-neutral, emits records rather than prose: one `change`
-observation per cluster of files modified in a turn (title = file list; body = tool names, file
-paths, line counts), one `bugfix` or `discovery` per `tool_failure` followed by a successful retry
-of the same tool (body = tool name, first error line truncated to 200 characters, retried command
-name), and one `decision` per `last_assistant_message` or `compaction_summary` (body = the first
-sentence, truncated to 200 characters; no agent name anywhere). For purpose `session_end` the
-fallback also produces the summary deterministically: `request` = the session's first prompt
-truncated to 200 characters; `investigated` = the distinct files read; `learned` = the titles of
-the observations produced for the session; `completed` = the files modified with tool counts;
-`next_steps` = the last unfinished turn's prompt truncated to 200 characters. SC-004 (three seeded
-facts recalled with no credentials) is asserted against this path. Verbatim tool output is never
-placed in a body. Classification: resurrection guard (source content hashes) or exact `content_hash` match on a
-tombstoned row → suppressed, on an active row → `noop`, otherwise `add`; the fallback never emits
-`update` or `delete`. `degraded_reason` is
-set by the worker.
+Deterministic, no network, copies input text verbatim (so the language is the input's), emits
+records rather than prose, at most 20 observations per batch, every field of the schema filled by
+rule:
+
+| record | when | title | body | concepts | citations | classification |
+|---|---|---|---|---|---|---|
+| `change` | per turn with file modifications | the modified paths joined by `, ` (<= 120 chars) | one line per tool call: `<tool> <path> (+<added>/-<removed>)` | `what-changed` | `files_modified` = the paths; `commits` = commit ids seen in tool output | see below |
+| `bugfix` | a `tool_failure` followed by a successful call of the same tool in the same turn | `<tool>: <first error line truncated to 80>` | first error line (200) + the successful call's first line (200) | `problem-solution` | `files_modified` of the retry | see below |
+| `discovery` | a `tool_failure` with no successful retry | same as `bugfix` | first error line (200) | `gotcha` | `files_read` of the failed call | see below |
+| `decision` | per `last_assistant_message` or `compaction_summary` | first sentence (120) | first paragraph (2,000), verbatim | `why-it-exists` | none | see below |
+
+Fact retention for SC-004: the three seeded facts appear in prompts and tool outputs; the
+`decision` record keeps the first paragraph of `last_assistant_message` verbatim and the
+`change` record keeps every modified path, which is where the fixture plants them.
+`classification.reason` = `rule:<record>`; decision = exact `content_hash` match on a tombstoned
+row → suppressed, on an active row → `noop`, otherwise `add`; the fallback never emits `update`
+or `delete`. `degraded_reason` is set by the worker (`no_provider`, `unreachable`, ...) and is
+NULL only for the rows a remote batch could not take by design (local-only rows next to a healthy
+remote preset), which are labelled `rule_based` instead.

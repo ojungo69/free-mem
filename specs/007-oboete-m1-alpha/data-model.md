@@ -40,7 +40,9 @@ tables are `STRICT`; FTS5 virtual tables cannot be. Every write from the worker 
 | started_at, ended_at | INTEGER | |
 | status | TEXT | `active`, `ended` |
 | turn_count | INTEGER | |
-| latest_summary_memory_id | TEXT | set once by the local-path session-end batch (R10) |
+| latest_summary_memory_id | TEXT | set once by the worker's deterministic session summary at session end (R10) |
+| context_epoch | INTEGER | authoritative epoch of the conversation root: 0 at start, +1 per compaction (A12); stored on the root session row |
+| last_compaction_event_id | TEXT | the compaction event that produced the current epoch; a `PostCompact` / `SessionStart source=compact` whose event id equals it does not increment again (idempotent) |
 
 ## turns
 
@@ -77,21 +79,19 @@ Indexes: (session_id, captured_at), (expires_at), (batch_id).
 | id | TEXT PK | |
 | repo_id, session_id | TEXT | |
 | through_event_id | TEXT | |
-| purpose | TEXT | `observations`, `session_end` (observations + summary in one local call, or fallback summary when the remote batch is the session's one call) |
 | destination | TEXT | `remote_observer`, `local_observer`, `fallback` (batch split by sensitivity, R10) |
 | trigger | TEXT | `ten_turns`, `session_end`, `retention` (forced before purge) |
 | state | TEXT | `pending`, `running`, `applied`, `fallback` |
 | owner_token | TEXT | worker that claimed it; reclaimable after 120 s when the lease changed hands |
 | provider_attempts | INTEGER | incremented per HTTP attempt with its reservation |
 | last_reservation_id | TEXT | reservation of the most recent attempt |
-| response_json | TEXT | journaled provider response, written before apply; a reclaimed batch with a journal is applied without a new call |
-| degraded_reason | TEXT | `no_provider`, `unreachable`, `unusable_output`, `daily_cap`, `provider_exhausted`, `provider_paid`, `auth_failed`, `consent_changed`, `model_alias`, `timeout` |
+| degraded_reason | TEXT | `no_provider`, `unreachable`, `unusable_output`, `language_mismatch`, `daily_cap`, `provider_exhausted`, `provider_paid`, `auth_failed`, `consent_changed`, `model_alias`, `timeout`, `rule_based` |
 | excerpted | INTEGER | input excerpted to 12,000 characters (FR-015) |
 | claimed_at, completed_at | INTEGER | |
 
-UNIQUE (session_id, through_event_id, destination, purpose): a remote batch and a fallback batch
-over the same range coexist, the summary batch never collides with them, and applying any of them
-twice is impossible.
+UNIQUE (session_id, through_event_id, destination): a remote batch and a fallback batch over the
+same range coexist with disjoint rows, and applying either twice is impossible; memory mutations
+and `state = applied` commit in one fenced transaction.
 
 ## memories
 
@@ -128,7 +128,6 @@ Indexes: (repo_id, deleted_at, pinned_at), (repo_id, valid_to), (repo_id, review
 | memory_id, raw_event_id | TEXT | index on memory_id |
 | citation_kind | TEXT | `file_read`, `file_modified`, `commit`, NULL |
 | citation_value | TEXT | path or commit id |
-| source_content_hash | TEXT | content hash of the source raw event, kept after the event expires; indexed; the resurrection guard suppresses a candidate whose source hashes intersect a tombstoned memory's set |
 | source_agent | TEXT | provenance only |
 
 ## memories_fts, memories_fts_cjk
@@ -162,7 +161,8 @@ outbound observer request (`observer/request.ts`), injection, CLI, MCP, viewer.
 | kind | TEXT | `session_start`, `prompt`, `grok_deferred` |
 | channel | TEXT | e.g. `claude:SessionStart`, `codex:UserPromptSubmit`, `grok:PreToolUse`, `grok:PostToolUse`, `pi:before_agent_start` |
 | state | TEXT | `built`, `emitted`, `omitted`; Grok only: `pending`, `attempted` |
-| context_epoch | INTEGER | 0 at the root session, +1 per compaction (A12) |
+| context_epoch | INTEGER | copied from the root session's authoritative epoch when the pack is built (A12) |
+| attempted_tool_call_ids | TEXT | Grok: JSON array of every `tool_call_id` the pack was attached to |
 | pack_hash | TEXT | recognized on capture (FR-021) |
 | char_budget, chars_used | INTEGER | |
 | degraded_reason | TEXT | `summary_pending`, `index_unavailable`, `empty`, `window_unknown`, `no_tool_call`, `not_delivered`, plus batch reasons |
@@ -175,6 +175,7 @@ outbound observer request (`observer/request.ts`), injection, CLI, MCP, viewer.
 | id | INTEGER PK | |
 | injection_id | TEXT FK | |
 | conversation_id | TEXT | copied from the injection so the uniqueness index is local to this table |
+| context_epoch | INTEGER | copied from the injection |
 | source_kind | TEXT | `memory`, `raw_activity` (summary-pending fallback), `session_summary` |
 | memory_id | TEXT | NULL for raw activity |
 | raw_event_id | TEXT | NULL for memories |
@@ -191,20 +192,6 @@ when delivery is confirmed (immediately for stdout channels; at `PostToolUse` fo
 pack that is never delivered does not consume the memory for the conversation. A pending Grok
 record that is rebuilt on a later prompt merges: items already `planned` stay, new items are added
 under the same budget, and the merged pack gets a new `pack_hash`.
-
-## injection_attempts (Grok)
-
-| column | type | notes |
-|---|---|---|
-| injection_id | TEXT FK | |
-| tool_call_id | TEXT | PK with injection_id |
-| batch_id_native | TEXT | Grok batch identifier when the `PostToolBatch` probe provides one |
-| state | TEXT | `outstanding`, `confirmed`, `closed` |
-| created_at, resolved_at | INTEGER | |
-
-A record attaches the pack only when it has no `outstanding` attempt; `PostToolUse` (and
-`PostToolUseFailure` when the probe shows delivery) confirms; `PostToolBatch` and a verified
-`PermissionDenied` close unconfirmed attempts and return the record to `pending`.
 
 ## worker_lease (single row, seeded by 0001)
 
@@ -290,6 +277,7 @@ classifies it).
   `unreviewed` → `reviewed`.
 - worker_lease: released → held (fenced claim) → released (atomic with the empty-queue check) |
   stale (missed heartbeats, clock jump) → reclaimed.
-- injections.state: `built` → `emitted` | `omitted`; Grok: `pending` → `attempted` (attempt
-  outstanding) → `emitted` (confirmed) | `pending` (batch closed unconfirmed) → `omitted` (turn
-  end); items `planned` → `included` on confirmation.
+- injections.state: `built` → `emitted` | `omitted`; Grok: `pending` → `attempted` (attached on
+  every `PreToolUse` until confirmed) → `emitted` (a `PostToolUse` for an attempted call) |
+  `omitted` (turn end); items `planned` → `included` on confirmation.
+- sessions.context_epoch: incremented once per distinct compaction event id.
