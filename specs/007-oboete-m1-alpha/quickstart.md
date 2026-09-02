@@ -52,7 +52,9 @@ measured on both the ready path (under 300 ms) and the pending path (under 8 s);
 under 150 MB; database growth per 1,000 events; zero secret corpus items in the database, spool,
 logs, packs, or outbound bodies; zero directive corpus phrases in stored memories, accepted
 observer output, or packs (they legitimately remain in raw events and the spool); at least 90% of
-seeded Japanese and English facts retrieved; zero duplicate injections per conversation.
+seeded Japanese and English facts retrieved; zero duplicate injections per (conversation, context
+epoch); on Grok, `why` shows one confirmed delivery per pack (or, only under an approved A15, the
+counted per-call deliveries of a parallel batch).
 
 ## Failure injection (User Story 2)
 

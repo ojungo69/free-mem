@@ -42,7 +42,8 @@ tables are `STRICT`; FTS5 virtual tables cannot be. Every write from the worker 
 | turn_count | INTEGER | |
 | latest_summary_memory_id | TEXT | set once by the worker's deterministic session summary, in the same transaction as the summary insert; every worker run reconciles `ended` sessions whose batches are all terminal and whose id is NULL (R10) |
 | context_epoch | INTEGER | authoritative epoch of the conversation root: 0 at start, +1 per compaction (A12); stored on the root session row |
-| last_compaction_key | TEXT | (native session id, turn ordinal) of the authoritative compaction event that produced the current epoch; one authoritative event per agent (Claude Code and Codex `SessionStart source=compact`, Grok `PostCompact`, Pi per R13), so a re-delivered or companion hook with the same key does not increment and a compaction in a later turn does |
+| last_compaction_key | TEXT | sha256 of the compaction's stable native value (Claude Code `compact_summary` text; Codex, Grok, Pi per the R13 probe) from the one authoritative compaction event per agent (Claude Code and Codex `SessionStart source=compact`, Grok `PostCompact`, Pi per R13); a re-delivered or companion hook with the same key does not increment, a second compaction with a different value does even inside one turn |
+| summary_state | TEXT | `pending` (session ended, summary not yet written), `done` (`latest_summary_memory_id` set), `no_content` (no non-secret rows: no memory row is created and nothing is injected, per the spec edge case); reconciliation targets `pending` only |
 
 ## turns
 
@@ -162,7 +163,8 @@ outbound observer request (`observer/request.ts`), injection, CLI, MCP, viewer.
 | channel | TEXT | e.g. `claude:SessionStart`, `codex:UserPromptSubmit`, `grok:PreToolUse`, `grok:PostToolUse`, `pi:before_agent_start` |
 | state | TEXT | `built`, `emitted`, `omitted`; Grok only: `pending`, `attempted` |
 | context_epoch | INTEGER | copied from the root session's authoritative epoch when the pack is built (A12) |
-| attempted_tool_call_ids | TEXT | Grok: JSON array of every `tool_call_id` the pack was attached to |
+| attempts_json | TEXT | Grok: JSON array of `{ tool_call_id, outcome: attached \| confirmed \| failed \| denied \| unresolved, at }`, one entry per attachment, updated by `PostToolUse`, `PostToolUseFailure`, `PermissionDenied`, and `Stop`; persists after raw events expire so `why` reproduces a mixed deny/success batch (tested after purge) |
+| delivery_count | INTEGER | number of attempts whose outcome is `confirmed` (1 on a batch-level channel; may exceed 1 only under A15) |
 | pack_hash | TEXT | recognized on capture (FR-021) |
 | char_budget, chars_used | INTEGER | |
 | degraded_reason | TEXT | `summary_pending`, `index_unavailable`, `empty`, `window_unknown`, `no_tool_call`, `not_delivered`, plus batch reasons |

@@ -76,10 +76,14 @@ tool inputs and outputs by recency; `observation_batches.excerpted` records it.
 values supplied in `events` (same batch, same repository); an observation citing an unknown,
 empty, or foreign id is rejected as `unusable_output` (one retry). The fallback fills it by rule
 (the events of the turn for `change`, the failed and the retried call for `bugfix`, the failed
-call for `discovery`, the message event for `decision`). **Output budget**: every title is
-trimmed to 120 characters and every body to 2,000 characters by a deterministic order (paths are
-shortened to their last 60 characters, lists are cut from the end, and an `... (+N omitted)`
-suffix records the omission); citations are capped at 20 paths and 10 commits per observation.
+call for `discovery`, the message event for `decision`). **Output budget and schema caps** (shared zod schema, both paths): at most 20 observations
+per batch, `source_event_ids` at most 50, each citation string at most 512 characters, at most 20
+paths and 10 commits per observation; the HTTP response body is capped at 1 MB (larger →
+`unusable_output`), which bounds worker memory. Every title is trimmed to 120 characters and every
+body to 2,000 characters by a deterministic order (display paths shortened to their last 60
+characters, lists cut from the end, an `... (+N omitted)` suffix recording the omission); the
+full citation path is kept in `memory_sources.citation_value` for the staleness check, the
+shortened form appears only in bodies.
 
 **Session summary (deterministic, worker-side, no provider call)**: `type = session_summary`,
 `title` = the session's first prompt truncated to 120 characters, `body` = five labelled lines
@@ -90,11 +94,13 @@ tool counts (up to 20); `next_steps` = the last unfinished turn's prompt (200). 
 strictest source row. `degraded_reason` = the most severe reason among the session's batches
 (NULL only when every batch was applied from a provider), so a no-credentials session yields a
 summary labelled `no_provider` and the session-start pack shows `Degraded:` (SC-004). **Durable
-completion**: an `ended` session whose batches are all terminal and whose
-`latest_summary_memory_id` is NULL is reconciled by every worker run; the summary insert and the
-id update commit in one fenced transaction, so a crash between the last batch and the summary
-cannot leave the session without one. A session with no non-secret rows gets a summary whose five
-lines are empty and `degraded_reason = no_content`, which is the terminal state. SC-004 (three
+completion**: an `ended` session with `summary_state = pending` whose batches are all terminal
+is reconciled by every worker run; the summary insert, `latest_summary_memory_id`, and
+`summary_state = done` commit in one fenced transaction, so a crash between the last batch and
+the summary cannot leave the session without one. A session with no non-secret rows is set to
+`summary_state = no_content` with **no memory row and no injection** (spec edge case "nothing is
+produced, nothing is sent"); a test asserts the absence in the database and in the next
+session-start pack and that reconciliation does not revisit it. SC-004 (three
 seeded facts recalled with no credentials) is asserted against the fallback observations plus
 this summary.
 
@@ -171,6 +177,7 @@ Fact retention for SC-004: the three seeded facts appear in prompts and tool out
 `change` record keeps every modified path, which is where the fixture plants them.
 `classification.reason` = `rule:<record>`; decision = exact `content_hash` match on a tombstoned
 row → suppressed, on an active row → `noop`, otherwise `add`; the fallback never emits `update`
-or `delete`. `degraded_reason` is set by the worker (`no_provider`, `unreachable`, ...) and is
-NULL only for the rows a remote batch could not take by design (local-only rows next to a healthy
-remote preset), which are labelled `rule_based` instead.
+or `delete`. `degraded_reason` is set by the worker: a provider failure reason (`no_provider`,
+`unreachable`, ...) when the fallback replaced a failed provider call, `rule_based` when the rows
+went to the fallback by design (local-only rows next to a healthy remote preset); NULL is reserved
+for provider output.
