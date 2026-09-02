@@ -70,17 +70,19 @@ approval before implementation starts (task 0).
   hex, 4.0 base64 >= 32 chars; never on bare words, SHAs, UUIDs, paths); replace hits with
   `[REDACTED:<rule>]`; store `local_only` or `secret`. The worker runs the same detector on every
   candidate memory before insert and decides promotion. **Payload size**: the hook reads at most
-  1 MB of any single text field; a larger field is stored as a redacted head (64 KB) plus tail
-  (16 KB) with a `truncated_bytes` marker (spec edge case amended; the summarizer input bound stays
-  12,000 characters). **Detector or config failure** (secretlint throws, `.oboete.toml` malformed,
+  1 MB from stdin (Pi: from the extension's serialized event); when the cap is hit the payload is
+  not parsed, and the hook stores a `oversized` event holding the redacted first 64 KB as opaque
+  text, `truncated_bytes`, and the session and event name taken from the environment or the hook
+  argument (spec edge case amended, A7; the summarizer input bound stays 12,000 characters). The
+  replay fixture includes payloads at and above the cap. **Detector or config failure** (secretlint throws, `.oboete.toml` malformed,
   bundle mismatch): fail closed, store metadata only with `classification_state = failed`, write a
   diagnostic, exit 0; the unsanitized text is never written to the spool.
 - **Rationale**: FR-018 and Principle III require redaction before storage; `@secretlint/node` costs
   120-145 ms and is bundle-hostile; secretlint has no entropy rule; content-size-dependent time must
   be bounded to keep the 300 ms SLA measurable.
-- **Reviewer changes**: two-stage draft violated FR-018; gated entropy; size cap and fail-closed
+- **Reviewer changes**: two-stage draft violated FR-018; gated entropy; stdin cap and fail-closed
   detector failures.
-- **Deviation**: Principle VI names `@secretlint/node` (Complexity Tracking #3); the size cap
+- **Deviation**: Principle VI names `@secretlint/node` (Complexity Tracking #3); the stdin cap
   amends the spec's "stored whole" edge case (Complexity Tracking #16).
 
 ## R5. Lexical retrieval
@@ -103,8 +105,10 @@ approval before implementation starts (task 0).
   or more than 60 s in the future is stale. Batches carry the owner token; a stale worker's
   `running` batch is reclaimed only after takeover and only if `claimed_at` is older than 120 s.
   **Reservations are per HTTP attempt**: before every attempt (first call and any retry) a short
-  transaction checks the cap and `exhausted_at`, increments `provider_usage.calls` and
-  `observation_batches.provider_attempts`, and commits; a 429/3036 result is persisted in its own
+  transaction checks the daily cap (FR-012: 150 attempts per UTC day summed over every preset, so
+  switching presets cannot exceed it; attempt 150 is allowed, attempt 151 refused) and
+  `exhausted_at`, increments `provider_usage.calls` and `observation_batches.provider_attempts`,
+  and commits; a 429/3036 result is persisted in its own
   transaction keyed by the reservation (`provider_usage.exhausted_at`, monotonic, not fenced by the
   lease) so the signal survives a lost lease; the batch apply is fenced separately. Spool entries are
   one sanitized file per event (write-then-rename). Retention: rows past `expires_at` in `applied`
@@ -126,12 +130,17 @@ approval before implementation starts (task 0).
   `unknown` invocation for doctor, never to choose an adapter. **Conversation identity**:
   `sessions.conversation_id` is the oboete id of the root session; on Claude Code `resume` (same
   `session_id`) and Codex `resume` the root is the existing session; `fork` and Grok `new` start a
-  new root; Pi has no resume in M1. **Event identity**: `raw_events.id` = sha256 over the most
-  specific stable native key available in this order: (agent, native session id, tool_call_id or
-  the agent's event id) → (agent, native session id, `prompt_id`, kind) → (agent, native session
-  id, turn ordinal, kind, content_hash, hook `delivery_ordinal` maintained by oboete per session in
-  `runtime_state`); the limits of idempotency for the last form (a re-delivered identical event in
-  the same turn collapses) are recorded in `contracts/agents.md`. Per-agent mapping essentials:
+  new root. Pi supports `resume` and `fork` (`session_shutdown.reason` enum, verified); whether
+  `PI_SESSION_ID` and `session_start` continue across a resume is an R13 probe, and until it
+  passes the Pi adapter treats a session whose native id already exists as a resume of that root.
+  The session-start pack is emitted at most once per conversation except after compaction, which
+  is how FR-024's "not again on resume" holds on every agent, including Pi. **Event identity**:
+  `raw_events.id` = sha256 over the most specific stable native key available in this order:
+  (agent, native session id, kind, tool_call_id or the agent's event id) → (agent, native session
+  id, kind, `prompt_id`) → (agent, native session id, turn ordinal, kind, content_hash). No
+  per-delivery counter enters the key, so an identical re-delivery always collapses; the accepted
+  limit is that two byte-identical events of the last form inside one turn also collapse
+  (recorded in `contracts/agents.md`). Per-agent mapping essentials:
   Claude Code injects at `SessionStart` for `startup`, `clear`, `compact` only and at
   `UserPromptSubmit`; Codex matcher `startup|clear|compact`; Grok Build follows the FR-045 state
   machine; Pi captures `session_start`, `input`, `tool_result`, `agent_settled`, `session_shutdown`
@@ -139,7 +148,7 @@ approval before implementation starts (task 0).
   `PostToolUseFailure` → `tool_failure`.
 - **Reviewer changes**: fixed selectors instead of a `model`-field heuristic (the evidence verifies
   `cwd`, `hook_event_name`, `session_id`, `transcript_path` as universal, not `model`); one
-  conversation-id definition; explicit event-key precedence and `delivery_ordinal` source.
+  conversation-id definition; kind in every event key and no delivery counter; Pi resume probe.
 
 ## R8. Configuration, paths, repository identity, foreign files
 
@@ -174,14 +183,16 @@ approval before implementation starts (task 0).
 ## R10. Summarizer contract, batch composition, egress boundary
 
 - **Decision**: One JSON contract (`contracts/observer.md`). A session batch is split by
-  destination after classification; batch identity is (session, through event, destination) so a
-  remote batch and a fallback batch over the same range coexist. **One request builder applies
+  destination after classification; batch identity is (session, through event, destination,
+  purpose) where purpose is `observations` or `session_summary`, so a remote batch and a fallback
+  batch over the same range coexist and the summary job never collides with them. **One request builder applies
   `destination_rules` to every field of an outbound request**: events, free summaries, nearby
   candidates (remote receives only `eligible` memories), citations, and repository metadata (the
   remote observer receives an opaque repository id, never the normalized remote or path). The
-  session summary is produced exactly once per session end by the local path (local observer if
-  configured, else the fallback) over all non-secret rows, so `sessions.latest_summary_memory_id`
-  has one source; remote batches produce observations only. Classification candidates are the top
+  session summary is a separate `session_summary` batch created once per session end, run by the
+  local path (local observer if configured, else the fallback) over all non-secret rows, so
+  `sessions.latest_summary_memory_id` has one source; `observations` batches ignore any
+  `session_summary` field in provider output and the summary batch ignores `observations`. Classification candidates are the top
   8 same-repository memories from R5 (including tombstones); a provider decision's `target` must
   be one of the supplied ids or it is treated as `add`; the fallback rule is tombstone hash →
   suppressed, active hash → `noop`, else `add`. Fallback bodies are deterministic records (file
@@ -189,22 +200,24 @@ approval before implementation starts (task 0).
   as searchable evidence but is never injected. Degraded reasons: `no_provider`, `unreachable`,
   `unusable_output`, `daily_cap`, `provider_exhausted`, `provider_paid`, `model_alias`, `timeout`,
   `window_unknown`.
-- **Reviewer changes**: nearby and repo metadata leak closed; batch identity; single session
-  summary source; fallback bodies as records; injection of verbatim output removed.
+- **Reviewer changes**: nearby and repo metadata leak closed; batch identity with purpose; single
+  session summary source; fallback bodies as records; injection of verbatim output removed.
 
 ## R11. Fixture, measurement, tests, isolated E2E
 
 - **Decision**: `node:test` on compiled tests; JSONL fixture of native hook payloads replayed through
   the real bundle from synthetic repositories; seeded facts, Japanese/English pairs, synthetic secret
-  corpus, a malicious-directive corpus (`ignore previous instructions` and variants) that must never
-  reach a pack, large-event cases at the R4 cap, detector-throw and malformed `.oboete.toml` cases;
+  corpus, a malicious-directive corpus (`ignore previous instructions` and variants) whose phrases are
+  legitimately present in raw events and the spool but must be absent from accepted observer
+  output, stored memories, and packs (the secret corpus is asserted absent everywhere: database,
+  spool, logs, packs, outbound bodies), large-event cases at the R4 cap, detector-throw and malformed `.oboete.toml` cases;
   p99 of capture hooks; session-start wait measured on ready and pending paths; worker peak RSS via
   `process.resourceUsage().maxRSS`; database growth. Failure matrix: db-missing, busy, corrupt,
   read-only home, ENOSPC, worker kill, provider unreachable/hang/429-3036/403-5035/length/malformed,
   retry at the cap boundary (149 → 150), lease loss after 3036, Pi throw and child hang, clock jump,
   mixed-sensitivity batch (assert the outbound body), tombstone round trip, resume/compact/fork/
   clear, setup repeat/remove, lease steal, pause, Grok success/execution-failure/deny/all-denied/
-  no-tool (assert the number of packs the model received). Migration smoke test on empty and
+  no-tool (assert the number of packs the model received), Pi spawn failure. Migration smoke test on empty and
   previous-version databases on 22.16 and 24.x. Installed size by installing the tarball into an
   empty prefix. **Every probe and E2E run, including the R13 contract probes, runs under the
   isolated `oboete-dogfood` user with its own `HOME`** (Grok Build resolves Claude-compat hooks from
@@ -228,25 +241,39 @@ approval before implementation starts (task 0).
 - **Context window**: a versioned table `docs/research/context-windows.md` (model id → documented
   window, source URL) maintained under R13; the character budget uses the documented window of the
   reported model; when the model is unknown the budget is min(channel cap, the smallest verified
-  window in the table for that agent) and the pack is labelled `window_unknown`; no unverified
-  default is treated as normal.
-- **Export/import**: `oboete-export/1` JSONL; each line carries `content_hash`,
-  `source_session_id`, `source_batch_id`, provenance, and for tombstones the original
-  `content_hash` with an empty body; import validates per line (64 KB) and file (256 MB),
-  recomputes ids and `cjk_bigrams`, verifies `content_hash` against the material when a body is
-  present, unions on `content_hash`, applies the sensitivity lattice `secret > private > local_only
-  > eligible` (the stricter wins), lets tombstones win over active rows, and inserts every active
-  imported row as `local_only` with `review_state = imported` until the worker reclassifies it.
-- **Pi diagnostics**: the in-process extension does only try/catch, bounded child spawn, and a
-  stderr line; the capture child writes an acknowledgement file `~/.oboete/spool/pi-ack/<id>` and
-  diagnostics rows; doctor diagnoses spawn failure or hang from missing acknowledgements and a
-  last-success marker.
+  window in the table for that agent) and the pack is labelled `window_unknown`; when the table
+  has no verified entry for that agent, prompt-submit injection is omitted with `window_unknown`
+  (session-start packs are bounded by the channel cap and still delivered); no guessed value is
+  ever used.
+- **Content identity**: `material_hash` = sha256(type, normalized title, normalized body) is
+  repository-independent; `content_hash` = sha256(repo_id, material_hash). Tombstones keep both.
+- **Export/import**: `oboete-export/1` JSONL; each line carries `material_hash`, `content_hash`,
+  `source_session_id`, `source_batch_id`, provenance, and for tombstones an empty body; import
+  validates per line (64 KB) and file (256 MB), verifies `material_hash` against the body when one
+  is present (mismatch rejects the line), recomputes `content_hash` from the local (possibly
+  `--map-repo`-mapped) repository id and `material_hash` for active rows and tombstones alike,
+  recomputes ids and `cjk_bigrams`, unions on `content_hash`, applies the sensitivity lattice
+  `secret > private > local_only > eligible` (the stricter wins), lets tombstones win over active
+  rows, and inserts every active imported row as `local_only` with `review_state = imported`.
+  **Quarantine**: the shared query function excludes `review_state = imported` from search,
+  injection, MCP, and the viewer's injectable set; the worker runs the detector and the
+  directive check on each imported row and moves it to `unreviewed` (or `secret`), so nothing
+  imported reaches a pack before classification.
+- **Pi diagnostics**: the in-process extension does only try/catch, bounded child spawn, and, on
+  a spawn error or handler throw, one synchronous bounded append (<= 1 KB) to
+  `~/.oboete/logs/pi-extension.log`; the capture child writes `~/.oboete/spool/pi-ack/<id>.started`
+  as its first action and renames it to `<id>.done` on success (two-phase acknowledgement);
+  doctor reports `pi_spawn_failed` from the extension log, `pi_child_hang` from `.started` files
+  older than 30 s, and `pi_child_failed` from the child's own diagnostics rows.
 - **Security-owned modules** (implemented by Claude Code, never delegated): `privacy/*`,
-  `config.ts`, `setup/managed-block.ts`, `setup/write-codex.ts`, `db/queries.ts` (scope and
-  sensitivity filter), `worker/batches.ts` (destination split), `observer/request.ts` (outbound
-  request builder), `observer/classify.ts` (target restriction, update/delete), `injection/*`,
-  `mcp.ts` (repository boundary), `transfer.ts`, `viewer/server.ts` (auth). External lanes get UI
-  components, fixture generators, non-boundary adapters, and build scripts.
+  `capture.ts`, `config.ts`, `repo-identity.ts`, `setup/managed-block.ts`, `setup/consent.ts`,
+  `setup/write-*.ts`, `db/queries.ts` (scope and sensitivity filter), `worker/batches.ts`
+  (destination split), `observer/request.ts` (outbound request builder), `observer/classify.ts`
+  (target restriction, update/delete), `injection/*`, `mcp.ts` (repository boundary),
+  `transfer.ts`, `viewer/server.ts` (auth), and `scripts/build.mjs` (bundle composition). External
+  lanes get UI components, fixture generators, non-boundary adapters (`agents/*.ts` field mapping),
+  retrieval scoring, and test scaffolding; `tasks.md` lists the owned paths as a fence on every
+  delegated task.
 
 ## R13. Verification gate and its failure policy
 
@@ -264,7 +291,10 @@ skeleton (task 1).
 | Codex rollout flush at `PostToolUse`; TUI trust path | grep the just-completed `tool_use_id`; interactive trust run | capture from hook stdin only (rollout is never a required source) |
 | Grok Build user-scoped MCP registration | write configuration, call `search` headless | blocked for Grok's tool surface (FR-030) pending owner amendment |
 | Pi compaction event; Pi tool registration surface | extension probe on 0.84.4 | compaction re-injection on Pi blocked pending amendment; tools blocked likewise |
-| NIM / OpenRouter / Gemini / Anthropic structured output, model ids, auth | one call per preset | text-JSON path (already compliant) |
+| NIM / OpenRouter / Gemini / Anthropic transport, auth header, model id | one call per preset | blocked: the preset is disabled with a doctor reason until the owner amends or the row passes |
+| NIM / OpenRouter / Gemini structured output (`response_format`) | same call, schema requested | text-JSON path for that preset (already compliant) |
+| Grok Build `PreToolUse` context on an executed-but-failed call (`PostToolUseFailure`) | force a failing tool call with an attempted pack; check what the model received | if dropped: the failure branch returns the record to `pending` (already in the state machine); if delivered: `PostToolUseFailure` confirms delivery |
+| Pi `resume` / `fork`: `session_start` firing and `PI_SESSION_ID` continuity | resume and fork a session under the isolated user | if the id does not continue: Pi resume detection is blocked and FR-024/FR-026 on Pi resume go to an owner amendment |
 | Legacy-era MCP server against Claude Code, Codex, Grok clients (raw frames compared) | headless `tools/list` + `tools/call` | blocked for that client pending amendment |
 | Per-model context windows | documented window per model id into `context-windows.md` | `window_unknown` degraded budget (R12) |
 | Real bundle cold start on 22.16 and 24.x (after task 1) | replay harness | blocked; a split entry point needs a constitution amendment first |

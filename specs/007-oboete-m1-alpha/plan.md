@@ -58,7 +58,7 @@ within 2 s (SC-011); setup for four agents under 2 minutes with parallel probes 
 **Constraints**: no resident process; constitution budgets (300 ms capture, 150 MB, 12,000
 characters observer input, 7-day raw retention); provider calls capped at 150 per day, batched,
 with a 60 s deadline each; installed size target 30 MB unpacked including dependencies; packs never
-start with `{`; secrets redacted before the first write; a single text field is read up to 1 MB.
+start with `{`; secrets redacted before the first write; hook stdin is read up to 1 MB.
 
 **Scale/Scope**: one developer, one machine, roughly 1,000 events per day, four agents, tens of
 repositories, memories in the low thousands during M1.
@@ -86,8 +86,8 @@ repositories, memories in the low thousands during M1.
 | A3 | CONSTITUTION Principle VI allow-list | `@secretlint/core` + `@secretlint/secretlint-rule-preset-recommend` replace `@secretlint/node` | PATCH dependency substitution |
 | A4 | CONSTITUTION Principle VI, Product Constraints; spec FR-039 and Assumptions | one data directory `~/.oboete/` relocatable by `OBOETE_HOME`; XDG/AppData split deferred to a later milestone | PATCH wording + spec amendment |
 | A5 | CONSTITUTION Product Constraints (Codex hook location) | Codex handlers live in `~/.codex/hooks.json` with the `[hooks.state]` trust row in `config.toml`, both inside managed blocks | PATCH wording |
-| A6 | spec Assumptions | headless Grok Build is `grok -p` (the verified flag), not `grok --print` | spec correction |
-| A7 | spec edge case "tool output larger than the summarizer's input limit" | a single text field is read up to 1 MB; beyond that the hook stores a redacted head and tail with a `truncated_bytes` marker | spec amendment |
+| A6 | CONSTITUTION Development Workflow (dogfood command list) | headless Grok Build is `grok -p` (the verified flag), not `grok --print` | PATCH wording |
+| A7 | spec edge case "tool output larger than the summarizer's input limit" | the hook reads at most 1 MB of stdin; a larger payload is not parsed and is stored as a redacted 64 KB prefix with `truncated_bytes` | spec amendment |
 
 Implementation starts only after these are approved or rejected in writing; a rejection returns
 the affected decision to research.
@@ -96,57 +96,70 @@ Post-design re-check: no new violation beyond the amendments listed.
 
 ## Requirement traceability
 
-Per-requirement rows; "designed" names the artifact section, "verified" names the test or evidence
-document that fails when the requirement is broken.
+One row per requirement, generated from the FR text in `spec.md`; "designed" names the artifact
+section, "verified" names the test or evidence document that fails when the requirement is broken.
 
-| FR | designed in | verified by |
-|---|---|---|
-| FR-001 capture on all four agents | agents.md capture table; R7 | fixture replay per agent; contract fixtures (R13) |
-| FR-002 no daemon, short-lived hooks | R1, R6; cli.md `hook`/`observe` | process-tree assertion in replay; lease tests |
-| FR-003 normalized event schema | agents.md union; data-model raw_events | zod contract tests; unknown-payload test |
-| FR-004 repository identity | R8; data-model repos | identity tests (remote forms, common-dir, import mapping) |
-| FR-005 eligibility independent of agent | data-model destination_rules; R10 | privacy test "same decision when only the agent changes" |
-| FR-006 append-only acceptance, spool | R1, R6; data-model spool entry | failure matrix db-missing/busy/corrupt/readonly/enospc |
-| FR-007 idempotent re-delivery | R7 event identity | duplicate-delivery test per key form |
-| FR-008 turn boundaries | data-model turns; agents.md Stop/agent_settled | replay ordinal tests |
-| FR-009 unfinished turns never retrieved | agents.md injection policy; data-model turns | retrieval test with an open turn |
-| FR-010 batched summarization | R6, R10; observer.md | batch trigger tests (ten turns, session end, retention) |
-| FR-011 remote observer default preset | R3; observer.md presets | live probe (R13) + provider fault tests |
-| FR-012 rule-based fallback | R10; observer.md fallback | fallback determinism tests |
-| FR-013 typed memories | data-model memories; observer.md output | schema validation tests |
-| FR-014 language of content | observer.md worker rules | ja/en pair tests |
-| FR-015 12,000-character input bound | observer.md input | excerpt tests |
-| FR-016 daily cap | R6 reservations; observer.md call policy | cap boundary test (149 → 150) |
-| FR-017 sensitivity at capture, fail closed | R4; capture.ts | detector tests, detector-throw test, malformed `.oboete.toml` test |
-| FR-018 redaction before storage | R4; R11 corpus | secret-corpus scan of db, spool, logs, packs |
-| FR-019 `<private>` and path rules | R4 | strip and path-rule tests |
-| FR-020 remote receives eligible only | R10; observer.md boundary; data-model destination_rules | mixed-batch outbound body assertion; nearby and repo_ref assertions |
-| FR-021 pack recognition on capture | data-model injections.pack_hash | re-capture of an emitted pack test |
-| FR-022 consent before egress | R8; cli.md setup | consent hash tuple tests; `--yes` mismatch test |
-| FR-023 credentials never stored in config | cli.md environment | config-file and log scans |
-| FR-024 session-start injection with wait | agents.md SLAs; R12 | ready and pending path timing |
-| FR-025 prompt-submit injection | agents.md capture table | replay of prompt events |
-| FR-026 no duplicate in a conversation | data-model injection_items partial index; R7 conversation id | resume/compact/fork/clear tests |
-| FR-027 relevance threshold and cap | R5; agents.md policy; R12 context window | threshold tests; `window_unknown` budget test |
-| FR-028 citation staleness | R12; data-model citations_head/ok | stale path and stale commit tests |
-| FR-029 `why` ledger | data-model injections, injection_items; cli.md `why` | ledger tests |
-| FR-030 tool interface | mcp.md; agents.md Pi tools | MCP client probes (R13); `mcp-clients.mjs` |
-| FR-031 setup writes managed blocks | R8; cli.md setup | setup repeat/remove byte-identity tests |
-| FR-032 setup probes | R12 setup probes | probe event assertion per agent |
-| FR-033 doctor | cli.md doctor; R12 Pi diagnostics | break-one-item tests; Pi ack tests |
-| FR-034 pause/resume | R12 pause | pause test (no db open) |
-| FR-035 export/import | R12; data-model export line; cli.md | round-trip, lattice, tombstone, oversized-line tests |
-| FR-036 pin/delete | data-model memories | viewer and CLI tests |
-| FR-037 viewer loopback and token | R9 | bind and token refusal tests |
-| FR-038 viewer freshness | R9 data_version polling | SC-011 timing |
-| FR-039 no Linux-only facility, paths | R8 (A4 pending) | CI on both Node versions; path tests |
-| FR-040 fixture evidence | R11; quickstart | `docs/evidence/m1-resource-envelope.md` |
-| FR-041 isolated dogfood | R11; quickstart | `docs/evidence/m1-dogfood.md` |
-| FR-042 store-then-review | R10; data-model memories.review_state | viewer review flow test |
-| FR-043 native memory coexistence | R8 foreign files; cli.md setup warnings | native-memory detection tests |
-| FR-044 same repository only | data-model destination_rules `same_repo_required`; mcp.md boundary | cross-repository injection test; MCP `repo` argument rejection |
-| FR-045 Grok deferred delivery | agents.md state machine; data-model injections | Grok success/failure/deny/all-denied/no-tool tests counting packs the model received |
-| SC-001..SC-011 | quickstart.md maps each to a command | `docs/evidence/m1-resource-envelope.md`, `m1-dogfood.md` |
+| FR | requirement (short) | designed in | verified by |
+|---|---|---|---|
+| FR-001 | capture session start, prompts, tool input/output, turn end, session end on all four agents | agents.md capture table; R7 | fixture replay per agent; contract fixtures (R13) |
+| FR-002 | capture step returns within 300 ms, else spools and returns success | R1, R6; agents.md SLAs | replay p99; failure matrix (busy, corrupt, readonly, enospc) |
+| FR-003 | spool recovered before the next summarization pass, idempotently | R6 spool; R7 event identity | recovery tests (no duplicate, no loss) |
+| FR-004 | repository identity derived by oboete, never accepted from agent or payload | R8; data-model repos; mcp.md boundary | identity tests; payload-supplied repo ignored; MCP `repo` argument rejected |
+| FR-005 | agent recorded as provenance, never influences eligibility | data-model sessions.agent, destination_rules | SC-006 agent-swap test |
+| FR-006 | capture command determines the invoking agent; Grok never mistaken for Claude Code | agents.md fixed selectors | selector tests (`GROK_*` env); `unknown` reported by doctor |
+| FR-007 | Pi handlers do no in-process storage or network; bounded enqueue; errors contained and recorded | R12 Pi diagnostics; agents.md Pi row; data-model Pi ack | pi-throw, pi-child-hang, pi-spawn-failure tests |
+| FR-008 | raw events kept 7 days; memories permanent except tombstone or supersession | R6 retention; raw_events.expires_at; memories deleted_at, superseded_by | purge tests; tombstone round trip |
+| FR-009 | no resident service; detached worker exits when its queue is empty | R6 lease; cli.md `observe` | process-tree assertion in replay; atomic release test |
+| FR-010 | batch at session end and every 10 turns, one call per batch, claude-mem types, add/update/delete/noop against nearby, hook-supplied summaries as input | R10; observer.md; data-model observation_batches | trigger tests; classification tests; free-summary input tests |
+| FR-011 | exactly one worker per machine; stale worker's work taken over without loss or duplication | R6 lease, owner fencing | lease-steal, worker-kill, reclaim-after-120 s tests |
+| FR-012 | configured preset, free remote default, usage estimate reset at UTC midnight, exhaustion error never retried, 150 calls per day, local preset | R3, R6; observer.md presets and call policy; data-model provider_usage | 429/3036 no-retry test; cap boundary 150 allowed / 151 refused across presets; ollama preset test |
+| FR-013 | rule-based fallback in the same shape; memories and packs labelled degraded with reason | R10 fallback; observer.md; agents.md pack `Degraded:` | fallback tests; degraded-label tests |
+| FR-014 | summaries in the language of the content | observer.md worker rules | ja/en pair tests |
+| FR-015 | summarizer input bounded to 12,000 characters; excerpting recorded | observer.md input; observation_batches.excerpted | excerpt tests |
+| FR-016 | credentials only from oboete's config or a named environment variable | cli.md environment; config.ts | fs-access assertion (no agent session files read); config and log scans |
+| FR-017 | local-only by default; promotion only after worker checks; secret on rule or path hit | R4; raw_events.sensitivity; privacy/classify.ts | promotion tests; path-rule tests; detector-throw fail-closed test |
+| FR-018 | secrets redacted before storage and again in memories | R4; observer.md worker rules | secret corpus scan (db, spool, logs, packs, outbound) |
+| FR-019 | `<private>` removed at capture, never stored | R4 | strip tests (closed and unclosed tag) |
+| FR-020 | single egress rule table (remote: eligible; local: same-repo non-secret; injection: same repo; secret: never) | data-model destination_rules; observer/request.ts | mixed-batch outbound body; nearby and repo_ref assertions; cross-repository test |
+| FR-021 | injected text marked and recognized; plain text; not `{...}`; not phrased as instructions | agents.md pack format; injections.pack_hash | re-capture recognition; `{` guard; directive corpus on packs |
+| FR-022 | setup shows host, credential source, cost class, sensitivity classes; requires confirmation | R8 consent; cli.md setup | consent tuple hash tests; `--yes` mismatch refused |
+| FR-023 | privacy tests in both directions | R11; quickstart privacy | fail-closed and fail-open suites |
+| FR-024 | session-start and post-compaction injection of latest summary + pinned; none on resume; channel ceiling; pin-order trim recorded; 8 s wait then raw activity | agents.md injection policy and SLAs; R12; injections | ready/pending timing; resume no-reinject; compact reinject; pinned trim ledger |
+| FR-025 | prompt-submit lexical retrieval incl. CJK; threshold; cap proportional to documented context, not fixed | R5; R12 context window; injection/budget.ts | ja/en retrieval; threshold; window table; `window_unknown` omission |
+| FR-026 | no memory twice in one conversation, resumes included | injection_items partial index; sessions.conversation_id | resume/compact/fork/clear duplicate tests |
+| FR-027 | Codex injection only at session start and prompt submit | agents.md Codex row | Codex handler set test |
+| FR-045 | Grok deferred delivery with the first executed call; attempt, confirm, retry after deny; labelled deferred; omission recorded | agents.md state machine; data-model injections | Grok success / execution-failure / deny / all-denied / no-tool tests counting packs received |
+| FR-028 | every pack records included, omitted with reason, degraded state; `why` shows it | injections, injection_items; cli.md `why` | ledger tests |
+| FR-029 | citations carried; checked against current repository state before injection | memory_sources; memories.citations_head/ok; R12 staleness | stale path and stale commit tests |
+| FR-030 | search, timeline, get via tool interface and CLI under injection boundaries | mcp.md; agents.md Pi tools; cli.md; db/queries.ts | MCP client probes (R13); `mcp-clients.mjs`; boundary tests |
+| FR-031 | setup detects, selects, writes three installations, repeatable, removable, complete (trust hash, timeouts, output limits), probes, reports trust | R8, R12 setup probes; agents.md setup column; cli.md setup | setup repeat/remove byte-identity; trust hash test; timeout and `additionalContextLimit` tests; probe assertions |
+| FR-032 | warn on agents' native memory, never change it | cli.md setup/doctor | native-memory detection tests |
+| FR-033 | doctor reports wiring by probe with trust state, storage, FTS, worker, provider, estimate, exhaustion, spool, unrecognized agents | cli.md doctor; R12 Pi diagnostics | break-one-at-a-time tests |
+| FR-034 | pause and resume without touching memories | R12 pause | pause test (no db open, memories unchanged) |
+| FR-035 | pin, unpin, delete; deleted content never re-created | memories tombstone; content_hash | tombstone resurrection test |
+| FR-036 | export with sensitivity, provenance, repository identity; import merges by content, keeps deletions, never lowers sensitivity | R12 export/import; data-model export line; cli.md import | round trip; lattice; tombstone under `--map-repo`; hash mismatch; quarantine |
+| FR-037 | viewer: sessions by turn, memories with sensitivity and provenance, updates within 2 s, search/pin/delete | R9 | SC-011 timing; viewer tests |
+| FR-038 | viewer reachable only locally | R9 | bind and token refusal tests |
+| FR-039 | no Linux-only facility; platform path conventions | R8 (A4 pending) | CI on both Node versions; path tests |
+| FR-040 | committed 1,000-event fixture with measured capture time, worker memory, growth | R11; quickstart | `docs/evidence/m1-resource-envelope.md` |
+| FR-041 | isolated-user E2E with real hooks; never the maintainer's environment | R11; quickstart | `docs/evidence/m1-dogfood.md` |
+| FR-042 | new memories injectable at once; correction after the fact | memories.review_state (`unreviewed` injectable) | inject-after-store test |
+| FR-043 | never read another agent's memory store; never disable it | R8 foreign files; FR-016 fence | fs-access assertion; setup leaves native settings untouched |
+| FR-044 | same repository only; identity kept for later widening | destination_rules `same_repo_required`; memories.repo_id | cross-repository injection test |
+
+| SC | command | assertion | evidence |
+|---|---|---|---|
+| SC-001 | `isolated-user.mjs --pairs all` | 12 of 12 ordered pairs recall three facts on the first turn; Grok by the first tool result | `m1-dogfood.md` |
+| SC-002 | `fixture replay` + failure matrix | p99 < 300 ms for >= 99% of events; 100% of turns complete under every fault | `m1-resource-envelope.md` |
+| SC-003 | `fixture replay` | worker maxRSS < 150 MB; growth per 1,000 events recorded | `m1-resource-envelope.md` |
+| SC-004 | `isolated-user.mjs --pairs all --no-credentials` | SC-001 passes with fallback; every pack has `Degraded:` | `m1-dogfood.md` |
+| SC-005 | replay scan + privacy suite | zero secret corpus items in memories, outbound bodies, packs | `m1-resource-envelope.md` |
+| SC-006 | privacy suite | zero local-only/private rows in any outbound body; zero decisions differ on agent swap | test output in CI |
+| SC-007 | `isolated-user.mjs --daily` × 7 | 7 consecutive green days | `m1-dogfood.md` |
+| SC-008 | setup timing + break-one-at-a-time | setup < 2 min; doctor names each broken item | `m1-dogfood.md` |
+| SC-009 | replay seeded facts | correct memory injected for >= 90% of matching ja/en prompts | `m1-resource-envelope.md` |
+| SC-010 | replay ledger | zero duplicate injections per conversation | `m1-resource-envelope.md` |
+| SC-011 | viewer test | new memory visible within 2 s | test output in CI |
 
 ## Project Structure
 
@@ -185,9 +198,9 @@ src/
 │   ├── open.ts          # DatabaseSync with timeout, WAL pragmas, migration runner
 │   ├── migrations/0001_core.sql, 0002_memory_search.sql, 0003_operations.sql
 │   └── queries.ts       # shared scope + sensitivity filter used by injection, CLI, MCP, viewer
-├── events.ts            # normalized event union (zod), event id derivation, conversation id
+├── events.ts            # normalized event union (zod), event id derivation (kind in every key), conversation id
 ├── agents/claude.ts, grok.ts, codex.ts, pi.ts
-├── capture.ts           # hook path: paused check, size cap, private strip, path rules, detector, insert or spool
+├── capture.ts           # hook path: paused check, stdin cap, private strip, path rules, detector, insert or spool
 ├── privacy/
 │   ├── detect.ts        # @secretlint/core + preset + gated entropy, [REDACTED:<rule>], fail closed
 │   ├── classify.ts      # worker promotion
@@ -214,11 +227,13 @@ docs/research/            # verification-gate probe results appended
 
 **Structure Decision**: single package, single engine bundle. Frontend (viewer) is implemented by
 Claude Code directly. Security-owned modules (implemented by Claude Code, never delegated):
-`privacy/*`, `config.ts`, `setup/managed-block.ts`, `setup/write-codex.ts`, `db/queries.ts`,
-`worker/batches.ts`, `observer/request.ts`, `observer/classify.ts`, `injection/*`, `mcp.ts`,
-`transfer.ts`, `viewer/server.ts`. External lanes (Codex or Grok Build per task) get UI components,
-fixture generators, non-boundary adapters, retrieval scoring, and build scripts; a delegated task
-that touches a security-owned file is returned to Claude Code.
+`privacy/*`, `capture.ts`, `config.ts`, `repo-identity.ts`, `setup/managed-block.ts`,
+`setup/consent.ts`, `setup/write-*.ts`, `db/queries.ts`, `worker/batches.ts`,
+`observer/request.ts`, `observer/classify.ts`, `injection/*`, `mcp.ts`, `transfer.ts`,
+`viewer/server.ts`, `scripts/build.mjs`. External lanes (Codex or Grok Build per task) get UI
+components, fixture generators, non-boundary adapter field mapping (`agents/*.ts`), retrieval
+scoring, and test scaffolding; `tasks.md` states the owned paths as a fence on every delegated
+task, and a delegated result that touches one is returned to Claude Code.
 
 ## Delivery order (input to /speckit-tasks)
 
@@ -231,7 +246,7 @@ that touches a security-owned file is returned to Claude Code.
 2. **Capture kernel and privacy boundary**: normalized events, fixed agent selectors, size cap,
    detector in the hook with fail-closed failure handling, path rules, insert-or-spool, egress rule
    table, both-direction privacy tests, mixed-sensitivity batch split with outbound body assertions.
-3. **Worker and observer**: fenced lease, spool recovery, batches by destination, purge, checkpoint;
+3. **Worker and observer**: fenced lease, spool recovery, batches by destination and purpose, purge, checkpoint;
    provider presets with deadlines and per-attempt reservations, durable exhaustion signal,
    allowance table, catalog check; fallback summarizer emitting records; classification with target
    restriction; tombstone-aware insert; single session-summary source.
@@ -267,4 +282,4 @@ that touches a security-owned file is returned to Claude Code.
 | 13 | `.oboete.toml` for repository path rules | Same parser as the user config; a committed file may only add rules | YAML would add a parser |
 | 14 | Hand-written legacy-era stdio MCP server | `@modelcontextprotocol/sdk` pulls 93 packages / 28 MB for transports oboete never uses | Owning the legacy handshake is small; a dual-era server is out of M1 scope and clients fall back; a client that cannot use it blocks that agent's tool surface pending amendment |
 | 15 | Anthropic preset without schema-constrained output | Anthropic's OpenAI-compatible endpoint ignores `response_format` | Dropping the listed preset; text-JSON with zod validation keeps it |
-| 16 | 1 MB per-field read cap with head/tail truncation | Detector time is content-size dependent; the 300 ms capture SLA cannot be measured without a bound | Storing unbounded fields makes SC-002 unmeasurable; amendment A7 |
+| 16 | 1 MB stdin read cap; larger payloads stored unparsed as a redacted prefix | Parse and detector time are payload-size dependent; the 300 ms capture SLA cannot be measured without a bound on what the hook reads | A per-field cap still requires reading and parsing the whole payload; amendment A7 |

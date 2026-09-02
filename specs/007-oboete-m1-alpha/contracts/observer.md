@@ -6,7 +6,9 @@ both identically except for `degraded_reason`.
 ## Batch composition and the outbound boundary
 
 After classification, a session batch is split by destination; batch identity is
-(session, through event, destination):
+(session, through event, destination, purpose). Purpose `observations` produces memories; purpose
+`session_summary` is one extra batch per session end over all non-secret rows, run by the local
+path only (local observer if configured, else the fallback):
 
 | destination | receives | when |
 |---|---|---|
@@ -20,9 +22,9 @@ security-owned) assembles every outbound request and applies `destination_rules`
 `citations`, and repository metadata (a remote request carries an opaque `repo_ref` = the repository
 id, never the normalized remote or path). Tests assert the actual request body of a mixed batch.
 
-The session summary is produced exactly once per session end by the local path (local observer if
-configured, otherwise the fallback) over all non-secret rows; remote batches produce observations
-only. Each memory records its source rows in `memory_sources` and takes the strictest sensitivity of
+An `observations` batch ignores any `session_summary` field in the output and a `session_summary`
+batch ignores `observations`, so the shared schema below serves both purposes without double
+generation. Each memory records its source rows in `memory_sources` and takes the strictest sensitivity of
 those rows.
 
 ## Input (worker → summarizer)
@@ -59,6 +61,9 @@ tool inputs and outputs by recency; `observation_batches.excerpted` records it.
 }
 ```
 
+`observations` is read only for purpose `observations`; `session_summary` only for purpose
+`session_summary`. The request carries `"purpose"` so the prompt asks for one or the other.
+
 Worker rules after either path: the detector runs again on every title and body; the
 directive-corpus check rejects bodies that read as instructions; sensitivity = strictest source
 row; `content_hash` = sha256(repo_id, type, normalized title, normalized body); `target` must be
@@ -82,8 +87,9 @@ the same zod schema; failure counts as `unusable_output`.
 
 ## Call policy
 
-1. **Per attempt**: in one short `BEGIN IMMEDIATE` transaction, check the daily cap (150 calls per
-   preset per UTC day, tunable) and `exhausted_at`; if either blocks, mark the batch degraded
+1. **Per attempt**: in one short `BEGIN IMMEDIATE` transaction, check the daily cap (FR-012: 150
+   HTTP attempts per UTC day summed over all presets; attempt 150 allowed, 151 refused) and the
+   preset's `exhausted_at`; if either blocks, mark the batch degraded
    (`daily_cap` or `provider_exhausted`) and route it to the fallback; otherwise increment
    `provider_usage.calls` and `observation_batches.provider_attempts`, record a reservation id,
    set the batch `running`; commit. A retry is a new attempt and a new reservation.

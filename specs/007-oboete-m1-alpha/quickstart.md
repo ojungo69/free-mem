@@ -43,18 +43,19 @@ OBOETE_HOME=$(mktemp -d) node dist/oboete.mjs fixture replay test/fixtures/event
 ```
 
 Expected (`docs/evidence/m1-resource-envelope.md`): capture-hook p99 under 300 ms with at least
-99% under budget, including events at the 1 MB field cap; session-start injection measured on both
-the ready path (under 300 ms) and the pending path (under 8 s); worker peak RSS under 150 MB;
-database growth per 1,000 events; zero secret corpus items and zero directive corpus phrases in the
-database, spool, logs, or packs; at least 90% of seeded Japanese and English facts retrieved; zero
-duplicate injections per conversation.
+99% under budget, including payloads at and above the 1 MB stdin cap; session-start injection
+measured on both the ready path (under 300 ms) and the pending path (under 8 s); worker peak RSS
+under 150 MB; database growth per 1,000 events; zero secret corpus items in the database, spool,
+logs, packs, or outbound bodies; zero directive corpus phrases in stored memories, accepted
+observer output, or packs (they legitimately remain in raw events and the spool); at least 90% of
+seeded Japanese and English facts retrieved; zero duplicate injections per conversation.
 
 ## Failure injection (User Story 2)
 
 ```bash
 for f in db-missing busy corrupt readonly enospc worker-kill provider-unreachable provider-hang \
          provider-429-3036 provider-403-5035 provider-length provider-malformed cap-boundary \
-         lease-lost-after-3036 detector-throw config-malformed pi-throw pi-child-hang clock-jump \
+         lease-lost-after-3036 detector-throw config-malformed pi-throw pi-child-hang pi-spawn-failure clock-jump \
          mixed-sensitivity resume compact fork clear setup-repeat setup-remove lease-steal pause \
          grok-success grok-exec-failure grok-deny grok-all-denied grok-no-tool; do
   NODE_ENV=test OBOETE_TEST_FAULT=$f node --test build/test/fault-*.test.mjs
@@ -63,7 +64,7 @@ done
 
 Expected: every hook exits 0 within its SLA, spooled events are recovered when the fault clears, no
 batch is applied twice, a lost lease stops the old worker's writes but the 3036 signal persists,
-the 150th call is refused, a detector failure stores metadata only, the mixed-sensitivity outbound
+attempt 150 is allowed and attempt 151 is refused across presets, a detector failure stores metadata only, the mixed-sensitivity outbound
 body contains only eligible content and an opaque repository id, Grok cases deliver exactly the
 expected number of packs, and doctor names the degraded component with a reason.
 
@@ -128,7 +129,9 @@ OBOETE_HOME=$(mktemp -d) oboete import memories.jsonl --dry-run
 
 Expected: counts match, tombstones are preserved with their original hash, an imported row never
 lowers sensitivity and lands as `local_only` / `imported`, a body whose hash does not match, an
-oversized line, or a malformed line is rejected with exit `2`.
+oversized line, or a malformed line is rejected with exit `2`; imported rows are absent from
+`search` and packs until the worker has classified them, and a tombstone imported under
+`--map-repo` still suppresses the same content.
 
 ## Dogfood gate (SC-007)
 

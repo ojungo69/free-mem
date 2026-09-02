@@ -35,7 +35,7 @@ tables are `STRICT`; FTS5 virtual tables cannot be. Every write from the worker 
 | repo_id | TEXT FK | |
 | agent | TEXT | `claude`, `codex`, `grok`, `pi`, `unknown`; provenance only |
 | native_session_id | TEXT | UNIQUE with agent |
-| conversation_id | TEXT | oboete id of the root session: `id` for a fresh session; the root's id when the agent resumes (Claude Code `resume` with the same `session_id`, Codex `resume`); a new root on `fork`, Grok `new`, and Pi (no resume in M1) |
+| conversation_id | TEXT | oboete id of the root session: `id` for a fresh session; the root's id when the agent resumes (Claude Code `resume` with the same `session_id`, Codex `resume`, Pi when `PI_SESSION_ID` continues per the R13 probe); a new root on `fork` and Grok `new` |
 | model | TEXT | reported model when the agent supplies one (context window lookup, R12) |
 | started_at, ended_at | INTEGER | |
 | status | TEXT | `active`, `ended` |
@@ -55,12 +55,12 @@ tables are `STRICT`; FTS5 virtual tables cannot be. Every write from the worker 
 
 | column | type | notes |
 |---|---|---|
-| id | TEXT PK | sha256 over the most specific stable key (R7): (agent, native_session_id, tool_call_id or native event id) → (agent, native_session_id, prompt_id, kind) → (agent, native_session_id, turn ordinal, kind, content_hash, delivery_ordinal); `delivery_ordinal` is kept by oboete per session in `runtime_state`, so an identical event re-delivered inside one turn collapses and a repeated identical prompt in a later turn does not |
+| id | TEXT PK | sha256 over the most specific stable key (R7): (agent, native_session_id, kind, tool_call_id or native event id) → (agent, native_session_id, kind, prompt_id) → (agent, native_session_id, turn ordinal, kind, content_hash); no delivery counter, so re-delivery always collapses; two byte-identical events of the last form inside one turn also collapse (accepted) |
 | repo_id, session_id, turn_id | TEXT | |
 | agent | TEXT | |
-| kind | TEXT | `session_start`, `prompt`, `tool_call`, `tool_result`, `tool_failure`, `turn_end`, `session_end`, `compaction_summary`, `last_assistant_message`, `probe` |
-| content | TEXT | stored after `<private>` removal and redaction; NULL for path-rule hits and for `classification_state = failed`; fields above 1 MB stored as redacted head (64 KB) + tail (16 KB) |
-| truncated_bytes | INTEGER | NULL unless the size cap applied |
+| kind | TEXT | `session_start`, `prompt`, `tool_call`, `tool_result`, `tool_failure`, `turn_end`, `session_end`, `compaction_summary`, `last_assistant_message`, `probe`, `oversized` (stdin above 1 MB: unparsed, redacted 64 KB prefix as opaque text) |
+| content | TEXT | stored after `<private>` removal and redaction; NULL for path-rule hits and for `classification_state = failed` |
+| truncated_bytes | INTEGER | NULL unless the stdin cap applied |
 | payload_json | TEXT | normalized fields (zod-validated); no raw passthrough |
 | content_hash | TEXT | |
 | sensitivity | TEXT | `local_only` (default), `eligible`, `secret`, `private` |
@@ -78,6 +78,7 @@ Indexes: (session_id, captured_at), (expires_at), (batch_id).
 | id | TEXT PK | |
 | repo_id, session_id | TEXT | |
 | through_event_id | TEXT | |
+| purpose | TEXT | `observations`, `session_summary` (one per session end, local path only) |
 | destination | TEXT | `remote_observer`, `local_observer`, `fallback` (batch split by sensitivity, R10) |
 | trigger | TEXT | `ten_turns`, `session_end`, `retention` (forced before purge) |
 | state | TEXT | `pending`, `running`, `applied`, `fallback` |
@@ -88,8 +89,9 @@ Indexes: (session_id, captured_at), (expires_at), (batch_id).
 | excerpted | INTEGER | input excerpted to 12,000 characters (FR-015) |
 | claimed_at, completed_at | INTEGER | |
 
-UNIQUE (session_id, through_event_id, destination): a remote batch and a fallback batch over the
-same range coexist, and applying either twice is impossible.
+UNIQUE (session_id, through_event_id, destination, purpose): a remote batch and a fallback batch
+over the same range coexist, the summary batch never collides with them, and applying any of them
+twice is impossible.
 
 ## memories
 
@@ -101,9 +103,10 @@ same range coexist, and applying either twice is impossible.
 | title, body | TEXT | <= 120 / <= 2,000 characters |
 | concepts | TEXT | JSON array |
 | cjk_bigrams | TEXT | generated shadow column for the CJK FTS table |
-| content_hash | TEXT UNIQUE | sha256 over (repo_id, type, normalized title, normalized body) |
+| material_hash | TEXT | sha256 over (type, normalized title, normalized body); repository-independent, kept on tombstones |
+| content_hash | TEXT UNIQUE | sha256 over (repo_id, material_hash) |
 | sensitivity | TEXT | strictest of the source rows |
-| review_state | TEXT | `unreviewed` (default, FR-042 store-then-review), `reviewed`, `imported` (active imported row, `local_only` until the worker reclassifies it) |
+| review_state | TEXT | `unreviewed` (default, injectable at once per FR-042), `reviewed`, `imported` (quarantined: excluded by the shared query function from search, injection, MCP, and the viewer's injectable set until the worker's detector and directive check move it to `unreviewed` or `secret`) |
 | degraded_reason | TEXT | NULL for provider output |
 | source_session_id, source_batch_id | TEXT | provenance; carried by export |
 | valid_from, valid_to | INTEGER | bitemporal validity; `valid_to` set on supersession |
@@ -201,7 +204,7 @@ under the same budget, and the merged pack gets a new `pack_hash`.
 | column | type | notes |
 |---|---|---|
 | utc_day, preset | TEXT | PK pair |
-| calls | INTEGER | incremented per HTTP attempt before the call, in its own transaction |
+| calls | INTEGER | incremented per HTTP attempt before the call, in its own transaction; the FR-012 cap (150 per UTC day, attempt 151 refused) is checked against the sum over all presets of the day |
 | neurons_estimate | REAL | |
 | reset_at | INTEGER | stored reset instant; day boundary compares against it |
 | exhausted_at | INTEGER | set on 3036 by an unfenced, monotonic write keyed by the reservation |
@@ -211,7 +214,7 @@ under the same budget, and the merged pack gets a new `pack_hash`.
 ## runtime_state
 
 Key/value (`key TEXT PK`, `value_json TEXT`, `updated_at INTEGER`): last purge, last checkpoint,
-catalog cache, per-session `delivery_ordinal`, consent record mirror, Pi last-success marker. The
+catalog cache, consent record mirror. The
 pause flag is the file `~/.oboete/paused`. The context-window table is the versioned document
 `docs/research/context-windows.md` embedded at build time (R12), not a runtime row.
 
@@ -225,10 +228,11 @@ pause flag is the file `~/.oboete/paused`. The context-window table is the versi
 | count | INTEGER | |
 | first_seen_at, last_seen_at, cleared_at | INTEGER | |
 
-Pi: the in-process extension writes nothing durable; the capture child writes an acknowledgement
-file `~/.oboete/spool/pi-ack/<event id>` before exiting and diagnostics rows on its own failures;
-doctor reports `pi_spawn_failed` when the extension's stderr marker exists without acknowledgements
-and `pi_child_hang` from acknowledgements older than the last-success marker (R12).
+Pi: the extension's only durable write is a bounded synchronous append to
+`~/.oboete/logs/pi-extension.log` on spawn error or handler throw; the capture child writes
+`~/.oboete/spool/pi-ack/<event id>.started` first and renames it to `.done` on success, and writes
+diagnostics rows on its own failures; doctor reports `pi_spawn_failed` from the extension log,
+`pi_child_hang` from `.started` files older than 30 s, `pi_child_failed` from the rows (R12).
 
 ## sync_conflicts (M2 reservation)
 
@@ -245,15 +249,17 @@ name order with the same deterministic id.
 
 Header line `{ "format": "oboete-export/1", "exported_at": ..., "repos": [ { id, identity_kind,
 normalized_identity } ] }`, then one line per memory: `{ id, repo_id, type, title, body, concepts,
-content_hash, sensitivity, review_state, degraded_reason, source_session_id, source_batch_id,
-source_agent, valid_from, valid_to, superseded_by, pinned_at, pin_order, deleted_at, created_at,
-sources: [ { citation_kind, citation_value, source_agent } ] }`. Tombstones are exported with
-`deleted_at` set, an empty `body`, and the original `content_hash` so they suppress the same
-content on the importing side. Import validates each line (64 KB max) and the file (256 MB max),
-recomputes ids and `cjk_bigrams`, verifies `content_hash` against the material when a body is
-present (mismatch rejects the line), unions on `content_hash`, applies the lattice `secret >
-private > local_only > eligible` (the stricter wins), lets tombstones win over active rows, and
-inserts every active imported row as `local_only` with `review_state = imported`.
+material_hash, content_hash, sensitivity, review_state, degraded_reason, source_session_id,
+source_batch_id, source_agent, valid_from, valid_to, superseded_by, pinned_at, pin_order,
+deleted_at, created_at, sources: [ { citation_kind, citation_value, source_agent } ] }`. Tombstones
+are exported with `deleted_at` set, an empty `body`, and their `material_hash`. Import validates
+each line (64 KB max) and the file (256 MB max), verifies `material_hash` against the body when
+one is present (mismatch rejects the line), recomputes `content_hash` from the local repository id
+(after `--map-repo`) and `material_hash` for active rows and tombstones alike, recomputes ids and
+`cjk_bigrams`, unions on `content_hash`, applies the lattice `secret > private > local_only >
+eligible` (the stricter wins), lets tombstones win over active rows, and inserts every active
+imported row as `local_only` with `review_state = imported` (quarantined until the worker
+classifies it).
 
 ## State transitions
 
@@ -261,7 +267,8 @@ inserts every active imported row as `local_only` with `review_state = imported`
   set at capture and never promoted; `classification_state = failed` rows are purged unread.
 - observation_batches.state: `pending` → `running` → `applied` | `fallback`.
 - memories: active → superseded | deleted; deleted never returns to active;
-  review_state `unreviewed` | `imported` → `reviewed`.
+  review_state `imported` → `unreviewed` (worker checks pass) | tombstoned as `secret`;
+  `unreviewed` → `reviewed`.
 - worker_lease: released → held (fenced claim) → released (atomic with the empty-queue check) |
   stale (missed heartbeats, clock jump) → reclaimed.
 - injections.state: `built` → `emitted` | `omitted`; Grok: `pending` → `attempted` → `emitted` |
