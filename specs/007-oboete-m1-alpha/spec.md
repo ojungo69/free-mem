@@ -9,6 +9,32 @@
 **Input**: User description: "oboete M1 self-use alpha: automatic shared memory across Claude Code,
 Codex, Grok Build, and Pi, for one developer on one machine."
 
+## Clarifications
+
+### Session 2026-09-02
+
+- Q: Grok Build 1.0.17 has no pre-turn injection channel (SessionStart and UserPromptSubmit output
+  never reaches the model; PreToolUse output arrives after the first tool call). How does M1 treat
+  injection into Grok Build? → A: Deferred injection: deliver the pack right after the first tool
+  call of the turn, label it as deferred, and judge the Grok-receiving pairs of SC-001/SC-009 at
+  the first tool result.
+- Q: The default summarizer costs about 45 neurons per call (reasoning cannot be suppressed), so
+  the free allowance funds roughly 220 calls a day; per-turn summarization would exhaust it on busy
+  days. What cadence does M1 use? → A: Batch: one provider call at session end and one every 10
+  turns during a session, capped at 150 provider calls per day with rule-based fallback beyond
+  that; the summary text agents' hooks supply for free (last assistant message, compaction summary)
+  is captured as raw events and used as summarizer input. Observation granularity is unchanged.
+- Q: Are new memories active immediately, or held until the developer approves them? → A:
+  Store-then-review: a memory is eligible for injection the moment it is created; the developer
+  corrects mistakes afterwards by deleting or pinning in the viewer or the command line.
+- Q: When an agent's own memory feature is active (Codex memories, Claude Code auto-memory, Grok
+  Build native memory), what does oboete do? → A: Warn only: setup and doctor report that both
+  systems will record memory; oboete never reads those stores and never changes their settings
+  (the rule already stated for Grok Build in FR-032, extended to all three).
+- Q: May the injection scope be widened beyond the same repository in M1? → A: No. Same
+  repository is the only scope in M1; per-repository widening and global memories are deferred
+  to a later milestone, and every memory keeps its repository identity so widening stays possible.
+
 ## User Scenarios & Testing *(mandatory)*
 
 ### User Story 1 - Memory follows the developer across agents (Priority: P1)
@@ -32,7 +58,8 @@ for every ordered pair of the four agents.
 1. **Given** a completed session in agent A on repository R that produced memories, **When** the
    developer starts a session in agent B on R, **Then** the session start injects the latest
    session summary of R plus every pinned memory of R, and the injected text is visibly marked as
-   coming from oboete.
+   coming from oboete. On Grok Build the same pack arrives with the first tool call of the first
+   turn and is labelled as deferred (FR-045).
 2. **Given** memories exist for R, **When** the developer submits a prompt that relates to some of
    them, **Then** the prompt is enriched with the memories that pass the relevance threshold, up
    to a cap proportional to that agent's documented context limit, and never with a memory that was
@@ -133,8 +160,9 @@ healthy; then break each item in turn and confirm doctor names it.
 1. **Given** some of the four agents are installed, **When** the developer runs setup, **Then** the
    installed agents are detected, offered for multi-selection, and the selected agents' hook or
    extension configuration is written without disturbing unrelated existing hooks.
-2. **Given** Grok Build's native memory feature is enabled, **When** setup runs, **Then** setup warns
-   that both systems will record memory and continues without changing the Grok setting.
+2. **Given** an agent's own memory feature is enabled (Codex memories, Claude Code auto-memory, or
+   Grok Build native memory), **When** setup runs, **Then** setup warns that both systems will
+   record memory and continues without changing that agent's setting.
 3. **Given** oboete is installed, **When** the developer runs doctor, **Then** the report lists,
    per agent, whether capture and injection are wired; whether the storage file is healthy and
    full-text search is available; whether a worker is alive or stale; whether the configured
@@ -286,16 +314,22 @@ Capture
 
 Summarization
 
-- **FR-010**: After a turn or session ends, a single background worker per machine MUST summarize
-  new events into memories using claude-mem's observation types, and MUST classify each candidate
-  against nearby existing memories as add, update, delete, or no-op.
+- **FR-010**: When a session ends, and during a session after every 10 turns, a single background
+  worker per machine MUST summarize the accumulated new events in one provider call per batch into
+  memories using claude-mem's observation types, and MUST classify each candidate against nearby
+  existing memories as add, update, delete, or no-op. Summary text that an agent's hooks supply
+  without a provider call (the last assistant message of a turn, the conversation summary produced
+  at compaction) MUST be captured as raw events and used as summarizer input.
 - **FR-011**: Exactly one worker MUST be active per machine at a time; a stale or crashed worker's
   work MUST be taken over by the next worker without loss or duplication.
 - **FR-012**: The summarizer MUST use the configured provider preset; the default preset MUST be a
   free-tier remote service. The system MUST count its own usage as a pacing estimate that resets
   at UTC midnight and MUST label it as an estimate (the allowance is account-wide and no interface
   returns the true remainder); the authoritative exhaustion signal is the provider's account-limit
-  error, which MUST NOT be retried. The presets MUST include at least one local-model option.
+  error, which MUST NOT be retried. Provider calls MUST be capped at 150 per day (derived from the
+  measured cost of about 45 neurons per call against the 10,000-neuron daily allowance); beyond
+  the cap the rule-based summarizer is used and the switch is labelled. The presets MUST include
+  at least one local-model option.
 - **FR-013**: When no provider is configured, the provider is unreachable, the provider's output is
   unusable, or the allowance is exhausted, the system MUST produce memories with a rule-based
   summarizer in the same shape, and MUST label those memories and the affected injection packs as
@@ -346,6 +380,11 @@ Retrieval and injection
 - **FR-026**: The system MUST NOT inject the same memory twice within one agent conversation,
   counting resumed continuations of that conversation as the same conversation.
 - **FR-027**: For Codex, injection MUST occur only at session start and prompt submit.
+- **FR-045**: For Grok Build, which has no channel that reaches the model before a turn starts,
+  the session-start and prompt-submit packs MUST be delivered immediately after the first tool
+  call of the turn, through both the pre-tool and post-tool hooks so that a denied tool call does
+  not lose the pack; the delivery MUST be labelled as deferred in `why` and in doctor; a turn with
+  no tool call receives nothing and the omission is recorded.
 - **FR-028**: Every injection pack MUST record what was included, what was omitted and why, and any
   degraded state; `why` MUST present that record for a session.
 - **FR-029**: Memories MUST carry citations (file paths, commits) when the source provides them, and
@@ -366,7 +405,8 @@ Setup, doctor, and lifecycle
   is 5 seconds), and per-hook output limits set so that the pack oboete computes is what reaches
   the model (Codex's default 2,500-token spill MUST be disabled). Setup MUST verify by a probe that
   each hook actually fires and MUST report each agent's trust state before reporting success.
-- **FR-032**: Setup MUST warn when Grok Build's native memory is enabled and MUST NOT change it.
+- **FR-032**: Setup and doctor MUST warn when an agent's own memory feature is enabled (Codex
+  memories, Claude Code auto-memory, Grok Build native memory) and MUST NOT change that setting.
 - **FR-033**: Doctor MUST report, with reasons, the health of: per-agent capture and injection
   wiring (verified by a probe that the hook actually fires, including each agent's trust state,
   not by the presence of a configuration file), storage integrity, full-text search availability,
@@ -397,18 +437,15 @@ Platform and evidence
   agent hooks for all four agents; oboete MUST NOT be installed into the maintainer's own agent
   environment during M1.
 
-Clarifications required
+Owner decisions (resolved in Clarifications)
 
-- **FR-042**: New memories MUST be [NEEDS CLARIFICATION: store-then-review (memories are active
-  immediately and the developer prunes them in the viewer) or review-then-store (memories wait in a
-  queue until approved)? This changes the injection latency and the viewer's minimum scope.]
-- **FR-043**: When an agent's own native memory feature is active (Codex memories, Claude Code
-  auto-memory, Grok Build native memory), the system MUST [NEEDS CLARIFICATION: ignore them, warn
-  only, read them as an additional memory source, or advise disabling them? Reading them changes
-  the privacy surface; ignoring them means duplicated context.]
-- **FR-044**: Injection scope MUST default to the same repository and [NEEDS CLARIFICATION: may
-  it be widened per repository (e.g., to a group of related repositories or to global memories)
-  in M1, or is same-repository the only scope until a later milestone?]
+- **FR-042**: New memories MUST become eligible for injection the moment they are stored; there is
+  no approval queue. Correction happens after the fact through deletion and pinning (FR-035).
+- **FR-043**: The system MUST NOT read another agent's memory store as a memory source and MUST
+  NOT advise or perform disabling it; coexistence is reported per FR-032 and otherwise ignored.
+- **FR-044**: Injection scope MUST be the same repository only; no configuration in M1 widens it
+  to other repositories or to repository-independent memories, and every memory MUST keep its
+  repository identity so that a later milestone can widen the scope without migration.
 
 ### Key Entities
 
@@ -433,7 +470,9 @@ Clarifications required
 
 - **SC-001**: For every ordered pair of the four agents, a session in the second agent receives all
   three seeded facts from a preceding session in the first agent on the same repository, on the
-  first turn (12 of 12 pairs pass in the isolated end-to-end run).
+  first turn (12 of 12 pairs pass in the isolated end-to-end run); for the three pairs where Grok
+  Build receives, the facts MUST be present by the time the first tool call of the first turn
+  completes.
 - **SC-002**: Across the 1,000-event fixture, the capture step returns within 300 ms for at least
   99% of events, and 100% of agent turns complete under every injected failure.
 - **SC-003**: The background worker stays under 150 MB of resident memory for the fixture, and
@@ -449,19 +488,23 @@ Clarifications required
 - **SC-008**: Setup for all four agents completes in under 2 minutes, and doctor names every
   deliberately broken component in the break-one-at-a-time test.
 - **SC-009**: For seeded Japanese and English facts, the correct memory is among the injected
-  memories for at least 90% of matching prompts.
+  memories for at least 90% of matching prompts (on Grok Build, among the memories delivered with
+  the first tool call of that turn).
 - **SC-010**: Zero duplicate injections of the same memory within a session across the fixture.
 - **SC-011**: A newly created memory appears in the viewer within 2 seconds.
 
 ## Assumptions
 
 - The maintainer is the only user of M1; multi-user, team, and hosted scenarios are out of scope.
+- Injection scope is the same repository only; repository groups and global memories are deferred.
 - Milestones M2-M5 (vector search, encrypted cloud sync, package publication, macOS, Windows) are
   out of scope, and M1 decisions must not preclude them.
 - Storage lives in one file under the user's oboete directory, following the platform's user
   directory conventions; no server process is ever left running.
 - The default summarizer is a remote free-tier service; its daily allowance is account-wide,
-  oboete's own count is a pacing estimate, and the reset is assumed at UTC midnight.
+  oboete's own count is a pacing estimate, and the reset is assumed at UTC midnight. Summarization
+  is batched (session end and every 10 turns), never per turn; the batch size and the 150-call
+  daily cap are tunable in configuration.
 - Staleness policy default: a memory whose citations no longer resolve at the repository's current
   state is injected with a staleness note rather than dropped; a memory not injected for 90 days is
   retired from automatic injection but remains searchable, and any injection resets the counter.
