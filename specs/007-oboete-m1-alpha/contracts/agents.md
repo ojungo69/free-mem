@@ -43,10 +43,11 @@ Injection policy shared by all agents: same repository only (FR-044); never the 
 in one conversation (FR-026); session start = latest session summary + pinned memories (bounded to
 the channel cap, pinned trimmed in pin order); prompt submit = memories above the threshold up to a
 character budget = min(channel cap, `context_fraction` × documented context window of the agent's
-model); `context_fraction` default 0.05; documented context windows (recorded here, refreshed by
-setup when the agent reports a model): Claude Code 200,000 tokens, Codex 200,000 tokens (model
-dependent), Grok Build 131,072 tokens, Pi = the configured model's window; tokens are converted at
-4 characters per token for English and 1.5 for CJK.
+model); `context_fraction` default 0.05. The context window comes from a per-agent table in
+`config.toml` seeded by setup with conservative defaults (128,000 tokens for every agent until the
+agent reports a model whose documented window setup can look up; the hook payloads carry `model`
+on Claude Code and Codex); the table is an assumption to be refreshed, not a verified contract.
+Tokens are converted at 4 characters per token for English and 1.5 for CJK.
 
 Pack format (all agents):
 
