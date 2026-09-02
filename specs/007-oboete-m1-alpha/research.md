@@ -50,7 +50,11 @@ approval before implementation starts (task 0).
 
 - **Decision**: `ai` + `workers-ai-provider` (REST mode; peers `ai`, `@ai-sdk/provider`) for the
   default `@cf/zai-org/glm-4.7-flash`; `@ai-sdk/openai-compatible` for `ollama` (required local
-  option), `nim`, `openrouter`, `gemini`, `anthropic`. Schema-constrained output where the endpoint
+  option), `nim`, `openrouter`, `gemini`, `anthropic`; an optional `agent-cli` preset runs the
+  developer's already-authenticated `claude -p` / `codex exec` / `grok -p` as a child process
+  (text-JSON, no credentials, consumes that subscription, uncapped by oboete) so that a developer
+  with no Cloudflare account still gets model-quality summaries, as claude-mem's host provider
+  does. Schema-constrained output where the endpoint
   supports `response_format`; text-JSON (prompt for one JSON object, parse, validate with zod) for
   `anthropic` and for any preset whose R13 probe shows no schema support. Every HTTP attempt:
   `maxRetries: 0`, `abortSignal: AbortSignal.timeout(60_000)`, its own reservation (R6), and
@@ -72,12 +76,13 @@ approval before implementation starts (task 0).
   `[REDACTED:<rule>]`; store `local_only` or `secret`. The worker runs the same detector on every
   candidate memory before insert and decides promotion. **Payload size**: the hook reads
   at most 1 MB from stdin and stops (Pi: the extension's serialized event, same bound); a payload
-  that exceeds the bound is treated exactly like a detector failure: fail closed, no content
-  stored, one metadata-only row with `classification_state = failed` and reason `oversized`
-  (event kind from the handler's fixed `--event` argument, session id from `GROK_SESSION_ID` /
-  `PI_SESSION_ID` or a bounded scan of the read bytes for the top-level `session_id` string;
-  when no session id can be recovered nothing is stored and a `diagnostics` counter is
-  incremented), never summarized, never injected. Nothing is drained, so capture time is bounded
+  that exceeds the bound keeps what was read: the read part goes through the detector and is
+  stored as a `partial` row marked `truncated` (event kind from the handler's fixed `--event`
+  argument, session id and path fields from a bounded scan of the read bytes; when no session id
+  can be recovered nothing is stored and a `diagnostics` counter is incremented). Partial rows
+  stay `local_only`, give only metadata (tool name, paths) to the rule-based summarizer, never
+  enter a provider request, and are never injected (A7; claude-mem withdrew a drop-everything
+  design for the same case). Nothing is drained, so capture time is bounded
   by 1 MB regardless of payload size (spec edge case amended, A7; the summarizer input bound
   stays 12,000 characters). Whether each agent's runner tolerates a hook that exits with unread
   stdin, and whether the runner caps payloads itself, is an R13 probe; a runner that fails the
@@ -114,8 +119,10 @@ approval before implementation starts (task 0).
   or more than 60 s in the future is stale. Batches carry the owner token; a stale worker's
   `running` batch is reclaimed only after takeover and only if `claimed_at` is older than 120 s.
   **Reservations are per HTTP attempt**: before every attempt (first call and any retry) a short
-  transaction checks the daily cap (FR-012: 150 attempts per UTC day summed over every preset, so
-  switching presets cannot exceed it; attempt 150 is allowed, attempt 151 refused) and
+  transaction checks the daily cap (FR-012: 150 attempts per UTC day summed over every capped preset, so
+  switching presets cannot exceed it; attempt 150 is allowed, attempt 151 refused; with 10 or
+  fewer left, ten-turn batches fall back and the rest is reserved for session-end batches;
+  `agent-cli` is uncounted because it spends no oboete allowance) and
   `exhausted_at`, increments `provider_usage.calls` and `observation_batches.provider_attempts`,
   and commits; a 429/3036 result is persisted in its own
   transaction keyed by the reservation (`provider_usage.exhausted_at`, monotonic, not fenced by the
@@ -277,7 +284,7 @@ approval before implementation starts (task 0).
   verified entry at all cannot satisfy FR-025, so its prompt-submit lane is blocked by the R13
   gate until a window is verified (no omission fallback, no guessed value).
 - **Content identity**: one shared helper (`db/identity.ts`) is the only place that computes
-  `material_hash` = sha256(type, normalized title, normalized body) and `content_hash` =
+  `material_hash` = sha256(normalized title, normalized body) (type excluded, A13) and `content_hash` =
   sha256(repo_id, material_hash); provider output, fallback output, import, and tombstones all go
   through it, and a contract test asserts equal hashes for the same input on every path.
   Tombstones keep both.
@@ -346,6 +353,7 @@ skeleton (task 1).
 | Hook runner behaviour when the hook exits with unread stdin above 1 MB (all four agents) | feed an oversized tool result | blocked: A7 goes to the owner if a runner treats the hook as failed; a runner's own payload cap narrows A7 |
 | Pi durable error surface for extension throws | throw inside a probe extension, inspect Pi's logs | blocked for the Pi lane pending amendment A8 |
 | Legacy-era MCP server against Claude Code, Codex, Grok clients (raw frames compared) | headless `tools/list` + `tools/call` | blocked for that client pending amendment |
+| `agent-cli` preset: headless JSON output of `claude -p`, `codex exec`, `grok -p` for a summarization prompt | one call per CLI under the isolated user | the preset is disabled for that CLI (optional preset, no completion block) |
 | Per-model context windows | documented window per model id into `context-windows.md` | an agent with no verified window blocks its prompt-submit lane (FR-025) pending owner decision; a known agent with an unknown model uses the smallest verified window and `window_unknown` |
 | Real bundle cold start on 22.16 and 24.x (after task 1) | replay harness | blocked; a split entry point needs a constitution amendment first |
 | Installed size with dependencies (after task 1) | tarball into an empty prefix | blocked above 30 MB pending a written reason approved by the owner |

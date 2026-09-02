@@ -114,7 +114,7 @@ directive-corpus check rejects bodies that read as instructions; sensitivity on 
 source row and detector result, on `update` = max(target's sensitivity, every source row, detector
 result), fixed in the apply transaction so a `local_only` or `private` target can never be
 relaxed by an eligible update (tested against the outbound body); `material_hash` and `content_hash` come from the shared identity helper (`material_hash` =
-sha256(type, normalized title, normalized body), `content_hash` = sha256(repo_id, material_hash);
+sha256(normalized title, normalized body) (observation type excluded, A13), `content_hash` = sha256(repo_id, material_hash);
 the same function serves import and tombstones); `target` must be
 one of the supplied `nearby` ids from the same repository, otherwise the decision is `add`; a hash
 matching a tombstoned memory suppresses the insert and is recorded for `why`; `update` sets
@@ -133,6 +133,7 @@ input's); a provider fixture returning English for Japanese input verifies this.
 | `ollama` | `@ai-sdk/openai-compatible` | `http://127.0.0.1:11434/v1` | none | local | `response_format` |
 | `nim`, `openrouter`, `gemini` | `@ai-sdk/openai-compatible` | provider base URL | `OBOETE_PROVIDER_API_KEY` | remote | `response_format` where the R13 probe confirms it, else text-JSON |
 | `anthropic` | `@ai-sdk/openai-compatible` | `https://api.anthropic.com/v1` (R13 verifies path, model ids, auth header) | `OBOETE_PROVIDER_API_KEY` | remote | text-JSON only |
+| `agent-cli` (optional) | child process: `claude -p --output-format json`, `codex exec --json`, or `grok -p --output-format json` | none (the CLI's own login) | own subscription, shown on the consent screen | text-JSON; exempt from the 150-call cap; headless JSON output per CLI is an R13 probe and a failure only disables this preset |
 
 Text-JSON path: the prompt asks for exactly one JSON object; the reply is parsed and validated with
 the same zod schema; failure counts as `unusable_output`.
@@ -140,8 +141,9 @@ the same zod schema; failure counts as `unusable_output`.
 ## Call policy
 
 1. **Per attempt**: in one short `BEGIN IMMEDIATE` transaction, check the daily cap (FR-012: 150
-   HTTP attempts per UTC day summed over all presets; attempt 150 allowed, 151 refused) and the
-   preset's `exhausted_at`; if either blocks, mark the batch degraded
+   HTTP attempts per UTC day summed over all capped presets; attempt 150 allowed, 151 refused;
+   when 10 or fewer remain, `ten_turns` batches go to the fallback and the remainder is reserved
+   for `session_end` batches; `agent-cli` is not counted) and the preset's `exhausted_at`; if either blocks, mark the batch degraded
    (`daily_cap` or `provider_exhausted`) and route it to the fallback; otherwise increment
    `provider_usage.calls` and `observation_batches.provider_attempts`, record a reservation id,
    set the batch `running`; commit. A retry is a new attempt and a new reservation.

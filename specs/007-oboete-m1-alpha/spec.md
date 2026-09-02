@@ -63,10 +63,10 @@ for every ordered pair of the four agents.
 2. **Given** memories exist for R, **When** the developer submits a prompt that relates to some of
    them, **Then** the prompt is enriched with the memories that pass the relevance threshold, up
    to a cap proportional to that agent's documented context limit, and never with a memory that was
-   already injected earlier in the same session.
+   already injected earlier in the same session since the last context compaction.
 3. **Given** a session in agent A on R has just ended and its summary is still being produced,
    **When** the developer starts a session in agent B on R within seconds, **Then** session start
-   waits at most 8 seconds for the summary and, if it is still not ready, injects the most recent
+   waits at most 1 second for the summary and, if it is still not ready, injects the most recent
    raw activity labelled "summary pending" instead of nothing.
 4. **Given** memories exist for repository R, **When** the developer starts a session in a different
    repository S, **Then** no memory of R is injected.
@@ -96,8 +96,9 @@ be written immediately are recovered once the failure is removed.
    **Then** the capture step appends the event to a local spool, exits successfully within 300 ms,
    and the event is stored the next time the database is writable.
 2. **Given** the background worker has crashed mid-summary, **When** the next session ends,
-   **Then** a new worker takes over the pending work, no event is lost, and no event is summarized
-   twice.
+   **Then** a new worker takes over the pending work, no event is lost, and no event's summary is
+   applied twice (a provider call may be repeated once after a crash between the response and
+   its application).
 3. **Given** the summarization provider is unreachable, **When** a session ends, **Then** the
    session is still summarized by the rule-based fallback and the resulting memories are labelled
    as degraded.
@@ -263,9 +264,9 @@ committed evidence.
 - Two agents active in the same repository at the same time: both sessions are captured, one
   worker summarizes both, and neither session's injection includes the other's unfinished turn.
 - A tool output larger than the summarizer's input limit: the event is stored and the summarizer
-  receives an excerpt; a hook payload larger than 1 MB is not read past that bound and only its
-  metadata is recorded (the content is dropped, marked as oversized), so the capture budget stays
-  measurable
+  receives an excerpt; a hook payload larger than 1 MB is not read past that bound: the part that
+  was read is redacted and stored marked as truncated, its metadata is complete, and it never
+  reaches a provider or an injection pack, so the capture budget stays measurable
 - A session whose entire content was `<private>`: no memory is produced and nothing is sent
   anywhere.
 - The provider returns malformed or non-conforming output: the worker retries once, then falls back
@@ -332,8 +333,13 @@ Summarization
   returns the true remainder); the authoritative exhaustion signal is the provider's account-limit
   error, which MUST NOT be retried. Provider calls MUST be capped at 150 per day (derived from the
   measured cost of about 45 neurons per call against the 10,000-neuron daily allowance); beyond
-  the cap the rule-based summarizer is used and the switch is labelled. The presets MUST include
-  at least one local-model option.
+  the cap the rule-based summarizer is used and the switch is labelled; when 10 or fewer calls
+  remain, mid-session batches use the rule-based summarizer and the remaining calls are reserved
+  for session-end batches. The presets MUST include at least one local-model option and MAY
+  include an `agent-cli` option that summarizes through an already-authenticated agent CLI
+  (`claude -p`, `codex exec`, `grok -p`); that option consumes the developer's own subscription,
+  is shown as such on the consent screen, and is exempt from the 150-call cap because it uses no
+  oboete allowance.
 - **FR-013**: When no provider is configured, the provider is unreachable, the provider's output is
   unusable, or the allowance is exhausted, the system MUST produce memories with a rule-based
   summarizer in the same shape, and MUST label those memories and the affected injection packs as
@@ -375,14 +381,16 @@ Retrieval and injection
   injection from its transcript. The pack MUST be bounded to the delivering channel's per-value
   ceiling (10,000 characters on the Claude Code and Grok Build hook channel), pinned memories
   trimmed in pin order with the trim recorded per FR-028. When the previous session's summary is
-  still pending it MUST wait at most 8 seconds and then inject the latest raw activity labelled
-  "summary pending".
+  still pending it MUST wait at most 1 second and then inject the latest raw activity labelled
+  "summary pending". A context compaction opens a new context epoch of the conversation.
 - **FR-025**: At prompt submit the system MUST retrieve memories of the same repository by lexical
   relevance to the prompt, including Japanese and other CJK text, and inject those above a
   relevance threshold up to a cap proportional to the agent's documented context limit; the
   amount MUST NOT be a fixed token count.
-- **FR-026**: The system MUST NOT inject the same memory twice within one agent conversation,
-  counting resumed continuations of that conversation as the same conversation.
+- **FR-026**: The system MUST NOT inject the same memory twice within one context epoch of an
+  agent conversation, counting resumed continuations of that conversation as the same
+  conversation; a context compaction opens a new epoch, so the re-injection FR-024 requires after
+  compaction is not a duplicate.
 - **FR-027**: For Codex, injection MUST occur only at session start and prompt submit.
 - **FR-045**: For Grok Build, which has no channel that reaches the model before a turn starts,
   the session-start and prompt-submit packs MUST be delivered with the first tool call of the turn
@@ -406,7 +414,7 @@ Setup, doctor, and lifecycle
   be complete enough to fire: user-global locations that need no per-project trust (Pi's global
   extension directory), the trust entry Codex requires before it runs a hook (a hash of the
   canonical handler definition, written next to the hook), an explicit per-hook timeout no smaller
-  than the work the hook serves (the 8-second session-start wait plus margin; Grok Build's default
+  than the work the hook serves (the 1-second session-start wait plus margin; Grok Build's default
   is 5 seconds), and per-hook output limits set so that the pack oboete computes is what reaches
   the model (Codex's default 2,500-token spill MUST be disabled). Setup MUST verify by a probe that
   each hook actually fires and MUST report each agent's trust state before reporting success.
@@ -421,7 +429,8 @@ Setup, doctor, and lifecycle
 - **FR-034**: The developer MUST be able to pause and resume capture and injection without losing
   or altering existing memories.
 - **FR-035**: The developer MUST be able to pin, unpin, and delete memories; deleted memories MUST
-  NOT be re-created from the same content.
+  NOT be re-created from the same content, where "the same content" means the same normalized
+  title and body regardless of observation type.
 - **FR-036**: The developer MUST be able to export all non-deleted memories with sensitivity,
   provenance, and repository identity, and import such a file with merge by content, preservation
   of deletions, and no lowering of sensitivity.
@@ -435,7 +444,8 @@ Viewer
 Platform and evidence
 
 - **FR-039**: The system MUST NOT depend on Linux-only facilities; configuration and data paths
-  MUST follow the platform's user-directory conventions.
+  MUST live under one data directory (`~/.oboete/`) relocatable through `OBOETE_HOME`; a
+  per-platform XDG/AppData split is deferred to a later milestone.
 - **FR-040**: A committed fixture of 1,000 events MUST exist, and the measured capture time,
   worker memory, and storage growth for it MUST be recorded before M1 is declared done.
 - **FR-041**: Automated end-to-end validation MUST run under an isolated user account with real
@@ -495,7 +505,8 @@ Owner decisions (resolved in Clarifications)
 - **SC-009**: For seeded Japanese and English facts, the correct memory is among the injected
   memories for at least 90% of matching prompts (on Grok Build, among the memories delivered with
   the first tool call of that turn).
-- **SC-010**: Zero duplicate injections of the same memory within a session across the fixture.
+- **SC-010**: Zero duplicate injections of the same memory within a session's context epoch across
+  the fixture (a compaction opens a new epoch).
 - **SC-011**: A newly created memory appears in the viewer within 2 seconds.
 
 ## Assumptions
@@ -521,8 +532,9 @@ Owner decisions (resolved in Clarifications)
   reference; adaptations are documented, not silently changed.
 - The 300 ms capture budget, 150 MB worker limit, 12,000-character summarizer input, and 7-day
   raw event retention are the constitutional values and are not tuned in M1 without an
-  evidence-backed amendment. The 8-second summary wait applies to session-start injection only;
-  the plan asks for a constitution amendment that distinguishes the capture and injection budgets.
+  evidence-backed amendment. The 1-second summary wait applies to session-start injection only
+  (constitution 3.1.0 distinguishes the capture and injection budgets). Search in M1 is lexical
+  only and says so in empty results and in `doctor`; semantic search is M2.
 - Legacy free-mem assets (destination boundary rules, fixtures, mutation gate) may be ported when
   a task needs them; nothing else from `legacy/` is reused.
 - Third-party contracts (each agent's hook payloads and injection limits, the provider's structured

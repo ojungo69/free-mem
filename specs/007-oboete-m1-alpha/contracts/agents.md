@@ -23,12 +23,14 @@ from the fixed selector below, never from the payload), `native_session_id`, `co
 | compaction_summary | `text` |
 | last_assistant_message | `text` |
 
-Size cap (R4): the hook reads at most 1 MB from stdin and stops; a larger payload is handled as
-a detector failure: no content is stored, one metadata-only row (`classification_state = failed`,
-reason `oversized`, kind from the `--event` argument, session id from `GROK_SESSION_ID` /
-`PI_SESSION_ID` or a bounded scan of the read bytes for the top-level `session_id`) is written,
-and when no session id is recoverable only a diagnostics counter is incremented. Such rows are
-never summarized or injected. Runner tolerance of unread stdin is an R13 probe (A7). The 12,000-character limit applies only when a
+Size cap (R4, A7): the hook reads at most 1 MB from stdin and stops; the part that was read goes
+through the detector and is stored as a `partial` row (`classification_state = partial`,
+`truncated = 1`, kind from the `--event` argument, session id and tool paths from a bounded scan
+of the read bytes for the top-level `session_id` and path fields; when no session id is
+recoverable only a diagnostics counter is incremented). Partial rows stay `local_only` for life,
+contribute only metadata (tool name, paths) to the rule-based summarizer, never enter a provider
+request, and are never injected; the viewer shows them marked truncated. Runner tolerance of
+unread stdin is an R13 probe. The 12,000-character limit applies only when a
 batch input is built. Normalized tool names: `read`, `write`, `edit`, `bash`, `grep`, `glob`,
 `task`, `mcp:<server>/<tool>`, `other`; an agent/tool whose payload fixture (R13) does not exist
 yet is stored metadata-only (`classification_state = failed`, reason `unmapped_payload`), never
@@ -72,7 +74,7 @@ Grok session whose native id already exists is treated as a resume of that root)
 | Claude Code | SessionStart, UserPromptSubmit, PreToolUse, PostToolUse, PostToolUseFailure → `tool_failure`, Stop → `last_assistant_message` (and `turn_end`), PostCompact → `compaction_summary`, SessionEnd (capture only, 1.5 s shared budget) | plain stdout on SessionStart when `source` is `startup`, `clear`, or `compact`; nothing on `resume` or `fork` (transcript replay); plain stdout on UserPromptSubmit | 10,000 characters per value | oboete-owned handlers (`"oboete": true`) merged into `~/.claude/settings.json`; timeouts 12 s on injection hooks, 3 s on capture hooks; `claude mcp add oboete -- "<node>" "<bundle>" mcp` |
 | Codex CLI | SessionStart, UserPromptSubmit, PreToolUse, PostToolUse, Stop, PostCompact → `compaction_summary` (field per R13 probe), SessionEnd (1 s default, capture only) | `hookSpecificOutput.additionalContext` on SessionStart with matcher `startup\|clear\|compact` (verified enum; `resume` excluded) and on UserPromptSubmit; `additionalContextLimit = 0` | provider context, no spill | `~/.codex/hooks.json` handlers; managed block in `~/.codex/config.toml` with `[hooks.state."<abs path>:<event>:<group>:<handler>"] trusted_hash = "sha256:<hex of canonical handler json>"` and `[mcp_servers.oboete]` |
 | Grok Build | SessionStart (`source: "new"` when headless; resume value per R13 probe), UserPromptSubmit, PreToolUse, PostToolUse, PostToolUseFailure, PermissionDenied (payload per R13 probe), Stop (`reason: end_turn` only) → `last_assistant_message` from the verified `lastAssistantMessage` field, PostCompact → `compaction_summary` (field per R13 probe), SessionEnd | FR-045 state machine below | 10,000 characters (silent clip) | `~/.grok/hooks/oboete.json` with explicit `timeout` per hook (12 s injection, 3 s capture); handlers deduplicated against the Claude compat layer; MCP registration per R13 probe (blocked for FR-030 if the probe fails) |
-| Pi | `session_start` (from `session_start`), `input` (source filter), `tool_result` (input + content + isError), `agent_settled` → `turn_end` + `last_assistant_message` when available, `session_shutdown` (reason `quit|reload|new|resume|fork`), compaction event (R13 probe) | `before_agent_start` returns the pack produced by a bounded child `oboete inject` (`AbortSignal.timeout`: 8 s at session start while a summary is pending, 300 ms otherwise); capture through a detached child `oboete capture --invocation <id>` that writes a two-phase acknowledgement (`<invocation>.started` before reading stdin → `.done`); the extension itself only try/catches, generates invocation ids, spawns, and counts failures in memory (message code only), handing the counters to the next child it spawns as `--prior-failures`; no in-process file or network write (FR-007; recording guarantee per amendment A8 and the R13 Pi error-surface probe) | provider context | `~/.pi/agent/extensions/oboete.js` loader importing `piExtension` from the bundle; tools call `oboete search\|timeline\|get --json` as child processes |
+| Pi | `session_start` (from `session_start`), `input` (source filter), `tool_result` (input + content + isError), `agent_settled` → `turn_end` + `last_assistant_message` when available, `session_shutdown` (reason `quit|reload|new|resume|fork`), compaction event (R13 probe) | `before_agent_start` returns the pack produced by a bounded child `oboete inject` (`AbortSignal.timeout`: 1.3 s at session start while a summary is pending, 300 ms otherwise); capture through a detached child `oboete capture --invocation <id>` that writes a two-phase acknowledgement (`<invocation>.started` before reading stdin → `.done`); the extension itself only try/catches, generates invocation ids, spawns, and counts failures in memory (message code only), handing the counters to the next child it spawns as `--prior-failures`; no in-process file or network write (FR-007; recording guarantee per amendment A8 and the R13 Pi error-surface probe) | provider context | `~/.pi/agent/extensions/oboete.js` loader importing `piExtension` from the bundle; tools call `oboete search\|timeline\|get --json` as child processes |
 
 ### Grok Build deferred delivery (FR-045)
 
@@ -154,7 +156,7 @@ oboete memory context
 > <body>
 > related: <title> [<path or commit>; <stale note>]
 > <body>
-> degraded: <reason>            (only when applicable)
+> degraded: <plain-language sentence>   (only when applicable)
 end of oboete memory context
 ```
 
@@ -163,7 +165,9 @@ other line, including repository identity, titles, citations, and bodies, is pre
 as data framing, and every external string is canonicalized to a single line first (newlines and
 control characters removed), so no title, path, or remote can produce an unprefixed line. The
 pack never starts with `{`; bodies are summarizer output or fallback records, never verbatim tool
-output; the producing agent is not named in the pack. The finished pack is validated as a whole
+output; the producing agent is not named in the pack. The `degraded:` line is a plain-language sentence mapped from the reason code (for example
+`daily_cap` → "Today's free summary quota is used up, so these are rule-based notes."); the code
+itself stays in the ledger, `why`, and doctor. The finished pack is validated as a whole
 (secret detector, directive corpus, control characters) before it is emitted; a directive-corpus
 test (`test/corpus/directives.jsonl`) plus malicious title, path, and remote-URL cases assert
 that nothing escapes the framing (the directive phrases legitimately exist in raw events and the
@@ -188,7 +192,7 @@ spool).
   detector that never returns) and 100% in-deadline exits under every fault; the replay p99 is an
   additional SC-002 measurement, not the guarantee.
 - Injection hooks (`SessionStart`, `UserPromptSubmit`, Grok delivery hooks, Pi inject child):
-  300 ms when the previous summary is ready; at session start only, up to 8 s while it is
+  300 ms when the previous summary is ready; at session start only, up to 1 s while it is
   pending, then the latest raw activity labelled `summary pending`.
 - The detector (stdin cap, private strip, path rules, secretlint core + gated entropy) runs before
   the first write anywhere, including the spool.
