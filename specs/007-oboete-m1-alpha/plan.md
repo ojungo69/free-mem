@@ -96,6 +96,7 @@ repositories, memories in the low thousands during M1.
 | A12 | spec FR-024 / FR-026, User Story 1 scenario 2, SC-010 | compaction opens a new context epoch; "never the same memory twice" is scoped to (conversation, epoch), so the post-compaction re-injection FR-024 requires is allowed and resume stays deduplicated; SC-010 counts duplicates per epoch | spec clarification (if rejected: FR-024 re-injects only items not yet injected in the conversation) |
 | A13 | spec FR-035 ("not re-created from the same content") | "same content" = identical (type, normalized title, normalized body), which is `material_hash`, so a paraphrase or the same text under another type is a new memory; a tombstone test covers same title/body with a different type | spec clarification (owner may instead drop `type` from the identity, which changes `material_hash`) |
 | A14 | spec FR-002, FR-001, edge case "tool output larger than the summarizer's input limit", Independent Test of User Story 2 | only if the R13 detector probe shows the full detector cannot finish 1 MB inside the capture cutoff: the measured bound becomes the content limit; events at or below it are captured whole, above it metadata-only | spec amendment (conditional) |
+| A16 | spec FR-024 (re-injection after compaction) | only if the R13 compaction probe fails for an agent: accept the `PostCompact` event id as the epoch key (two byte-identical compactions in one turn count once) and/or a documented hook-order limit, or exclude compaction re-injection for that agent from M1 | spec amendment (conditional) |
 | A15 | spec FR-045, FR-026, User Story 1 scenario 2, SC-010, FR-028; CONSTITUTION Principle IV (injection volume) | only if the R13 probe shows Grok delivers `additionalContext` once per call: either accept that the two calls of one parallel batch both carry the pack (duplicates counted in `why` and SC-010 scoped to distinct calls) or exclude parallel-batch delivery from M1 | spec + constitution exception (conditional) |
 
 Implementation starts only after these are approved or rejected in writing; a rejection returns
@@ -247,8 +248,8 @@ task, and a delegated result that touches one is returned to Claude Code.
 
 ## Delivery order (input to /speckit-tasks)
 
-0. **Amendments and verification gate**: owner decision on A1-A7 and A9-A13 (A8, A14, A15 only
-   if their R13 probes fail); R13 probe scaffolding and the probes that need no oboete code, run under the
+0. **Amendments and verification gate**: owner decision on A1-A7 and A9-A13 (A8, A14, A15, A16
+   only if their R13 probes fail); R13 probe scaffolding and the probes that need no oboete code, run under the
    isolated user and recorded in `docs/research/`; a failed probe blocks its dependents (R13
    table) rather than switching to a fallback.
 1. **Foundation**: package, build, lint, migrations 0001-0003 with smoke tests on 22.16 and 24.x,

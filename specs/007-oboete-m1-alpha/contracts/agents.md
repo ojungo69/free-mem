@@ -85,9 +85,9 @@ memories counted for the conversation.
    into it: existing `planned` items stay, new items are added under the same budget, and the
    record gets a new `pack_hash`. One pending record per conversation at any time.
 2. On every `PreToolUse` of the turn while the record is not yet `emitted`, the hook emits the
-   pending pack as `additionalContext` and appends the `tool_call_id` to
-   `injections.attempts_json` (outcome `attached`). Grok delivers it with the results of the batch once the
-   call has run (verified wording); a denied call never runs and delivers nothing. Attaching on
+   pending pack as `additionalContext` and appends `{ tool_call_id, execution: pending,
+   delivery: pending, at }` to `injections.attempts_json`. Grok delivers it with the results of
+   the batch once the call has run (verified wording); a denied call never runs and delivers nothing. Attaching on
    every call until confirmation is what makes "the first call that actually runs" (FR-045) hold
    whatever the order of denies and executions inside a parallel batch; the price is that two
    calls of one parallel batch may both carry the pack. Whether Grok delivers `additionalContext`
@@ -95,13 +95,14 @@ memories counted for the conversation.
    nothing more is needed; once per call → the Grok lane is **blocked** until the owner decides
    A15 (accept per-call duplication inside one parallel batch, with its effect on FR-026, User
    Story 1 scenario 2, SC-010, FR-028, and Principle IV's injection volume stated in the
-   amendment) or removes parallel-batch delivery from M1. In either case every attempt's outcome is
-   persisted in `injections.attempts_json` (`attached`, `confirmed`, `failed`, `denied`,
-   `unresolved`, with timestamps) so `why` reports actual deliveries per attempt after the raw
-   events have expired, and the E2E counts them.
-3. On `PostToolUse` for any attempted `tool_call_id` (and on `PostToolUseFailure` if the R13
-   probe shows the context survives a failed call) the record becomes `emitted` and its items
-   `included`. On `PostToolUse` with a `pending` record and no attempted id (oboete's own
+   amendment) or removes parallel-batch delivery from M1. In either case every attempt's `execution` and
+   `delivery` fields are persisted in `injections.attempts_json` (vocabulary and update rules in
+   `data-model.md`) so `why` reports actual deliveries per attempt after the raw events have
+   expired, and the E2E counts them.
+3. On `PostToolUse` for any attempted `tool_call_id` that attempt becomes `execution = ran`,
+   `delivery = delivered` (and on `PostToolUseFailure`, `execution = failed` with delivery
+   `delivered` if the R13 probe shows the context survives a failed call); the first `delivered`
+   attempt makes the record `emitted` and its items `included`. On `PostToolUse` with a `pending` record and no attempted id (oboete's own
    `PreToolUse` handler did not complete: timeout or crash) the hook emits the pack from
    `PostToolUse` and marks it `emitted` the same way.
 4. A denied call produces no `PostToolUse`, and the next `PreToolUse` attaches the pack again
@@ -124,10 +125,10 @@ on delivery); the session-start pack is emitted at most once per context epoch (
 session and advances once per compaction, A12; the authoritative compaction event is one per
 agent: `PostCompact` on Claude Code (carries `compact_summary`), Codex, and Grok Build, and the
 compaction event the R13 probe identifies on Pi; the companion `SessionStart source = compact`
-never advances the epoch and only reads it. The epoch key is that event's `raw_events.id`, or a
-native per-compaction id when the R13 probe finds one; the R13 probe also records the order of
-`PostCompact` and `SessionStart source = compact`, and an agent whose `PostCompact` reaches the
-hook without any content and without a native id is blocked for compaction re-injection), which gives FR-024's "not again on resume" and its
+never advances the epoch and only reads it. The epoch key is the native per-compaction value the R13
+probe verifies (uniqueness across byte-identical compactions and re-deliveries, and epoch commit
+before any post-compaction injection hook are the pass conditions); an agent that fails either
+condition is blocked for compaction re-injection until the owner decides A16), which gives FR-024's "not again on resume" and its
 re-injection after compaction on every agent; session start
 = latest session summary + pinned memories, bounded to the channel cap, pinned trimmed in pin
 order; prompt submit = memories above the threshold up to a character
