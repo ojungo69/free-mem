@@ -86,7 +86,7 @@ memories counted for the conversation.
    record gets a new `pack_hash`. One pending record per conversation at any time.
 2. On every `PreToolUse` of the turn while the record is not yet `emitted`, the hook emits the
    pending pack as `additionalContext` and appends the `tool_call_id` to
-   `injections.attempted_tool_call_ids`. Grok delivers it with the results of the batch once the
+   `injections.attempts_json` (outcome `attached`). Grok delivers it with the results of the batch once the
    call has run (verified wording); a denied call never runs and delivers nothing. Attaching on
    every call until confirmation is what makes "the first call that actually runs" (FR-045) hold
    whatever the order of denies and executions inside a parallel batch; the price is that two
