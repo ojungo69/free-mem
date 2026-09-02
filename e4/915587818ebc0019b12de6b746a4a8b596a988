@@ -1,0 +1,21 @@
+.coderabbit.yaml
+  s_57dbf1dbbfb84e::t_8730565ab71da6 1-5
+.gitignore
+  s_57dbf1dbbfb84e::t_fa928e52733d6a 1-2
+---
+{
+  "schema_version": "authorship/3.0.0",
+  "git_ai_version": "1.6.16",
+  "base_commit_sha": "e4915587818ebc0019b12de6b746a4a8b596a988",
+  "prompts": {},
+  "sessions": {
+    "s_57dbf1dbbfb84e": {
+      "agent_id": {
+        "tool": "claude",
+        "id": "cccab57b-75af-4932-87f9-5ede4fbf82ca",
+        "model": "claude-fable-5-1"
+      },
+      "human_author": "ojungo69 <210335670+ojungo69@users.noreply.github.com>"
+    }
+  }
+}
