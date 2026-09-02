@@ -87,10 +87,11 @@ repositories, memories in the low thousands during M1.
 | A4 | CONSTITUTION Principle VI, Product Constraints; spec FR-039 and Assumptions | one data directory `~/.oboete/` relocatable by `OBOETE_HOME`; XDG/AppData split deferred to a later milestone | PATCH wording + spec amendment |
 | A5 | CONSTITUTION Product Constraints (Codex hook location) | Codex handlers live in `~/.codex/hooks.json` with the `[hooks.state]` trust row in `config.toml`, both inside managed blocks | PATCH wording |
 | A6 | CONSTITUTION Development Workflow (dogfood command list) | headless Grok Build is `grok -p` (the verified flag), not `grok --print` | PATCH wording |
-| A7 | spec edge case "tool output larger than the summarizer's input limit" | the hook reads at most 1 MB of stdin; a larger payload is not parsed and is stored as a redacted 64 KB prefix with `truncated_bytes` | spec amendment |
+| A7 | spec edge case "tool output larger than the summarizer's input limit" | the hook reads at most 1 MB of stdin and stops; a larger payload is recorded as a metadata-only failed row (fail closed) and its content is dropped; runner tolerance verified by R13 | spec amendment |
+| A8 | spec FR-007 | "every thrown error is recorded" is satisfied by in-memory counters handed to the next child spawn plus the doctor wiring probe, or by Pi's own durable error log when the R13 probe finds one; a failure that stops every later spawn is detected by the probe rather than recorded | spec amendment (only if the R13 probe finds no Pi-owned durable error surface) |
 
 Implementation starts only after these are approved or rejected in writing; a rejection returns
-the affected decision to research.
+the affected decision to research. A8 is raised only if the R13 Pi error-surface probe fails.
 
 Post-design re-check: no new violation beyond the amendments listed.
 
@@ -107,7 +108,7 @@ section, "verified" names the test or evidence document that fails when the requ
 | FR-004 | repository identity derived by oboete, never accepted from agent or payload | R8; data-model repos; mcp.md boundary | identity tests; payload-supplied repo ignored; MCP `repo` argument rejected |
 | FR-005 | agent recorded as provenance, never influences eligibility | data-model sessions.agent, destination_rules | SC-006 agent-swap test |
 | FR-006 | capture command determines the invoking agent; Grok never mistaken for Claude Code | agents.md fixed selectors | selector tests (`GROK_*` env); `unknown` reported by doctor |
-| FR-007 | Pi handlers do no in-process storage or network; bounded enqueue; errors contained and recorded | R12 Pi diagnostics; agents.md Pi row; data-model Pi ack | pi-throw, pi-child-hang, pi-spawn-failure tests |
+| FR-007 | Pi handlers do no in-process storage or network; bounded enqueue; errors contained and recorded | R12 Pi diagnostics (A8); agents.md Pi row; data-model Pi ack | pi-throw, pi-child-hang, pi-spawn-failure tests; fs/network access assertion on the extension |
 | FR-008 | raw events kept 7 days; memories permanent except tombstone or supersession | R6 retention; raw_events.expires_at; memories deleted_at, superseded_by | purge tests; tombstone round trip |
 | FR-009 | no resident service; detached worker exits when its queue is empty | R6 lease; cli.md `observe` | process-tree assertion in replay; atomic release test |
 | FR-010 | batch at session end and every 10 turns, one call per batch, claude-mem types, add/update/delete/noop against nearby, hook-supplied summaries as input | R10; observer.md; data-model observation_batches | trigger tests; classification tests; free-summary input tests |
@@ -282,4 +283,5 @@ task, and a delegated result that touches one is returned to Claude Code.
 | 13 | `.oboete.toml` for repository path rules | Same parser as the user config; a committed file may only add rules | YAML would add a parser |
 | 14 | Hand-written legacy-era stdio MCP server | `@modelcontextprotocol/sdk` pulls 93 packages / 28 MB for transports oboete never uses | Owning the legacy handshake is small; a dual-era server is out of M1 scope and clients fall back; a client that cannot use it blocks that agent's tool surface pending amendment |
 | 15 | Anthropic preset without schema-constrained output | Anthropic's OpenAI-compatible endpoint ignores `response_format` | Dropping the listed preset; text-JSON with zod validation keeps it |
-| 16 | 1 MB stdin read cap; larger payloads stored unparsed as a redacted prefix | Parse and detector time are payload-size dependent; the 300 ms capture SLA cannot be measured without a bound on what the hook reads | A per-field cap still requires reading and parsing the whole payload; amendment A7 |
+| 16 | 1 MB stdin read bound; larger payloads dropped as metadata-only failed rows | Read, parse, and detector time are payload-size dependent; FR-002's 300 ms cannot hold without a bound on what the hook reads | Draining or storing a prefix keeps time or content unbounded and cannot evaluate path rules; amendment A7 |
+| 17 | Pi errors recorded through the next child spawn and the doctor probe rather than in-process | FR-007 forbids in-process storage work | An in-process log write violates the same requirement; amendment A8 |

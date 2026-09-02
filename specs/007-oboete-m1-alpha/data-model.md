@@ -58,13 +58,12 @@ tables are `STRICT`; FTS5 virtual tables cannot be. Every write from the worker 
 | id | TEXT PK | sha256 over the most specific stable key (R7): (agent, native_session_id, kind, tool_call_id or native event id) → (agent, native_session_id, kind, prompt_id) → (agent, native_session_id, turn ordinal, kind, content_hash); no delivery counter, so re-delivery always collapses; two byte-identical events of the last form inside one turn also collapse (accepted) |
 | repo_id, session_id, turn_id | TEXT | |
 | agent | TEXT | |
-| kind | TEXT | `session_start`, `prompt`, `tool_call`, `tool_result`, `tool_failure`, `turn_end`, `session_end`, `compaction_summary`, `last_assistant_message`, `probe`, `oversized` (payload above 1 MB: unparsed, redacted 64 KB prefix as opaque text; `payload_json.original_kind` from the `--event` argument) |
+| kind | TEXT | `session_start`, `prompt`, `tool_call`, `tool_result`, `tool_failure`, `turn_end`, `session_end`, `compaction_summary`, `last_assistant_message`, `probe` |
 | content | TEXT | stored after `<private>` removal and redaction; NULL for path-rule hits and for `classification_state = failed` |
-| truncated_bytes | INTEGER | exact count of bytes drained beyond the retained 1 MB; NULL unless the cap applied |
 | payload_json | TEXT | normalized fields (zod-validated); no raw passthrough |
 | content_hash | TEXT | |
 | sensitivity | TEXT | `local_only` (default), `eligible`, `secret`, `private` |
-| classification_state | TEXT | `pending`, `done`, `partial` (oversized: path rules not evaluable, never promoted, local path only), `failed` (detector or config failure: metadata only, never summarized or injected) |
+| classification_state | TEXT | `pending`, `done`, `failed` (detector or config failure, or payload above the 1 MB read bound: metadata only with `payload_json.failure_reason`, never summarized or injected) |
 | captured_at, expires_at | INTEGER | `expires_at` = captured_at + 7 days |
 | batch_id | TEXT | set when claimed |
 | via_spool | INTEGER | |
@@ -214,8 +213,7 @@ under the same budget, and the merged pack gets a new `pack_hash`.
 ## runtime_state
 
 Key/value (`key TEXT PK`, `value_json TEXT`, `updated_at INTEGER`): last purge, last checkpoint,
-catalog cache, consent record mirror. Sessions of kind `orphan` (oversized payloads whose session
-id could not be recovered) are ordinary `sessions` rows with `native_session_id = orphan:<cwd>`. The
+catalog cache, consent record mirror. The
 pause flag is the file `~/.oboete/paused`. The context-window table is the versioned document
 `docs/research/context-windows.md` embedded at build time (R12), not a runtime row.
 
@@ -229,12 +227,14 @@ pause flag is the file `~/.oboete/paused`. The context-window table is the versi
 | count | INTEGER | |
 | first_seen_at, last_seen_at, cleared_at | INTEGER | |
 
-Pi: the extension performs no file or network write; it keeps in-memory failure counters
-(message codes) and passes them to the next child as `--prior-failures`, which records them here.
-The capture child writes `~/.oboete/spool/pi-ack/<event id>.started` first and renames it to
-`.done` on success; the worker folds and deletes `.done` files, records `pi_child_hang` for
-`.started` files older than 30 s and deletes them after 24 h. Doctor reports `pi_child_hang` and
-`pi_child_failed` from these rows and `pi_spawn_failed` from its own wiring probe (R12).
+Pi: the extension performs no file or network write; it generates an `invocation_id` per spawn,
+keeps in-memory failure counters (message codes), and passes them to the next child as
+`--prior-failures`, which records them here. The capture child writes
+`~/.oboete/spool/pi-ack/<invocation_id>.started` before reading stdin and renames it to `.done` on
+success; the worker folds and deletes `.done` files, records `pi_child_hang` for `.started` files
+older than 30 s and deletes them after 24 h. Doctor reports `pi_child_hang` and `pi_child_failed`
+from these rows, `pi_spawn_failed` from its own wiring probe, and, when the R13 probe finds one,
+Pi's own durable error log (R12, amendment A8).
 
 ## sync_conflicts (M2 reservation)
 

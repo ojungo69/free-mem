@@ -69,17 +69,18 @@ approval before implementation starts (task 0).
   recommend preset (about 30 ms cold) plus entropy only on regex-captured candidates (3.0 bits/char
   hex, 4.0 base64 >= 32 chars; never on bare words, SHAs, UUIDs, paths); replace hits with
   `[REDACTED:<rule>]`; store `local_only` or `secret`. The worker runs the same detector on every
-  candidate memory before insert and decides promotion. **Payload size**: the hook drains
-  stdin to EOF while counting bytes (so the runner never sees EPIPE and `truncated_bytes` is
-  exact) but retains only the first 1 MB (Pi: the extension's serialized event, same rule); above
-  the cap the payload is not parsed as JSON and the hook stores an `oversized` event holding the
-  redacted first 64 KB as opaque text, the event kind from the handler's fixed `--event` argument,
-  and the session id from the environment (`GROK_SESSION_ID`, `PI_SESSION_ID`) or a bounded scan
-  of the prefix for the top-level `session_id` / `cwd` strings (Claude Code, Codex), else an
-  `orphan` session. Oversized rows are `classification_state = partial`: path rules cannot be
-  evaluated, so they are never promoted and never leave the local path (spec edge case amended,
-  A7; the summarizer input bound stays 12,000 characters). The replay fixture includes payloads at
-  and above the cap; each agent's runner behaviour at that size is an R13 probe. **Detector or config failure** (secretlint throws, `.oboete.toml` malformed,
+  candidate memory before insert and decides promotion. **Payload size**: the hook reads
+  at most 1 MB from stdin and stops (Pi: the extension's serialized event, same bound); a payload
+  that exceeds the bound is treated exactly like a detector failure: fail closed, no content
+  stored, one metadata-only row with `classification_state = failed` and reason `oversized`
+  (event kind from the handler's fixed `--event` argument, session id from `GROK_SESSION_ID` /
+  `PI_SESSION_ID` or a bounded scan of the read bytes for the top-level `session_id` string;
+  when no session id can be recovered nothing is stored and a `diagnostics` counter is
+  incremented), never summarized, never injected. Nothing is drained, so capture time is bounded
+  by 1 MB regardless of payload size (spec edge case amended, A7; the summarizer input bound
+  stays 12,000 characters). Whether each agent's runner tolerates a hook that exits with unread
+  stdin, and whether the runner caps payloads itself, is an R13 probe; a runner that fails the
+  hook in that case blocks A7 for an owner decision (no drain fallback). **Detector or config failure** (secretlint throws, `.oboete.toml` malformed,
   bundle mismatch): fail closed, store metadata only with `classification_state = failed`, write a
   diagnostic, exit 0; the unsanitized text is never written to the spool.
 - **Rationale**: FR-018 and Principle III require redaction before storage; `@secretlint/node` costs
@@ -268,17 +269,20 @@ approval before implementation starts (task 0).
   injection, MCP, and the viewer's injectable set; the worker runs the detector and the
   directive check on each imported row and moves it to `unreviewed` (or `secret`), so nothing
   imported reaches a pack before classification.
-- **Pi diagnostics**: the in-process extension does no file or network work (FR-007): it
-  try/catches, spawns bounded children, and keeps in-memory failure counters (message code only,
-  never payload or exception text) that it passes to the next child as `--prior-failures`; the
-  child records them as diagnostics rows. The capture child writes
-  `~/.oboete/spool/pi-ack/<id>.started` as its first action and renames it to `<id>.done` on
-  success. Doctor reports `pi_child_hang` from `.started` files older than 30 s, `pi_child_failed`
-  from diagnostics rows, and `pi_spawn_failed` from its own headless wiring probe (FR-033: a probe
-  session that produces no probe event) plus any prior-failure counters; whether Pi itself logs
-  extension errors durably is an R13 probe and, if it does, doctor reads that surface too. The
-  worker deletes `.done` files after folding them and `.started` files after recording a hang
-  diagnostic and 24 h.
+- **Pi diagnostics**: FR-007 forbids in-process storage work and also requires every thrown
+  error to be recorded; without a durable error surface owned by Pi those two clauses cannot both
+  hold, so the plan records this as amendment A8 (task 0). Design: the extension does no file or
+  network work; it try/catches, generates an `invocation_id` per spawn, spawns bounded children
+  with `--invocation <id>`, and keeps in-memory failure counters (message code only, never payload
+  or exception text) that it hands to the next child as `--prior-failures`. The capture child
+  writes `~/.oboete/spool/pi-ack/<invocation_id>.started` before reading stdin and renames it to
+  `.done` on success. Doctor reports `pi_child_hang` from `.started` files older than 30 s,
+  `pi_child_failed` and prior-failure counters from diagnostics rows, and `pi_spawn_failed` from
+  its own headless wiring probe. The R13 probe checks whether Pi logs extension errors durably:
+  if it does, doctor reads that surface and every error is recorded as FR-007 states; if it does
+  not, the Pi lane is blocked until the owner approves A8 (FR-007 recording = next-spawn counters
+  plus the doctor probe, best effort for a failure that stops every later spawn). The worker
+  deletes `.done` files after folding them and `.started` files 24 h after recording the hang.
 - **Security-owned modules** (implemented by Claude Code, never delegated): `privacy/*`,
   `capture.ts`, `config.ts`, `repo-identity.ts`, `setup/managed-block.ts`, `setup/consent.ts`,
   `setup/write-*.ts`, `db/queries.ts` (scope and sensitivity filter), `worker/batches.ts`
@@ -310,8 +314,8 @@ skeleton (task 1).
 | Grok Build `PreToolUse` context on an executed-but-failed call (`PostToolUseFailure`) | force a failing tool call with an attempted pack; check what the model received | if dropped: the failure branch returns the record to `pending` (already in the state machine); if delivered: `PostToolUseFailure` confirms delivery |
 | Pi `resume` / `fork`: `session_start` firing and `PI_SESSION_ID` continuity | resume and fork a session under the isolated user | if the id does not continue: Pi resume detection is blocked and FR-024/FR-026 on Pi resume go to an owner amendment |
 | Grok Build resume: `SessionStart` `source` value and session id continuity | resume a headless session | if not continuous: Grok resume detection is blocked and FR-024/FR-026 on Grok resume go to an owner amendment |
-| Hook runner behaviour on a payload above 1 MB (all four agents) | feed an oversized tool result | if a runner caps or drops the payload itself, the adapter records the runner's limit and A7 is narrowed accordingly |
-| Pi durable error surface for extension throws | throw inside a probe extension, inspect Pi's logs | if none: doctor relies on the wiring probe and prior-failure counters (already the design) |
+| Hook runner behaviour when the hook exits with unread stdin above 1 MB (all four agents) | feed an oversized tool result | blocked: A7 goes to the owner if a runner treats the hook as failed; a runner's own payload cap narrows A7 |
+| Pi durable error surface for extension throws | throw inside a probe extension, inspect Pi's logs | blocked for the Pi lane pending amendment A8 |
 | Legacy-era MCP server against Claude Code, Codex, Grok clients (raw frames compared) | headless `tools/list` + `tools/call` | blocked for that client pending amendment |
 | Per-model context windows | documented window per model id into `context-windows.md` | `window_unknown` degraded budget (R12) |
 | Real bundle cold start on 22.16 and 24.x (after task 1) | replay harness | blocked; a split entry point needs a constitution amendment first |

@@ -66,8 +66,8 @@ Expected: every hook exits 0 within its SLA, spooled events are recovered when t
 batch is applied twice, a lost lease stops the old worker's writes but the 3036 signal persists,
 attempt 150 is allowed and attempt 151 is refused across presets, a detector failure stores metadata only, the mixed-sensitivity outbound
 body contains only eligible content and an opaque repository id, Grok cases deliver exactly the
-expected number of packs, an oversized payload lands as a `partial` row with exact
-`truncated_bytes` and is never promoted, and doctor names the degraded component with `reason`,
+expected number of packs, an oversized payload leaves only a metadata `failed` row and
+no content anywhere, and doctor names the degraded component with `reason`,
 `consequence`, and `recovery`.
 
 ## Setup and doctor on the isolated account (User Story 4, SC-008)
