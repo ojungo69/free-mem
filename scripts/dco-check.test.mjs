@@ -167,14 +167,13 @@ test("本文中の引用や行途中にある Signed-off-by は trailer とし�
 });
 
 test("`<` を持たない長い空白列の sign-off でも判定が一瞬で終わる（backtracking の回帰）", () => {
-  // 旧正規表現 `(.+?)\s+<` は 8,000 文字の空白で約 100 秒かかり、gate が timeout で判定無しに落ちた。
   const padded = commit({ body: "Refs: #1\nSigned-off-by: " + " ".repeat(32_000) + "x\n" });
   const started = performance.now();
   assert.deepEqual(findUnsignedCommits([padded]), [padded]);
   assert.ok(performance.now() - started < 2_000);
 });
 
-// 上の 8 件は純関数だけを見る。実測では、その 7 件が全部通ったまま CLI 経路が `Refs #59` +
+// 上の 8 件は純関数だけを見る。実測では、その 8 件が全部通ったまま CLI 経路が `Refs #59` +
 // sign-off の commit を落としていた（trailer block の判定違い）。実物を子プロセスとして
 // 起動し、通す側・落とす側・fail-closed の 3 方向を固定する。
 const script = fileURLToPath(new URL("./dco-check.mjs", import.meta.url));

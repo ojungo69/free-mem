@@ -6,9 +6,8 @@ import { promisify } from "node:util";
 import { fileURLToPath } from "node:url";
 
 const TRAILER_LINE = /^[A-Za-z0-9][A-Za-z0-9-]*:\s+\S.*$/;
-// 名前は「`<` を含まず、空白以外で始まり空白以外で終わる」と固定する。`(.+?)\s+<` のような曖昧な
-// 区切りだと、`<` を持たない長い空白列で backtracking が多項式に膨らむ（8,000 文字で約 100 秒を実測）。
-// commit 本文は PR 作者が自由に書けるので、gate 自身が timeout で落ちる = 判定無しの失敗になる。
+// 名前は「`<` を含まず空白以外で始終する」と固定して backtracking を線形にする（旧 `(.+?)\s+<` は
+// 作者が書ける 8,000 文字の空白で約 100 秒かかり、gate が timeout = 判定無しで落ちた）。
 const SIGN_OFF_LINE = /^Signed-off-by:\s+([^\s<](?:[^<]*[^\s<])?)\s+<([^<>\s]+)>\s*$/i;
 const execGit = promisify(execFile);
 
