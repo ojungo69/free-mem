@@ -1,0 +1,31 @@
+docs/research/oboete-contracts-2026-09-02.md
+  s_57dbf1dbbfb84e::t_90f484a903595e 1-410
+specs/007-oboete-m1-alpha/checklists/requirements.md
+  s_1b383f302c4260::t_23888618251014 1-38
+specs/007-oboete-m1-alpha/spec.md
+  s_1b383f302c4260::t_4c76bbca164b8c 1-458
+---
+{
+  "schema_version": "authorship/3.0.0",
+  "git_ai_version": "1.6.16",
+  "base_commit_sha": "e386a546527c10c0313d1c3cf63a107c5e35f50e",
+  "prompts": {},
+  "sessions": {
+    "s_1b383f302c4260": {
+      "agent_id": {
+        "tool": "claude",
+        "id": "0aea87bf-f141-4112-a843-af8afbe0d6aa",
+        "model": "claude-fable-5-1"
+      },
+      "human_author": "ojungo69 <210335670+ojungo69@users.noreply.github.com>"
+    },
+    "s_57dbf1dbbfb84e": {
+      "agent_id": {
+        "tool": "claude",
+        "id": "cccab57b-75af-4932-87f9-5ede4fbf82ca",
+        "model": "claude-fable-5-1"
+      },
+      "human_author": "ojungo69 <210335670+ojungo69@users.noreply.github.com>"
+    }
+  }
+}

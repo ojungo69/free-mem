@@ -1,0 +1,35 @@
+specs/007-oboete-m1-alpha/contracts/observer.md
+  s_57dbf1dbbfb84e::t_aa52fce29be2d8 1-75
+specs/007-oboete-m1-alpha/contracts/mcp.md
+  s_57dbf1dbbfb84e::t_756f24ad84d0c3 1-25
+specs/007-oboete-m1-alpha/research.md
+  s_57dbf1dbbfb84e::t_905562b8f3b304 1-325
+specs/007-oboete-m1-alpha/plan.md
+  s_57dbf1dbbfb84e::t_6be4d90b3b20e3 1-198
+specs/007-oboete-m1-alpha/quickstart.md
+  s_57dbf1dbbfb84e::t_41edd8e73d4db1 1-104
+specs/007-oboete-m1-alpha/data-model.md
+  s_57dbf1dbbfb84e::t_877bb113a68b1d 1-224
+specs/007-oboete-m1-alpha/contracts/agents.md
+  s_57dbf1dbbfb84e::t_1c919350964e40 1-65
+specs/007-oboete-m1-alpha/contracts/cli.md
+  s_57dbf1dbbfb84e::t_4f3f3eb3d39933 1-33
+specs/007-oboete-m1-alpha/codex-plan.json
+  s_57dbf1dbbfb84e::t_9be477c72ced54 1-501
+---
+{
+  "schema_version": "authorship/3.0.0",
+  "git_ai_version": "1.6.16",
+  "base_commit_sha": "ff1189cc2d13d0f25efbe7d349c750740d09ba68",
+  "prompts": {},
+  "sessions": {
+    "s_57dbf1dbbfb84e": {
+      "agent_id": {
+        "tool": "claude",
+        "id": "cccab57b-75af-4932-87f9-5ede4fbf82ca",
+        "model": "claude-fable-5-1"
+      },
+      "human_author": "ojungo69 <210335670+ojungo69@users.noreply.github.com>"
+    }
+  }
+}
