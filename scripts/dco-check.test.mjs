@@ -149,8 +149,8 @@ test("dco check は 1 経路だけで、base branch 側から走る", () => {
     dco,
     /^\s+["']?(?:if|continue-on-error|needs|defaults|shell|working-directory)["']?\s*:/m,
   );
-  // 行全体で固定する。`run: echo node harness/dco-check.mjs ...` でも部分一致は通ってしまう。
-  assert.match(dco, /^ +run: node harness\/dco-check\.mjs "\$BASE_REF" "\$HEAD_REF"$/m);
+  // 行全体で固定する。`run: echo node scripts/dco-check.mjs ...` でも部分一致は通ってしまう。
+  assert.match(dco, /^ +run: node scripts\/dco-check\.mjs "\$BASE_REF" "\$HEAD_REF"$/m);
 });
 
 test("本文中の引用や行途中にある Signed-off-by は trailer として扱わない", () => {
