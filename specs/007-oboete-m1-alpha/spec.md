@@ -274,7 +274,9 @@ committed evidence.
   reset instant and do not double-charge or double-reset.
 - The storage file is corrupt: capture spools, doctor reports corruption with recovery steps, and
   no agent turn is blocked.
-- The disk is full: capture exits successfully, the loss is counted and reported by doctor.
+- The disk is full: capture exits successfully; the loss is counted whenever any writable
+  location exists, and when neither the database nor the spool is writable doctor reports the
+  unwritable state by probing it.
 - The injection limit of the agent is smaller than the built pack: the pack is trimmed by relevance
   order and the trim is recorded in `why`.
 - A memory cites a file or commit that no longer exists at HEAD: the memory is injected with a
@@ -381,10 +383,11 @@ Retrieval and injection
   counting resumed continuations of that conversation as the same conversation.
 - **FR-027**: For Codex, injection MUST occur only at session start and prompt submit.
 - **FR-045**: For Grok Build, which has no channel that reaches the model before a turn starts,
-  the session-start and prompt-submit packs MUST be delivered immediately after the first tool
-  call of the turn, through both the pre-tool and post-tool hooks so that a denied tool call does
-  not lose the pack; the delivery MUST be labelled as deferred in `why` and in doctor; a turn with
-  no tool call receives nothing and the omission is recorded.
+  the session-start and prompt-submit packs MUST be delivered with the first tool call of the turn
+  that actually runs: the pre-tool hook attempts delivery, the post-tool hook confirms it, and a
+  pack attempted on a denied call stays pending and is attempted again on the next call; the
+  delivery MUST be labelled as deferred in `why` and in doctor; a turn with no tool call, or whose
+  calls were all denied, receives nothing and the omission is recorded.
 - **FR-028**: Every injection pack MUST record what was included, what was omitted and why, and any
   degraded state; `why` MUST present that record for a session.
 - **FR-029**: Memories MUST carry citations (file paths, commits) when the source provides them, and
@@ -514,9 +517,10 @@ Owner decisions (resolved in Clarifications)
   memory into an agent instruction file are deferred.
 - The set of observation types and the capture granularity are taken from claude-mem as the
   reference; adaptations are documented, not silently changed.
-- The 300 ms capture budget, 150 MB worker limit, 12,000-character summarizer input, 7-day raw
-  event retention, and 8-second summary wait are the constitutional values and are not tuned in
-  M1 without an evidence-backed amendment.
+- The 300 ms capture budget, 150 MB worker limit, 12,000-character summarizer input, and 7-day
+  raw event retention are the constitutional values and are not tuned in M1 without an
+  evidence-backed amendment. The 8-second summary wait applies to session-start injection only;
+  the plan asks for a constitution amendment that distinguishes the capture and injection budgets.
 - Legacy free-mem assets (destination boundary rules, fixtures, mutation gate) may be ported when
   a task needs them; nothing else from `legacy/` is reused.
 - Third-party contracts (each agent's hook payloads and injection limits, the provider's structured
