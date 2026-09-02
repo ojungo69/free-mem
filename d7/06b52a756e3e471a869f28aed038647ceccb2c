@@ -1,0 +1,21 @@
+scripts/dco-check.mjs
+  s_57dbf1dbbfb84e::t_aaf1b678d8712a 9-12,121-122
+scripts/dco-check.test.mjs
+  s_57dbf1dbbfb84e::t_f11d687cbf2f20 169-177
+---
+{
+  "schema_version": "authorship/3.0.0",
+  "git_ai_version": "1.6.16",
+  "base_commit_sha": "d706b52a756e3e471a869f28aed038647ceccb2c",
+  "prompts": {},
+  "sessions": {
+    "s_57dbf1dbbfb84e": {
+      "agent_id": {
+        "tool": "claude",
+        "id": "cccab57b-75af-4932-87f9-5ede4fbf82ca",
+        "model": "claude-fable-5-1"
+      },
+      "human_author": "ojungo69 <210335670+ojungo69@users.noreply.github.com>"
+    }
+  }
+}
