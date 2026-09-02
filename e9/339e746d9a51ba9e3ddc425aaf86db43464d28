@@ -1,0 +1,23 @@
+specs/007-oboete-m1-alpha/plan.md
+  s_57dbf1dbbfb84e::t_b1babb9e6132cc 54,73,75,77-78,81-85,90,95,101-104,106-107,287,301
+specs/007-oboete-m1-alpha/quickstart.md
+  s_57dbf1dbbfb84e::t_614ae55a913d0e 51
+specs/007-oboete-m1-alpha/tasks.md
+  s_57dbf1dbbfb84e::t_90f33d9a5eb75d 43,50,91,101-102,113,136,229,231
+---
+{
+  "schema_version": "authorship/3.0.0",
+  "git_ai_version": "1.6.16",
+  "base_commit_sha": "e9339e746d9a51ba9e3ddc425aaf86db43464d28",
+  "prompts": {},
+  "sessions": {
+    "s_57dbf1dbbfb84e": {
+      "agent_id": {
+        "tool": "claude",
+        "id": "cccab57b-75af-4932-87f9-5ede4fbf82ca",
+        "model": "claude-fable-5-1"
+      },
+      "human_author": "ojungo69 <210335670+ojungo69@users.noreply.github.com>"
+    }
+  }
+}
