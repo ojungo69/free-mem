@@ -42,7 +42,7 @@ tables are `STRICT`; FTS5 virtual tables cannot be. Every write from the worker 
 | turn_count | INTEGER | |
 | latest_summary_memory_id | TEXT | set once by the worker's deterministic session summary, in the same transaction as the summary insert and `summary_state = done`; every worker run reconciles `ended` sessions with `summary_state = pending` whose batches are all terminal (R10) |
 | context_epoch | INTEGER | authoritative epoch of the conversation root: 0 at start, +1 per compaction (A12); stored on the root session row |
-| last_compaction_key | TEXT | the `raw_events.id` of the authoritative compaction event (`PostCompact` on Claude Code, Codex, and Grok; Pi's compaction event per R13), or a native per-compaction id when the R13 probe finds one. The event id already encodes (kind, turn ordinal, content hash), so the companion `SessionStart source=compact` never advances the epoch, a re-delivery collapses, and a second compaction advances it unless it is byte-identical in the same turn (recorded limit; indistinguishable from a re-delivery) |
+| last_compaction_key | TEXT | the native per-compaction value of the authoritative compaction event (`PostCompact` on Claude Code, Codex, and Grok; Pi's compaction event) that the R13 probe verified as unique across byte-identical compactions and re-deliveries and as committed before any post-compaction injection hook. For an agent whose probe failed the epoch is **not** advanced and compaction re-injection is blocked; only after the owner approves A16 may that agent use the `PostCompact` event's `raw_events.id` (which collapses byte-identical same-turn compactions) under the documented ordering limit. The companion `SessionStart source=compact` never advances the epoch |
 | summary_state | TEXT | `pending` (session ended, summary not yet written), `done` (`latest_summary_memory_id` set), `no_content` (zero summarizable events: no `prompt`, `tool_call`, `tool_result`, `tool_failure`, `last_assistant_message`, or `compaction_summary` row with non-empty content after `<private>` removal that is not `secret` and not `classification_state = failed`; lifecycle rows such as `session_start`, `turn_end`, `session_end`, `probe` never count; no memory row is created and nothing is injected, per the spec edge case); reconciliation targets `pending` only |
 
 ## turns
@@ -282,4 +282,7 @@ classifies it).
 - injections.state: `built` → `emitted` | `omitted`; Grok: `pending` → `attempted` (attached on
   every `PreToolUse` until confirmed) → `emitted` (a `PostToolUse` for an attempted call) |
   `omitted` (turn end); items `planned` → `included` on confirmation.
-- sessions.context_epoch: incremented once per distinct `last_compaction_key`.
+- sessions.context_epoch: incremented once per distinct verified `last_compaction_key`; unchanged
+  (and re-injection blocked) for an agent whose R13 compaction probe failed until A16 is approved.
+- injections (Grok): an attempt whose delivery is `dropped` leaves the record non-emitted
+  (`attempted`); the next `PreToolUse` attaches the pack again.
