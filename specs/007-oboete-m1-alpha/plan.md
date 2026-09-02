@@ -51,7 +51,7 @@ probe on a separate Linux user (local job, not CI); `eslint` and `tsc --noEmit` 
 **Project Type**: CLI + agent hooks + Pi extension loader + local web viewer + stdio MCP (legacy era).
 
 **Performance Goals**: capture hooks return within 300 ms for 99% of fixture events (SC-002);
-session-start injection returns within 300 ms when the summary is ready and within 8 s when it is
+session-start injection returns within 300 ms when the summary is ready and within 1 s when it is
 pending (measured separately); worker peak RSS under 150 MB (SC-003); viewer shows a new memory
 within 2 s (SC-011); setup for four agents under 2 minutes with parallel probes (SC-008).
 
@@ -70,37 +70,41 @@ repositories, memories in the low thousands during M1.
 | Principle | Status | How the plan satisfies it |
 |---|---|---|
 | I. Automatic, agent-neutral memory | PASS | One store, one normalized event schema, eligibility from sensitivity and repository only (FR-005); Grok Build's deferred channel is a delivery difference, not an eligibility one (FR-045). |
-| II. One file, no daemon | PASS, amendments needed | WAL, short-lived hooks, detached `observe` with a fenced `worker_lease`; engine code plus its hook-path dependencies are one ESM file; heavy dependencies stay in `node_modules` (A1). `oboete view` opens a loopback port only while the developer runs it in the foreground, which the principle's "no listening port" does not distinguish from a resident server (A9). |
+| II. One file, no daemon | PASS (3.1.0) | WAL, short-lived hooks, detached `observe` with a fenced `worker_lease`; engine code plus its hook-path dependencies are one ESM file; heavy dependencies stay in `node_modules` (A1). `oboete view` opens a loopback port only while the developer runs it in the foreground, which the principle's "no listening port" does not distinguish from a resident server (A9). |
 | III. Local-first, fail-closed classification | PASS | The complete detector runs in the hook before any write and fails closed on its own failure; batches split by destination and one request builder applies the rule table to every outbound field, so the remote observer only ever receives eligible rows and an opaque repository id; packs marked and recognized; setup shows destination, credential source, cost class, egress and stores consent bound to that tuple. |
-| IV. Honest degradation and bounded resources | PASS, amendment needed | Rule-based fallback in the same schema; degraded reasons on packs and in doctor; budgets enforced and measured. The 8-second session-start wait (spec FR-024) exceeds the 300 ms hook budget as written in Principle IV; amendment A2 defines the capture / injection split. |
+| IV. Honest degradation and bounded resources | PASS (3.1.0) | Rule-based fallback in the same schema; degraded reasons on packs and in doctor; budgets enforced and measured. Constitution 3.1.0 distinguishes the 300 ms capture budget from the 1 s session-start wait (A2). |
 | V. Parity target and milestones | PASS | M1 scope only; `sync_conflicts`, RRF fusion hook, and `loadExtension` keep M2 possible without migration. |
-| VI. Portable and minimal | PASS, amendments listed | No Linux-only facility; every added package has a reason; hand-written MCP transport; `@secretlint/core` replaces `@secretlint/node` (A3); `~/.oboete/` kept over XDG (A4). |
-| Product Constraints (agent integration) | PASS, amendment needed | Pi captures through a detached child instead of importing the capture functions in-process, as FR-007 requires; the constraint text says in-process with a timeout (A10). |
+| VI. Portable and minimal | PASS (3.1.0) | No Linux-only facility; every added package has a reason; hand-written MCP transport; `@secretlint/core` replaces `@secretlint/node` (A3); `~/.oboete/` kept over XDG (A4). |
+| Product Constraints (agent integration) | PASS (3.1.0) | Pi captures through a detached child instead of importing the capture functions in-process, as FR-007 requires; the constraint text says in-process with a timeout (A10). |
 | Workflow gates | PASS with gate | Spec Kit sequence followed; unverified contracts are blocked behind R13 probes recorded in `docs/research/`; isolated dogfood; security-related code implemented by Claude Code, not delegated. |
 
-### Amendments and spec corrections that need the owner's approval (task 0)
+### Amendments and spec corrections (task 0)
+
+**Decided 2026-09-03** under the owner's delegation ("must be better than claude-mem"); record and
+rationale in `docs/research/m1-amendments-2026-09.md`; constitution 3.1.0 and spec updated in the
+same commit. Conditional items (A8, A14, A15, A16) carry their pre-approved defaults.
 
 | id | document | change | kind |
 |---|---|---|---|
 | A1 | CONSTITUTION Principle II | "bundled into a single file" = oboete's engine code and its hook-path dependencies; heavy runtime packages may stay in `node_modules` and load lazily off the hook path | PATCH wording |
-| A2 | CONSTITUTION Principle IV | capture hooks 300 ms; injection at session start may wait up to 8 s while a summary is pending, then degrade | PATCH wording |
+| A2 | CONSTITUTION Principle IV | capture hooks 300 ms; injection at session start may wait up to **1 s** (changed from 8 s: claude-mem never waits) while a summary is pending, then degrade | PATCH wording, applied |
 | A3 | CONSTITUTION Principle VI allow-list | `@secretlint/core` + `@secretlint/secretlint-rule-preset-recommend` replace `@secretlint/node` | PATCH dependency substitution |
 | A4 | CONSTITUTION Principle VI, Product Constraints; spec FR-039 and Assumptions | one data directory `~/.oboete/` relocatable by `OBOETE_HOME`; XDG/AppData split deferred to a later milestone | MINOR amendment with Sync Impact Report (semantic change), or a dated approved exception expiring at M2 |
 | A5 | CONSTITUTION Product Constraints (Codex hook location) | Codex handlers live in `~/.codex/hooks.json` with the `[hooks.state]` trust row in `config.toml`, both inside managed blocks | PATCH wording |
 | A6 | CONSTITUTION Development Workflow (dogfood command list) | headless Grok Build is `grok -p` (the verified flag), not `grok --print` | PATCH wording |
-| A7 | spec edge case "tool output larger than the summarizer's input limit" | the hook reads at most 1 MB of stdin and stops; a larger payload is recorded as a metadata-only failed row (fail closed) and its content is dropped; runner tolerance verified by R13 | spec amendment |
+| A7 | spec edge case "tool output larger than the summarizer's input limit" | the hook reads at most 1 MB of stdin and stops; the read part is redacted and kept as a `partial` row marked truncated (metadata only to the fallback, never to a provider or a pack); runner tolerance verified by R13 | spec amendment, applied |
 | A8 | spec FR-007 | "every thrown error is recorded" is satisfied by in-memory counters handed to the next child spawn plus the doctor wiring probe, or by Pi's own durable error log when the R13 probe finds one; a failure that stops every later spawn is detected by the probe rather than recorded | spec amendment (only if the R13 probe finds no Pi-owned durable error surface) |
 | A9 | CONSTITUTION Principle II ("no listening port") | a resident or background port stays forbidden; `oboete view` may bind a loopback-only port for the lifetime of the foreground command | PATCH clarification (if rejected: portless viewer design returns to research) |
 | A10 | CONSTITUTION Product Constraints (Pi integration) | Pi's in-process extension only enqueues to a detached child under a cooperative deadline, per FR-007; the child imports the capture functions | PATCH wording aligned with FR-007 |
 | A11 | spec User Story 2 ("no event is summarized twice") | read as applied twice: provider attempts are at-least-once (a worker crash between response and apply causes one extra call), applied effects exactly-once | spec clarification |
 | A12 | spec FR-024 / FR-026, User Story 1 scenario 2, SC-010 | compaction opens a new context epoch; "never the same memory twice" is scoped to (conversation, epoch), so the post-compaction re-injection FR-024 requires is allowed and resume stays deduplicated; SC-010 counts duplicates per epoch | spec clarification (if rejected: FR-024 re-injects only items not yet injected in the conversation) |
-| A13 | spec FR-035 ("not re-created from the same content") | "same content" = identical (type, normalized title, normalized body), which is `material_hash`, so a paraphrase or the same text under another type is a new memory; a tombstone test covers same title/body with a different type | spec clarification (owner may instead drop `type` from the identity, which changes `material_hash`) |
-| A14 | spec FR-002, FR-001, edge case "tool output larger than the summarizer's input limit", Independent Test of User Story 2 | only if the R13 detector probe shows the full detector cannot finish 1 MB inside the capture cutoff: the measured bound becomes the content limit; events at or below it are captured whole, above it metadata-only | spec amendment (conditional) |
-| A16 | spec FR-024 (re-injection after compaction) | only if the R13 compaction probe fails for an agent: accept the `PostCompact` event id as the epoch key (two byte-identical compactions in one turn count once) and/or a documented hook-order limit, or exclude compaction re-injection for that agent from M1 | spec amendment (conditional) |
-| A15 | spec FR-045, FR-026, User Story 1 scenario 2, SC-010, FR-028; CONSTITUTION Principle IV (injection volume) | only if the R13 probe shows Grok delivers `additionalContext` once per call: either accept that the two calls of one parallel batch both carry the pack (duplicates counted in `why` and SC-010 scoped to distinct calls) or exclude parallel-batch delivery from M1 | spec + constitution exception (conditional) |
+| A13 | spec FR-035 ("not re-created from the same content") | "same content" = identical (normalized title, normalized body); observation type is **excluded** from `material_hash` so a deleted memory cannot return under another type | spec clarification, applied |
+| A14 | spec FR-002, FR-001, edge case | conditional: if the R13 detector probe shows the full detector cannot finish 1 MB inside the cutoff, the measured bound replaces 1 MB with the same partial-row treatment as A7; a bound under 200 KB is escalated to the owner | conditional, default pre-approved |
+| A16 | spec FR-024 (re-injection after compaction) | conditional: if an agent's compaction probe fails, the `PostCompact` event id is the epoch key (two byte-identical compactions in one turn count once) under the documented ordering limit; re-injection is never excluded | conditional, default pre-approved |
+| A15 | spec FR-045, FR-026, User Story 1 scenario 2, SC-010, FR-028; CONSTITUTION Principle IV | conditional: if Grok delivers `additionalContext` once per call, per-call duplicates inside one parallel batch are **accepted** and counted in `why` and SC-010; delivery is never excluded | conditional, default pre-approved |
 
-Implementation starts only after these are approved or rejected in writing; a rejection returns
-the affected decision to research. A8 is raised only if the R13 Pi error-surface probe fails.
+All non-conditional items are approved and applied; conditional items apply their defaults when
+their probe fails, except that an A14 bound under 200 KB returns to the owner. A8 is raised only if the R13 Pi error-surface probe fails.
 
 Post-design re-check: no new violation beyond the amendments listed.
 
@@ -280,7 +284,7 @@ task, and a delegated result that touches one is returned to Claude Code.
 | # | Violation | Why Needed | Simpler Alternative Rejected Because |
 |---|-----------|------------|-------------------------------------|
 | 1 | Engine file bundles only the hook-path packages; `ai`, `@ai-sdk/*`, `workers-ai-provider`, `hono`, `@hono/node-server`, `preact` stay in `node_modules` and are lazily imported | Bundling them into ESM output throws `Dynamic require` for CommonJS transitive packages and loads megabytes on every 300 ms hook | A second hook-only bundle would be two engine files; amendment A1 |
-| 2 | Session-start injection may take up to 8 s while a summary is pending (spec FR-024) although Principle IV budgets a hook process at 300 ms | The wait is a spec requirement (User Story 1, scenario 3) and only applies to the session-start injection path; capture hooks keep 300 ms | Dropping the wait breaks scenario 3; amendment A2 |
+| 2 | Session-start injection may take up to 1 s while a summary is pending (spec FR-024) although Principle IV budgets a capture hook at 300 ms | The wait is a spec requirement (User Story 1, scenario 3) and only applies to the session-start injection path; capture hooks keep 300 ms | Dropping the wait breaks scenario 3; A2 applied in constitution 3.1.0 |
 | 3 | `@secretlint/core` + `@secretlint/secretlint-rule-preset-recommend` (+ `@secretlint/types` dev) instead of the listed `@secretlint/node` | `@secretlint/node` costs 120-145 ms cold start per process and resolves rules by package name at runtime, so it cannot run in the hook or be bundled; the core API with a static preset costs about 30 ms and is required for redaction before the first write (FR-018) | `@secretlint/node` only in the worker violates FR-018; amendment A3 |
 | 4 | `~/.oboete/` instead of an XDG/AppData split | The constitution's Product Constraints fix the directory; Principle VI's convention sentence and spec FR-039/Assumptions conflict | Amendment A4 picks one; `OBOETE_HOME` provides relocation now |
 | 5 | `esbuild` (dev) | A single-file engine bundle is required; `tsc` cannot produce one; type stripping is flagged below 22.18 | tsup wraps esbuild with 17 extra dependencies |
@@ -294,5 +298,5 @@ task, and a delegated result that touches one is returned to Claude Code.
 | 13 | `.oboete.toml` for repository path rules | Same parser as the user config; a committed file may only add rules | YAML would add a parser |
 | 14 | Hand-written legacy-era stdio MCP server | `@modelcontextprotocol/sdk` pulls 93 packages / 28 MB for transports oboete never uses | Owning the legacy handshake is small; a dual-era server is out of M1 scope and clients fall back; a client that cannot use it blocks that agent's tool surface pending amendment |
 | 15 | Anthropic preset without schema-constrained output | Anthropic's OpenAI-compatible endpoint ignores `response_format` | Dropping the listed preset; text-JSON with zod validation keeps it |
-| 16 | 1 MB stdin read bound; larger payloads dropped as metadata-only failed rows | Read, parse, and detector time are payload-size dependent; FR-002's 300 ms cannot hold without a bound on what the hook reads | Draining or storing a prefix keeps time or content unbounded and cannot evaluate path rules; amendment A7 |
+| 16 | 1 MB stdin read bound; the read part kept as a redacted partial row, the rest dropped | Read, parse, and detector time are payload-size dependent; FR-002's 300 ms cannot hold without a bound on what the hook reads | Draining keeps time unbounded; dropping everything loses data claude-mem's users complained about; A7 applied |
 | 17 | Pi errors recorded through the next child spawn and the doctor probe rather than in-process | FR-007 forbids in-process storage work | An in-process log write violates the same requirement; amendment A8 |

@@ -48,7 +48,7 @@ OBOETE_HOME=$(mktemp -d) node dist/oboete.mjs fixture replay test/fixtures/event
 
 Expected (`docs/evidence/m1-resource-envelope.md`): capture-hook p99 under 300 ms with at least
 99% under budget, including payloads at and above the 1 MB stdin cap; session-start injection
-measured on both the ready path (under 300 ms) and the pending path (under 8 s); worker peak RSS
+measured on both the ready path (under 300 ms) and the pending path (under 1 s); worker peak RSS
 under 150 MB; database growth per 1,000 events; zero secret corpus items in the database, spool,
 logs, packs, or outbound bodies; zero directive corpus phrases in stored memories, accepted
 observer output, or packs (they legitimately remain in raw events and the spool); at least 90% of
