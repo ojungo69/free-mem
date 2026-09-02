@@ -28,10 +28,12 @@ Expected: green on 22.16 and 24.x; `pack-check` prints the installed size includ
 sudo -u oboete-dogfood -H env PATH="$PATH" node scripts/e2e/probe-contracts.mjs   # appends results to docs/research/
 ```
 
-Expected: a dated section per probe item (tool payload fixtures, Codex SessionStart sources and
-rollout flush, Grok MCP registration, Pi compaction event and tool registration,
-NIM/OpenRouter/Gemini/Anthropic structured output and auth, MCP legacy server against each client
-with raw frames, per-model context windows, bundle cold start, installed size). A failed probe
+Expected: a dated section per probe item, one per row of the R13 table (tool payload fixtures,
+Codex SessionStart sources and rollout flush, Grok MCP registration, Pi compaction event and tool
+registration, provider transport/auth/model and structured output, Grok context on a failed call,
+Pi and Grok resume continuity, runner behaviour on unread stdin above 1 MB, Pi durable error
+surface, MCP legacy server against each client with raw frames, per-model context windows, bundle
+cold start, installed size). A failed probe
 prints the R13 row's consequence; dependent implementation tasks stay blocked until the owner
 approves an amendment or the row passes.
 

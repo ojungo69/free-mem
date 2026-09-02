@@ -238,9 +238,10 @@ task, and a delegated result that touches one is returned to Claude Code.
 
 ## Delivery order (input to /speckit-tasks)
 
-0. **Amendments and verification gate**: owner decision on A1-A7; R13 probe scaffolding and the
-   probes that need no oboete code, run under the isolated user and recorded in `docs/research/`;
-   a failed probe blocks its dependents (R13 table) rather than switching to a fallback.
+0. **Amendments and verification gate**: owner decision on A1-A7 (and A8 if the Pi error-surface
+   probe fails); R13 probe scaffolding and the probes that need no oboete code, run under the
+   isolated user and recorded in `docs/research/`; a failed probe blocks its dependents (R13
+   table) rather than switching to a fallback.
 1. **Foundation**: package, build, lint, migrations 0001-0003 with smoke tests on 22.16 and 24.x,
    `open.ts`, repo identity, config, consent, paused marker; fixture generator and replay skeleton;
    then the R13 cold-start and installed-size measurements.
