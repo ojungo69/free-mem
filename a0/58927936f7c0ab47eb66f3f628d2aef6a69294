@@ -1,0 +1,21 @@
+specs/007-oboete-m1-alpha/checklists/requirements.md
+  s_57dbf1dbbfb84e::t_0e3089d3a95f79 16
+specs/007-oboete-m1-alpha/spec.md
+  s_57dbf1dbbfb84e::t_e1db506dcaf7f9 12-37,61-62,163-165,317-322,329-332,383-387,408-409,440,442-448,473-475,491-492,499,505-507
+---
+{
+  "schema_version": "authorship/3.0.0",
+  "git_ai_version": "1.6.16",
+  "base_commit_sha": "a058927936f7c0ab47eb66f3f628d2aef6a69294",
+  "prompts": {},
+  "sessions": {
+    "s_57dbf1dbbfb84e": {
+      "agent_id": {
+        "tool": "claude",
+        "id": "cccab57b-75af-4932-87f9-5ede4fbf82ca",
+        "model": "claude-fable-5-1"
+      },
+      "human_author": "ojungo69 <210335670+ojungo69@users.noreply.github.com>"
+    }
+  }
+}
