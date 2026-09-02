@@ -106,7 +106,7 @@ same commit. Conditional items (A8, A14, A15, A16) carry their pre-approved defa
 All non-conditional items are approved and applied; conditional items apply their defaults when
 their probe fails, except that an A14 bound under 200 KB returns to the owner. A8 is raised only if the R13 Pi error-surface probe fails.
 
-Post-design re-check: no new violation beyond the amendments listed.
+Post-design re-check: no violation remains after constitution 3.1.0 and the applied spec amendments; conditional items A8, A14, A15, A16 apply their pre-approved defaults only if their R13 probes fail.
 
 ## Requirement traceability
 
