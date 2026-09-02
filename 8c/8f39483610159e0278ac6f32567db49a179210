@@ -1,0 +1,23 @@
+.github/workflows/ci.yml
+  s_57dbf1dbbfb84e::t_377b65496989a4 28-33
+.github/workflows/codeql.yml
+  s_57dbf1dbbfb84e::t_53d8c3464cedb5 41-43
+sonar-project.properties
+  s_57dbf1dbbfb84e::t_23aa34ffecd1da 7
+---
+{
+  "schema_version": "authorship/3.0.0",
+  "git_ai_version": "1.6.16",
+  "base_commit_sha": "8c8f39483610159e0278ac6f32567db49a179210",
+  "prompts": {},
+  "sessions": {
+    "s_57dbf1dbbfb84e": {
+      "agent_id": {
+        "tool": "claude",
+        "id": "cccab57b-75af-4932-87f9-5ede4fbf82ca",
+        "model": "unknown"
+      },
+      "human_author": "ojungo69 <210335670+ojungo69@users.noreply.github.com>"
+    }
+  }
+}
