@@ -6,7 +6,9 @@ import { promisify } from "node:util";
 import { fileURLToPath } from "node:url";
 
 const TRAILER_LINE = /^[A-Za-z0-9][A-Za-z0-9-]*:\s+\S.*$/;
-const SIGN_OFF_LINE = /^Signed-off-by:\s+(.+?)\s+<([^<>\s]+)>\s*$/i;
+// 名前は「`<` を含まず空白以外で始終する」と固定して backtracking を線形にする（旧 `(.+?)\s+<` は
+// 作者が書ける 8,000 文字の空白で約 100 秒かかり、gate が timeout = 判定無しで落ちた）。
+const SIGN_OFF_LINE = /^Signed-off-by:\s+([^\s<](?:[^<]*[^\s<])?)\s+<([^<>\s]+)>\s*$/i;
 const execGit = promisify(execFile);
 
 function trailers(body) {
@@ -50,7 +52,8 @@ async function git(args) {
     return stdout;
   } catch (error) {
     const detail = error?.stderr?.toString().trim() || error?.message;
-    throw new Error(`git ${args[0]} failed${detail ? `: ${detail}` : ""}`);
+    const suffix = detail ? `: ${detail}` : "";
+    throw new Error(`git ${args[0]} failed${suffix}`);
   }
 }
 
@@ -115,8 +118,8 @@ async function main() {
 // 実体パスへ正規化するのに対し `process.argv[1]` は起動時の綴りのままなので、symlink を挟んだ経路で
 // 起動すると一致せず、main() を呼ばないまま exit 0 で終わる。
 //
-// `import.meta.main` にも置き換えないこと。あれは Node 24.2 で入ったので、engines の `>=24` を
-// 満たす 24.0 / 24.1 では undefined になり、同じく main() を呼ばない。
+// `import.meta.main` にも置き換えないこと。あれは Node 24.2 で入ったので、CONSTITUTION.md が下限に
+// 置く Node 22.16 では undefined になり、同じく main() を呼ばない。
 //
 // どちらの取り違えも「検査した」と「検査しなかった」の区別を消す = ゲートとしては fail-open。
 function isDirectInvocation(argv1, moduleUrl) {

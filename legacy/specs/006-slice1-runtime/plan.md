@@ -54,7 +54,7 @@ lexical is the healthy required lane.
 
 *GATE: PASS before research and PASS after hardened design.*
 
-Authority: [free-mem Constitution v2.0.0](../../CONSTITUTION.md).
+Authority: [free-mem Constitution v2.0.0](../../../CONSTITUTION.md) (v2.0.0 is superseded by v3.0.0; the cited text is in the git history of `CONSTITUTION.md`).
 
 | Principle | Status | Plan evidence |
 |---|---|---|
