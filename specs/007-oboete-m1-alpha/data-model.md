@@ -40,10 +40,10 @@ tables are `STRICT`; FTS5 virtual tables cannot be. Every write from the worker 
 | started_at, ended_at | INTEGER | |
 | status | TEXT | `active`, `ended` |
 | turn_count | INTEGER | |
-| latest_summary_memory_id | TEXT | set once by the worker's deterministic session summary, in the same transaction as the summary insert; every worker run reconciles `ended` sessions whose batches are all terminal and whose id is NULL (R10) |
+| latest_summary_memory_id | TEXT | set once by the worker's deterministic session summary, in the same transaction as the summary insert and `summary_state = done`; every worker run reconciles `ended` sessions with `summary_state = pending` whose batches are all terminal (R10) |
 | context_epoch | INTEGER | authoritative epoch of the conversation root: 0 at start, +1 per compaction (A12); stored on the root session row |
-| last_compaction_key | TEXT | sha256 of the compaction's stable native value (Claude Code `compact_summary` text; Codex, Grok, Pi per the R13 probe) from the one authoritative compaction event per agent (Claude Code and Codex `SessionStart source=compact`, Grok `PostCompact`, Pi per R13); a re-delivered or companion hook with the same key does not increment, a second compaction with a different value does even inside one turn |
-| summary_state | TEXT | `pending` (session ended, summary not yet written), `done` (`latest_summary_memory_id` set), `no_content` (no non-secret rows: no memory row is created and nothing is injected, per the spec edge case); reconciliation targets `pending` only |
+| last_compaction_key | TEXT | the `raw_events.id` of the authoritative compaction event (`PostCompact` on Claude Code, Codex, and Grok; Pi's compaction event per R13), or a native per-compaction id when the R13 probe finds one. The event id already encodes (kind, turn ordinal, content hash), so the companion `SessionStart source=compact` never advances the epoch, a re-delivery collapses, and a second compaction advances it unless it is byte-identical in the same turn (recorded limit; indistinguishable from a re-delivery) |
+| summary_state | TEXT | `pending` (session ended, summary not yet written), `done` (`latest_summary_memory_id` set), `no_content` (zero summarizable events: no `prompt`, `tool_call`, `tool_result`, `tool_failure`, `last_assistant_message`, or `compaction_summary` row with non-empty content after `<private>` removal that is not `secret` and not `classification_state = failed`; lifecycle rows such as `session_start`, `turn_end`, `session_end`, `probe` never count; no memory row is created and nothing is injected, per the spec edge case); reconciliation targets `pending` only |
 
 ## turns
 
@@ -108,7 +108,7 @@ and `state = applied` commit in one fenced transaction.
 | content_hash | TEXT UNIQUE | sha256 over (repo_id, material_hash); same helper on every path (provider, fallback, import, tombstone) |
 | sensitivity | TEXT | `add`: strictest source row and detector; `update`: max(target, every source row, detector), fixed in the apply transaction |
 | review_state | TEXT | `unreviewed` (default, injectable at once per FR-042), `reviewed`, `imported` (quarantined: excluded by the shared query function from search, injection, MCP, and the viewer's injectable set until the worker's detector and directive check move it to `unreviewed` or `secret`) |
-| degraded_reason | TEXT | NULL for provider output; on a session summary the most severe reason among the session's batches, or `no_content` |
+| degraded_reason | TEXT | NULL for provider output; on a session summary the most severe reason among the session's batches by the fixed precedence in `contracts/observer.md` |
 | source_session_id, source_batch_id | TEXT | provenance; carried by export |
 | valid_from, valid_to | INTEGER | bitemporal validity; `valid_to` set on supersession |
 | superseded_by | TEXT | |
@@ -163,8 +163,8 @@ outbound observer request (`observer/request.ts`), injection, CLI, MCP, viewer.
 | channel | TEXT | e.g. `claude:SessionStart`, `codex:UserPromptSubmit`, `grok:PreToolUse`, `grok:PostToolUse`, `pi:before_agent_start` |
 | state | TEXT | `built`, `emitted`, `omitted`; Grok only: `pending`, `attempted` |
 | context_epoch | INTEGER | copied from the root session's authoritative epoch when the pack is built (A12) |
-| attempts_json | TEXT | Grok: JSON array of `{ tool_call_id, outcome: attached \| confirmed \| failed \| denied \| unresolved, at }`, one entry per attachment, updated by `PostToolUse`, `PostToolUseFailure`, `PermissionDenied`, and `Stop`; persists after raw events expire so `why` reproduces a mixed deny/success batch (tested after purge) |
-| delivery_count | INTEGER | number of attempts whose outcome is `confirmed` (1 on a batch-level channel; may exceed 1 only under A15) |
+| attempts_json | TEXT | Grok: JSON array of `{ tool_call_id, execution: pending \| ran \| failed \| denied, delivery: pending \| delivered \| dropped, at }`, one entry per attachment. `PostToolUse` → execution `ran`, delivery `delivered`; `PostToolUseFailure` → execution `failed`, delivery `delivered` or `dropped` per the R13 probe; `PermissionDenied` (when its payload is verified) → execution `denied`, delivery `dropped`; `Stop` → every `pending` becomes `dropped`. Each hook updates the row in one `BEGIN IMMEDIATE` transaction (single-row read-modify-write), so concurrent hooks of a parallel batch serialize. Persists after raw events expire so `why` reproduces a mixed deny/success batch (tested after purge) |
+| delivery_count | INTEGER | attempts with delivery `delivered`, counted per call when the R13 probe shows per-call delivery (A15) and capped at 1 per batch when it shows per-batch delivery |
 | pack_hash | TEXT | recognized on capture (FR-021) |
 | char_budget, chars_used | INTEGER | |
 | degraded_reason | TEXT | `summary_pending`, `index_unavailable`, `empty`, `window_unknown`, `no_tool_call`, `not_delivered`, plus batch reasons |
