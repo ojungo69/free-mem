@@ -52,7 +52,8 @@ async function git(args) {
     return stdout;
   } catch (error) {
     const detail = error?.stderr?.toString().trim() || error?.message;
-    throw new Error(`git ${args[0]} failed${detail ? `: ${detail}` : ""}`);
+    const suffix = detail ? `: ${detail}` : "";
+    throw new Error(`git ${args[0]} failed${suffix}`);
   }
 }
 

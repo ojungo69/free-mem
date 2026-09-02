@@ -156,7 +156,7 @@ Deletion is preferred over addition; every abstraction needs a second concrete u
 ## Governance
 
 This constitution supersedes version 2.0.0, the Product Reset specifications
-(`specs/005-product-reset`, `specs/006-slice1-runtime`), and every earlier continuity
+(`legacy/specs/005-product-reset`, `legacy/specs/006-slice1-runtime`), and every earlier continuity
 specification as product authority. Those artifacts are historical evidence under `legacy/`
 until a new approved specification explicitly reactivates part of them. Amendments require an
 updated Sync Impact Report, user approval for changes to product purpose, privacy boundaries,
