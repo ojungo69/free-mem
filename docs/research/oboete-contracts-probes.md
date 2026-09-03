@@ -270,7 +270,8 @@ applies; blocked = not executable yet; skipped = not applicable.
 | Legacy-era MCP server vs clients | Grok pass; Codex pass (protocolVersion `2025-06-18`; `initialize`, `tools/list`, `tools/call` frames; PreToolUse tool name `mcp__oboete_probe__search`; the model echoed the dummy result); Claude Code blocked (needs T077 server + `--mcp-config` probe) | dummy legacy server frames | |
 | `agent-cli` preset | all four | pass | JSON output parses for claude -p / codex exec / grok -p / pi -p | preset enabled for all four |
 | Per-model context windows | all four | pass | docs/research/context-windows.md | |
-| Bundle cold start; installed size | — | blocked (after task 1) | | |
+| Real bundle cold start on 22.16 and 24.x | — | pass | v22.23.1 local proxy and v24.16.0: all `--version` and hook-path maxima are inside the 100 ms / 300 ms budgets ([evidence](../evidence/m1-resource-envelope.md)) | none; the split-entry-point consequence is not triggered |
+| Installed size with dependencies | — | fail | 33,480 `du -k` blocks = 32.695 MB, 2.695 MB above the 30 MB target ([evidence](../evidence/m1-resource-envelope.md)) | blocked above 30 MB pending a written reason approved by the owner |
 
 Additional contract facts recorded for the adapters: Grok `PermissionDenied` fires only for a permission-rule deny (`--deny 'Bash(*)'`), never for a hook `deny` (keys: hookEventName, sessionId, cwd, workspaceRoot, timestamp, transcriptPath, permissionMode, toolName, toolUseId, toolInput, toolInputTruncated; no reason field); Claude Code resume/fork `SessionStart` plain stdout still reaches the model (oboete prints nothing there by policy); Claude Code failed tools produce `PostToolUseFailure` only (no `PostToolUse`), `error` is a string; Pi `after_provider_response` never fires with the `openai-codex` provider.
 
