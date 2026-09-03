@@ -3,7 +3,29 @@
 const CJK_CHAR =
   /^(?:\p{Script=Han}|\p{Script=Hiragana}|\p{Script=Katakana}|\p{Script=Hangul}|[ー々・\uFF70\uFF65])$/u;
 
-const PARTICLES = new Set(['は', 'が', 'を', 'に', 'で', 'と', 'の', 'も', 'へ', 'や', 'か', 'ね', 'よ', 'な']);
+const STOP_WORDS = new Set([
+  'the',
+  'is',
+  'what',
+  'how',
+  'of',
+  'to',
+  'in',
+  'a',
+  'an',
+  'and',
+  'or',
+  'は',
+  'が',
+  'を',
+  'に',
+  'の',
+  'で',
+  'と',
+  'も',
+  'へ',
+]);
+const MAX_QUERY_TERMS = 24;
 
 const wordSegmenter = new Intl.Segmenter(undefined, { granularity: 'word' });
 
@@ -51,13 +73,6 @@ function isAllCjk(text: string): boolean {
   return true;
 }
 
-function isAllNonCjk(text: string): boolean {
-  for (const char of text) {
-    if (isCjk(char)) return false;
-  }
-  return true;
-}
-
 function splitByScript(text: string): string[] {
   const parts: string[] = [];
   let buf = '';
@@ -77,38 +92,57 @@ function splitByScript(text: string): string[] {
   return parts;
 }
 
-function pushUnique(terms: string[], term: string): void {
-  if (!terms.includes(term)) terms.push(term);
-}
-
 export function segmentQuery(text: string): QueryTerms {
   const trigram: string[] = [];
   const cjk: string[] = [];
   const like: string[] = [];
+  let indexedCount = 0;
+  let likeFallback = '';
 
-  for (const { segment, isWordLike } of wordSegmenter.segment(text)) {
-    if (!isWordLike) continue;
-    const pieces =
-      isAllCjk(segment) || isAllNonCjk(segment) ? [segment] : splitByScript(segment);
-    for (const piece of pieces) {
-      if (piece.length === 0) continue;
-      if (isAllCjk(piece)) {
-        if (codePointLength(piece) === 1 && PARTICLES.has(piece)) continue;
-        for (const term of cjkBigrams(piece).split(' ')) {
-          if (term.length > 0) pushUnique(cjk, term);
+  const pushIndexed = (terms: string[], term: string): void => {
+    if (indexedCount >= MAX_QUERY_TERMS || terms.includes(term)) return;
+    terms.push(term);
+    indexedCount += 1;
+  };
+  const pushCjkRun = (run: string): void => {
+    if (codePointLength(run) < 2) return;
+    for (const term of cjkBigrams(run).split(' ')) {
+      if (term.length > 0) pushIndexed(cjk, term);
+    }
+  };
+
+  for (const run of splitByScript(text)) {
+    if (isAllCjk(run)) {
+      let searchable = '';
+      for (const { segment, isWordLike } of wordSegmenter.segment(run)) {
+        if (!isWordLike || STOP_WORDS.has(segment)) {
+          pushCjkRun(searchable);
+          searchable = '';
+        } else {
+          searchable += segment;
         }
-        continue;
       }
-      const lower = piece.toLowerCase();
+      pushCjkRun(searchable);
+      continue;
+    }
+    for (const { segment, isWordLike } of wordSegmenter.segment(run)) {
+      if (!isWordLike) continue;
+      const lower = segment.toLowerCase();
+      if (STOP_WORDS.has(lower)) continue;
       const length = codePointLength(lower);
-      if (length >= 3) pushUnique(trigram, lower);
-      else if (length >= 1) pushUnique(like, lower);
+      if (length >= 3) pushIndexed(trigram, lower);
+      else if (length > codePointLength(likeFallback)) likeFallback = lower;
     }
   }
+
+  if (indexedCount === 0 && likeFallback.length > 0) like.push(likeFallback);
 
   return { trigram, cjk, like };
 }
 
-export function buildMatch(terms: string[]): string {
-  return terms.map((term) => `"${term.replaceAll('"', '""')}"`).join(' AND ');
+export function buildMatch(terms: string[]): string | null {
+  const quoted = terms
+    .filter((term) => term.length > 0)
+    .map((term) => `"${term.replaceAll('"', '""')}"`);
+  return quoted.length > 0 ? quoted.join(' OR ') : null;
 }
