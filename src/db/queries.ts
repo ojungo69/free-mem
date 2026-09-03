@@ -1,8 +1,7 @@
 import type { DatabaseSync, SQLInputValue, SQLOutputValue } from 'node:sqlite';
 
-export type Destination = 'injection' | 'local_observer' | 'remote_observer' | 'sync';
+import type { Destination, Sensitivity } from '../privacy/egress.js';
 
-export type Sensitivity = 'local_only' | 'eligible' | 'secret' | 'private';
 export type ReviewState = 'unreviewed' | 'reviewed' | 'imported';
 export type SummaryState = 'pending' | 'done' | 'no_content';
 

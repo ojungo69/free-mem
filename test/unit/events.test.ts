@@ -460,3 +460,37 @@ test('a normalized tool name is always a value the schema accepts', () => {
     }
   }
 });
+
+test('a turn ordinal separates two identical lifecycle events of one session', () => {
+  // R7 keys this form on (turn ordinal, kind, content hash). The adapter has no counter, so the
+  // ordinal comes from the capture path, which knows sessions.turn_count.
+  const event = parse(samples.session_end);
+  const content = sha256('{"kind":"session_end","reason":"shutdown"}');
+  assert.equal(eventId(event, 3), eventId(event, 3));
+  assert.notEqual(eventId(event, 3), eventId(event, 4));
+  assert.deepEqual(eventIdKey(event, 3), ['v1', 'claude', 's-1', 'session_end', '3', content]);
+
+  // The agent's own per-turn value wins over the ordinal where the payload carries one.
+  const keyed = parse({ ...samples.session_end, prompt_id: 'p-9' });
+  assert.deepEqual(eventIdKey(keyed, 3), [
+    'v1',
+    'claude',
+    's-1',
+    'session_end',
+    'p-9',
+    sha256('{"kind":"session_end","prompt_id":"p-9","reason":"shutdown"}'),
+  ]);
+
+  // Neither: the documented residual limit, an empty turn key.
+  assert.deepEqual(eventIdKey(event), ['v1', 'claude', 's-1', 'session_end', '', content]);
+});
+
+test('a compaction without a native key is separated by the turn it belongs to', () => {
+  // Codex and Claude Code have no per-compaction value, so without a turn key every compaction of
+  // one native session would collapse into a single raw_events row (contracts/agents.md A16).
+  const unkeyed = { ...samples.compaction_summary, compaction_key: '', text: '' };
+  const first = parse({ ...unkeyed, prompt_id: 't-1' });
+  const second = parse({ ...unkeyed, prompt_id: 't-2' });
+  assert.notEqual(eventId(first), eventId(second));
+  assert.notEqual(eventId(parse(unkeyed), 1), eventId(parse(unkeyed), 2));
+});

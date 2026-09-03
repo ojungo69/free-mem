@@ -237,3 +237,49 @@ test('busy connection throws isBusyError and retry succeeds', (t) => {
     'busy',
   );
 });
+
+test('an update that touches neither indexed column leaves both FTS indexes alone', (t) => {
+  const dir = fs.mkdtempSync(path.join(os.tmpdir(), 'oboete-mig-'));
+  t.after(() => {
+    fs.rmSync(dir, { recursive: true, force: true });
+  });
+
+  const opened = openDatabase({ path: path.join(dir, 'memory.db'), timeoutMs: 1000 });
+  t.after(() => closeQuietly(opened.db));
+  const db = opened.db;
+  db.prepare(
+    `INSERT INTO repos (id, identity_kind, normalized_identity, created_at, last_seen_at)
+     VALUES ('r_fts', 'common_dir', '/tmp/oboete-fts-trigger', 1, 1)`,
+  ).run();
+  db.prepare(
+    `INSERT INTO memories (id, repo_id, type, title, body, cjk_bigrams, content_hash, sensitivity)
+     VALUES ('m_fts', 'r_fts', 'discovery', ?, ?, ?, 'hash_fts_trigger', 'local_only')`,
+  ).run('pterodactyl title', 'body about the index', 'あい うえ');
+
+  const index = (): string =>
+    JSON.stringify([
+      db.prepare('SELECT id, quote(block) AS block FROM memories_fts_data ORDER BY id').all(),
+      db.prepare('SELECT id, quote(block) AS block FROM memories_fts_cjk_data ORDER BY id').all(),
+    ]);
+  const matches = (table: string, column: string, term: string): number =>
+    Number(
+      db.prepare(`SELECT COUNT(*) AS n FROM ${table} WHERE ${column} MATCH ?`).get(term)?.n ?? -1,
+    );
+
+  // The injection path writes last_injected_at inside the 300 ms hook budget, so it must not
+  // re-tokenize either index (contracts/agents.md hook SLAs).
+  const before = index();
+  db.prepare('UPDATE memories SET last_injected_at = 5, pinned_at = 6 WHERE id = ?').run('m_fts');
+  assert.equal(index(), before);
+
+  // A change of an indexed column still reaches its own index, and only its own.
+  db.prepare('UPDATE memories SET title = ? WHERE id = ?').run('brontosaurus title', 'm_fts');
+  assert.equal(matches('memories_fts', 'memories_fts', 'pterodactyl'), 0);
+  assert.equal(matches('memories_fts', 'memories_fts', 'brontosaurus'), 1);
+  assert.equal(matches('memories_fts_cjk', 'memories_fts_cjk', 'あい'), 1);
+
+  db.prepare('UPDATE memories SET cjk_bigrams = ? WHERE id = ?').run('かき くけ', 'm_fts');
+  assert.equal(matches('memories_fts_cjk', 'memories_fts_cjk', 'あい'), 0);
+  assert.equal(matches('memories_fts_cjk', 'memories_fts_cjk', 'かき'), 1);
+  assert.equal(matches('memories_fts', 'memories_fts', 'brontosaurus'), 1);
+});

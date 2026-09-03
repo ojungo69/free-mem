@@ -77,7 +77,8 @@ CREATE TRIGGER memories_fts_ad AFTER DELETE ON memories BEGIN
     VALUES ('delete', old.rowid, old.title, old.body);
 END;
 
-CREATE TRIGGER memories_fts_au AFTER UPDATE ON memories BEGIN
+-- Only the indexed columns re-tokenize: markInjected and pin run on the 300 ms hook path.
+CREATE TRIGGER memories_fts_au AFTER UPDATE OF title, body ON memories BEGIN
   INSERT INTO memories_fts(memories_fts, rowid, title, body)
     VALUES ('delete', old.rowid, old.title, old.body);
   INSERT INTO memories_fts(rowid, title, body) VALUES (new.rowid, new.title, new.body);
@@ -92,7 +93,7 @@ CREATE TRIGGER memories_fts_cjk_ad AFTER DELETE ON memories BEGIN
     VALUES ('delete', old.rowid, old.cjk_bigrams);
 END;
 
-CREATE TRIGGER memories_fts_cjk_au AFTER UPDATE ON memories BEGIN
+CREATE TRIGGER memories_fts_cjk_au AFTER UPDATE OF cjk_bigrams ON memories BEGIN
   INSERT INTO memories_fts_cjk(memories_fts_cjk, rowid, cjk_bigrams)
     VALUES ('delete', old.rowid, old.cjk_bigrams);
   INSERT INTO memories_fts_cjk(rowid, cjk_bigrams) VALUES (new.rowid, new.cjk_bigrams);

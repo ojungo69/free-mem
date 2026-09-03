@@ -115,7 +115,7 @@ export function adaptClaude(input: AdapterInput): AdapterOutput {
       // A source outside the verified set is not guessed: reading a fork as a startup would join
       // two conversations (contracts/agents.md "Event identity and conversation identity").
       if (source === undefined) return metadataOnly(input, 'payload_invalid');
-      return toEvents([{ ...envelope, kind: 'session_start', source }]);
+      return toEvents([{ ...envelope, ...turn, kind: 'session_start', source }]);
     }
     case 'UserPromptSubmit': {
       const prompt = readContent(payload, 'prompt');
@@ -187,15 +187,17 @@ export function adaptClaude(input: AdapterInput): AdapterOutput {
       return toEvents([
         {
           ...envelope,
+          ...turn,
           kind: 'compaction_summary',
           text: capText(readContent(payload, 'compact_summary') ?? ''),
-          // Claude Code has no per-compaction id, so the event id becomes the epoch key (A16).
+          // Claude Code has no per-compaction id, so the event id becomes the epoch key; the
+          // prompt id above is what keeps two compactions of one session apart (A16, R7).
           compaction_key: '',
         },
       ]);
     case 'SessionEnd':
       return toEvents([
-        { ...envelope, kind: 'session_end', reason: capText(readContent(payload, 'reason') ?? '') },
+        { ...envelope, ...turn, kind: 'session_end', reason: capText(readContent(payload, 'reason') ?? '') },
       ]);
     default:
       return metadataOnly(input, 'event_not_captured');

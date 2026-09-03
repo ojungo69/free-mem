@@ -1,5 +1,6 @@
 import assert from 'node:assert/strict';
 import { spawnSync } from 'node:child_process';
+import type { SpawnSyncReturns } from 'node:child_process';
 import { createHash } from 'node:crypto';
 import { mkdirSync, mkdtempSync, realpathSync, rmSync, symlinkSync, writeFileSync } from 'node:fs';
 import { tmpdir } from 'node:os';
@@ -155,4 +156,58 @@ test('git repository variables in the environment cannot redirect the identity',
       else process.env[name] = value;
     }
   }
+});
+
+test('a Windows drive path remote is a local path, not a host called c', { skip }, () => {
+  const identity = resolveRepoIdentity(repositoryWithRemote('C:\\path\\repo'));
+  // R8 normalizes a remote to `host/path`; a drive letter is neither a host nor a user@host form.
+  assert.equal(identity.identityKind, 'common_dir');
+  assert.equal(identity.normalizedIdentity.startsWith('c/'), false);
+});
+
+test('a repository with an origin costs at most two git calls', { skip }, () => {
+  const root = repositoryWithRemote('https://github.com/owner/counted.git');
+  const calls: string[][] = [];
+  const identity = resolveRepoIdentity(root, {
+    spawn: (file, args, options) => {
+      calls.push(args);
+      return spawnSync(file, args, options);
+    },
+  });
+  assert.equal(identity.normalizedIdentity, 'github.com/owner/counted');
+  // FR-002: the hook has 300 ms in total, so the identity may not spend four processes on it.
+  assert.ok(calls.length <= 2, `git ran ${calls.length} times: ${JSON.stringify(calls)}`);
+});
+
+test('a slow git leaves the next call an unsigned integer timeout', () => {
+  const timeouts: unknown[] = [];
+  const canned = (stdout: string): SpawnSyncReturns<string> => ({
+    pid: 0,
+    output: [null, stdout, ''],
+    stdout,
+    stderr: '',
+    status: 0,
+    signal: null,
+  });
+  const identity = resolveRepoIdentity('/somewhere/work', {
+    spawn: (_file, args, options) => {
+      timeouts.push(options.timeout);
+      if (timeouts.length === 1) {
+        // Burn most of the git budget, so the next call is offered the fraction that is left.
+        Atomics.wait(new Int32Array(new SharedArrayBuffer(4)), 0, 0, 140);
+        return canned('/somewhere/work\n/somewhere/work/.git');
+      }
+      return canned(args.includes('get-url') ? 'https://github.com/owner/slow.git' : '');
+    },
+  });
+  assert.equal(timeouts.length, 2);
+  // spawnSync rejects a fractional timeout with RangeError, which would lose the fallback that the
+  // budget exists for (FR-002).
+  for (const timeout of timeouts) {
+    assert.ok(
+      typeof timeout === 'number' && Number.isInteger(timeout) && timeout >= 1,
+      `git was given the timeout ${String(timeout)}`,
+    );
+  }
+  assert.equal(identity.normalizedIdentity, 'github.com/owner/slow');
 });

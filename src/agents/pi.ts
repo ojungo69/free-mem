@@ -119,7 +119,7 @@ export function adaptPi(input: AdapterInput): AdapterOutput {
     case 'session_start':
       // `reason` is `startup` for a start, a resume and a fork alike, so a resume is recognized by
       // session id continuity and never by this field (R13 probe 2026-09-03).
-      return toEvents([{ ...envelope, kind: 'session_start', source: 'startup' }]);
+      return toEvents([{ ...envelope, ...turn, kind: 'session_start', source: 'startup' }]);
     case 'input': {
       const text = readContent(payload, 'text');
       if (text === undefined) return metadataOnly(input, 'payload_invalid');
@@ -175,7 +175,7 @@ export function adaptPi(input: AdapterInput): AdapterOutput {
     }
     case 'session_shutdown':
       return toEvents([
-        { ...envelope, kind: 'session_end', reason: capText(readContent(payload, 'reason') ?? '') },
+        { ...envelope, ...turn, kind: 'session_end', reason: capText(readContent(payload, 'reason') ?? '') },
       ]);
     case 'session_compact': {
       const entry = readRecord(payload, 'compactionEntry');
@@ -184,6 +184,7 @@ export function adaptPi(input: AdapterInput): AdapterOutput {
       return toEvents([
         {
           ...envelope,
+          ...turn,
           kind: 'compaction_summary',
           text: capText(readContent(entry, 'summary') ?? ''),
           compaction_key: capText(key),

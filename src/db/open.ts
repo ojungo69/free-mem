@@ -1,6 +1,7 @@
-import { createHash } from 'node:crypto';
 import { existsSync } from 'node:fs';
 import { DatabaseSync } from 'node:sqlite';
+
+import { sha256Hex } from '../hash.js';
 
 import sql0001 from './migrations/0001_core.sql';
 import sql0002 from './migrations/0002_memory_search.sql';
@@ -96,10 +97,6 @@ export function openDatabase(options: {
     }
     throw error;
   }
-}
-
-function sha256Hex(text: string): string {
-  return createHash('sha256').update(text, 'utf8').digest('hex');
 }
 
 function readUserVersion(db: DatabaseSync): number {

@@ -1,8 +1,9 @@
 // Normalized events, event identity and conversation identity.
 // Sources: specs/007-oboete-m1-alpha/contracts/agents.md ("Normalized events", "Agent identity",
 // "Event identity and conversation identity"), research.md R7, data-model.md (raw_events, sessions).
-import { createHash } from 'node:crypto';
 import { z } from 'zod';
+
+import { sha256Hex, sha256Json } from './hash.js';
 
 export const AGENTS = ['claude', 'codex', 'grok', 'pi', 'unknown'] as const;
 
@@ -92,6 +93,7 @@ const promptRef = { prompt_id: identifier.optional() };
 export const eventSchema = z.discriminatedUnion('kind', [
   z.strictObject({
     ...envelope,
+    ...promptRef,
     kind: z.literal('session_start'),
     source: z.enum(SESSION_START_SOURCES),
   }),
@@ -133,9 +135,10 @@ export const eventSchema = z.discriminatedUnion('kind', [
     turn_index: z.int(),
     reason: text,
   }),
-  z.strictObject({ ...envelope, kind: z.literal('session_end'), reason: text }),
+  z.strictObject({ ...envelope, ...promptRef, kind: z.literal('session_end'), reason: text }),
   z.strictObject({
     ...envelope,
+    ...promptRef,
     kind: z.literal('compaction_summary'),
     text,
     // The native per-compaction value (Grok PostCompact.timestamp, Pi compactionEntry.id). Claude
@@ -143,7 +146,7 @@ export const eventSchema = z.discriminatedUnion('kind', [
     compaction_key: text,
   }),
   z.strictObject({ ...envelope, ...promptRef, kind: z.literal('last_assistant_message'), text }),
-  z.strictObject({ ...envelope, kind: z.literal('probe'), marker: text }),
+  z.strictObject({ ...envelope, ...promptRef, kind: z.literal('probe'), marker: text }),
 ]);
 
 export type Envelope = z.infer<typeof envelopeSchema>;
@@ -172,7 +175,7 @@ function canonicalJson(value: unknown): string {
 }
 
 export function contentHash(value: string): string {
-  return createHash('sha256').update(value, 'utf8').digest('hex');
+  return sha256Hex(value);
 }
 
 /**
@@ -189,12 +192,15 @@ export function eventContentHash(event: NormalizedEvent): string {
 
 /**
  * The most specific stable key for an event, kind included in every form (R7). No delivery
- * counter, no timestamp and no database read, so a re-delivery always produces the same id.
+ * counter and no timestamp, so a re-delivery always produces the same id. `turnOrdinal` is R7's
+ * turn key for an event that carries no per-turn value of its own; capture supplies it from
+ * `sessions.turn_count`, the one read that contracts/agents.md's "no database read" does not
+ * cover, and a spooled event has to be replayed with the ordinal it had when it was captured, or
+ * the direct path and the spool path give one event two ids and the re-delivery stops collapsing.
  * Accepted limit: two byte-identical events of the last form collapse to one row - inside one
- * turn for an agent that supplies a prompt id, session-wide for one that does not (Pi sends no
- * prompt id, so R7's turn ordinal has no stand-in there).
+ * turn when either key exists, session-wide when neither does.
  */
-export function eventIdKey(event: NormalizedEvent): string[] {
+export function eventIdKey(event: NormalizedEvent, turnOrdinal?: number): string[] {
   const base = ['v1', event.agent, event.native_session_id, event.kind];
   // A tool call and its result share the native call id, so the kind keeps them apart (R7).
   if (event.kind === 'tool_call' || event.kind === 'tool_result' || event.kind === 'tool_failure') {
@@ -208,12 +214,17 @@ export function eventIdKey(event: NormalizedEvent): string[] {
   if (event.kind === 'compaction_summary' && event.compaction_key !== '') {
     return [...base, event.compaction_key];
   }
-  const turnKey = 'prompt_id' in event && event.prompt_id !== undefined ? event.prompt_id : '';
-  return [...base, turnKey, eventContentHash(event)];
+  return [...base, turnKey(event, turnOrdinal), eventContentHash(event)];
 }
 
-export function eventId(event: NormalizedEvent): string {
-  return contentHash(JSON.stringify(eventIdKey(event)));
+/** The agent's own per-turn value, else the turn ordinal, else nothing at all (R7, A16). */
+function turnKey(event: NormalizedEvent, turnOrdinal: number | undefined): string {
+  if (event.prompt_id !== undefined) return event.prompt_id;
+  return turnOrdinal === undefined ? '' : String(turnOrdinal);
+}
+
+export function eventId(event: NormalizedEvent, turnOrdinal?: number): string {
+  return sha256Json(eventIdKey(event, turnOrdinal));
 }
 
 export type ConversationDecision = 'reuse_root' | 'new_root';

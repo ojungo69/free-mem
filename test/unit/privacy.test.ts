@@ -148,9 +148,19 @@ test('fail-closed: a private span never reaches the detector result', async () =
   assert.equal(detected.sensitivity, 'local_only');
 });
 
-test('globToRegExp anchors the pattern and keeps a single star inside one path segment', () => {
+test('globToRegExp follows gitignore semantics and keeps a single star inside one path segment', () => {
+  // A rule without a slash matches the file name at any depth, which is how the same rule is
+  // written in .gitignore and how an agent sends the path (FR-039, R4).
   assert.equal(globToRegExp('*.pem').test('server.pem'), true);
-  assert.equal(globToRegExp('*.pem').test('config/server.pem'), false);
+  assert.equal(globToRegExp('*.pem').test('config/server.pem'), true);
+  assert.equal(globToRegExp('*.pem').test('a/x.pem'), true);
+  assert.equal(globToRegExp('*.pem').test('x.pem.bak'), false);
+  assert.equal(globToRegExp('**/.env').test('.env'), true);
+  assert.equal(globToRegExp('**/.env').test('app/.env'), true);
+  assert.equal(globToRegExp('**/*.pem').test('x.pem'), true);
+  assert.equal(globToRegExp('deploy/**/key.pem').test('deploy/key.pem'), true);
+  assert.equal(globToRegExp('deploy/**/key.pem').test('deploy/eu/west/key.pem'), true);
+  assert.equal(globToRegExp('secrets/**').test('secrets/k.txt'), true);
   assert.equal(globToRegExp('secrets/**').test('secrets/aws/key.json'), true);
   assert.equal(globToRegExp('secrets/**').test('other/secrets/key.json'), false);
   assert.equal(globToRegExp('.env*').test('.env.local'), true);
@@ -171,9 +181,15 @@ test('fail-closed: a path rule matches the repository-relative and the raw form'
   assert.equal(matchSecretPath('/home/dev/repo/server.pem', rules, root), '*.pem');
   assert.equal(matchSecretPath('/home/dev/repo/.env.local', rules, root), '.env*');
   assert.equal(matchSecretPath('/home/dev/repo/src/app.ts', rules, root), null);
+  // A relative path is what the agents actually send, and it is the form a rule is written in.
+  assert.equal(matchSecretPath('.env', ['**/.env'], root), '**/.env');
+  assert.equal(matchSecretPath('a/x.pem', ['*.pem'], root), '*.pem');
+  assert.equal(matchSecretPath('secrets/k.txt', ['secrets/**'], root), 'secrets/**');
+  assert.equal(matchSecretPath('other/secrets/k.txt', ['secrets/**'], root), null);
+  assert.equal(matchSecretPath('README.md', ['*.pem', '**/.env'], root), null);
   // Without a repository root only the raw form is tested.
   assert.equal(matchSecretPath('/etc/ssl/server.pem', ['/etc/**'], null), '/etc/**');
-  assert.equal(matchSecretPath('/etc/ssl/server.pem', ['*.pem'], null), null);
+  assert.equal(matchSecretPath('/etc/ssl/server.pem', ['*.pem'], null), '*.pem');
   assert.equal(matchSecretPath('server.pem', [], root), null);
 });
 
