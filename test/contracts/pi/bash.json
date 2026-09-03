@@ -1,14 +1,14 @@
 {
   "agent": "pi",
   "agent_version": "0.84.4",
-  "captured_at": "2026-09-03T10:46:38.580Z",
+  "captured_at": "2026-09-03T16:10:19.550Z",
   "native_tool": "bash",
   "normalized_tool": "bash",
   "events": {
     "tool_call": {
       "type": "tool_call",
       "toolName": "bash",
-      "toolCallId": "call_ybZOvPh386LYUly0nkWoO6m5|fc_07c53f9a965f21eb016a99500a3e1887d08f2ff6df1da2a23c",
+      "toolCallId": "call_Wa9671ZoBeukOgKGijNWfOnF|fc_09807d12189ab82e016a999be52eb887d08b710aa8583698ce",
       "input": {
         "command": "echo probe-ok"
       }
@@ -16,7 +16,7 @@
     "tool_result": {
       "type": "tool_result",
       "toolName": "bash",
-      "toolCallId": "call_ybZOvPh386LYUly0nkWoO6m5|fc_07c53f9a965f21eb016a99500a3e1887d08f2ff6df1da2a23c",
+      "toolCallId": "call_Wa9671ZoBeukOgKGijNWfOnF|fc_09807d12189ab82e016a999be52eb887d08b710aa8583698ce",
       "input": {
         "command": "echo probe-ok"
       },

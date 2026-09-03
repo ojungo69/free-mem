@@ -1,14 +1,14 @@
 {
   "agent": "codex",
   "agent_version": "codex-cli 0.153.0",
-  "captured_at": "2026-09-03T11:15:49.402Z",
+  "captured_at": "2026-09-03T15:46:39.556Z",
   "native_tool": "Bash",
   "normalized_tool": "read",
   "events": {
     "PreToolUse": {
-      "session_id": "01a066f9-dcb3-79f3-8d78-ac4984b99746",
-      "turn_id": "01a066f9-dcc6-7bb2-8067-fa4c22e7c084",
-      "transcript_path": "~/.cache/oboete-probes/2026-09-03T11-14-04-660Z/codex-payload-shapes/codex-home/sessions/2026/09/03/rollout-2026-09-03T20-14-06-01a066f9-dcb3-79f3-8d78-ac4984b99746.jsonl",
+      "session_id": "01a067f2-e8e0-7061-881c-7465eb4eba9e",
+      "turn_id": "01a067f2-e8f3-75f3-95b2-386086502208",
+      "transcript_path": "<run>/codex-payload-shapes/codex-home/sessions/2026/09/04/rollout-2026-09-04T00-46-07-01a067f2-e8e0-7061-881c-7465eb4eba9e.jsonl",
       "cwd": "<repo>",
       "hook_event_name": "PreToolUse",
       "model": "gpt-5.6-sol",
@@ -17,12 +17,12 @@
       "tool_input": {
         "command": "cat README.md"
       },
-      "tool_use_id": "exec-d0947ecd-9eb4-41b1-9d7b-c594bccf1238"
+      "tool_use_id": "exec-72edae3d-7823-4303-8234-98ee777a8f77"
     },
     "PostToolUse": {
-      "session_id": "01a066f9-dcb3-79f3-8d78-ac4984b99746",
-      "turn_id": "01a066f9-dcc6-7bb2-8067-fa4c22e7c084",
-      "transcript_path": "~/.cache/oboete-probes/2026-09-03T11-14-04-660Z/codex-payload-shapes/codex-home/sessions/2026/09/03/rollout-2026-09-03T20-14-06-01a066f9-dcb3-79f3-8d78-ac4984b99746.jsonl",
+      "session_id": "01a067f2-e8e0-7061-881c-7465eb4eba9e",
+      "turn_id": "01a067f2-e8f3-75f3-95b2-386086502208",
+      "transcript_path": "<run>/codex-payload-shapes/codex-home/sessions/2026/09/04/rollout-2026-09-04T00-46-07-01a067f2-e8e0-7061-881c-7465eb4eba9e.jsonl",
       "cwd": "<repo>",
       "hook_event_name": "PostToolUse",
       "model": "gpt-5.6-sol",
@@ -32,7 +32,7 @@
         "command": "cat README.md"
       },
       "tool_response": "oboete probe repository\nsecond line\n",
-      "tool_use_id": "exec-d0947ecd-9eb4-41b1-9d7b-c594bccf1238"
+      "tool_use_id": "exec-72edae3d-7823-4303-8234-98ee777a8f77"
     }
   },
   "notes": "tool_input.command — path is inside the shell command text; tool_response is a bare string"

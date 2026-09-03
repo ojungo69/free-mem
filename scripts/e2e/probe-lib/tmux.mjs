@@ -1,18 +1,33 @@
 import { spawnSync } from "node:child_process";
 
+export const TMUX_SOCKET = "oboete-probes";
+
+export function tmux(args, opts = {}) {
+  const { env, ...rest } = opts;
+  return spawnSync("tmux", ["-L", TMUX_SOCKET, ...args], {
+    encoding: "utf8",
+    ...rest,
+    ...(env ? { env: { ...process.env, ...env } } : {}),
+  });
+}
+
 export function tmuxSession({ name, command, cwd, env } = {}) {
   if (!name) throw new Error("tmuxSession: name required");
   const args = ["new-session", "-d", "-s", name, "-x", "200", "-y", "50"];
   if (cwd) args.push("-c", cwd);
+  const extraEnv = env || {};
+  for (const [k, v] of Object.entries(extraEnv)) {
+    args.push("-e", `${k}=${v}`);
+  }
   args.push(command || "bash");
-  const r = spawnSync("tmux", args, { encoding: "utf8", env: { ...process.env, ...(env || {}) } });
+  const r = tmux(args, { env: extraEnv });
   if (r.status !== 0) throw new Error("tmux new-session: " + (r.stderr || r.stdout || "fail"));
   return {
     send(keys) {
-      spawnSync("tmux", ["send-keys", "-t", name, String(keys), "Enter"], { encoding: "utf8" });
+      tmux(["send-keys", "-t", name, String(keys), "Enter"]);
     },
     capture() {
-      const c = spawnSync("tmux", ["capture-pane", "-p", "-t", name], { encoding: "utf8" });
+      const c = tmux(["capture-pane", "-p", "-t", name]);
       return c.stdout || "";
     },
     async waitFor(regex, ms = 5000) {
@@ -25,7 +40,7 @@ export function tmuxSession({ name, command, cwd, env } = {}) {
       throw new Error("waitFor timeout " + re + " pane=" + this.capture().slice(-200));
     },
     kill() {
-      spawnSync("tmux", ["kill-session", "-t", name], { encoding: "utf8" });
+      tmux(["kill-session", "-t", name]);
     },
   };
 }

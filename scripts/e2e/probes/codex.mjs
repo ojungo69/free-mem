@@ -1,27 +1,32 @@
-import { spawnSync } from "node:child_process";
 import fs from "node:fs";
 import os from "node:os";
 import path from "node:path";
+import { setTimeout as sleep } from "node:timers/promises";
 import { fileURLToPath } from "node:url";
 import {
   CODEX_EVENTS,
   agentPath,
   binVersion,
   childEnv,
+  compactionIdentity,
   oversizedOutcome,
   oversizedPrompt,
   parseEvents,
   redactValue,
   runTimed,
+  shellQuote,
+  summaryOf,
   toolInputOf,
   toolNameOf,
   toolOutputOf,
   toolUseIdOf,
   toolUsePrompt,
   topKeys,
+  waitUntil,
   writeFixture,
 } from "../probe-lib/agents.mjs";
-import { tmuxSession } from "../probe-lib/tmux.mjs";
+import { readMcpFrames } from "../probe-lib/mcp-frames.mjs";
+import { tmux, tmuxSession } from "../probe-lib/tmux.mjs";
 
 const HERE = path.dirname(fileURLToPath(import.meta.url));
 const MCP_DUMMY = path.join(HERE, "../probe-lib/mcp-dummy.mjs");
@@ -50,7 +55,6 @@ const TUI_PROMPT = "Use the shell to run: echo tui-ok ; then reply with exactly 
 const MCP_PROMPT =
   "Call the MCP tool oboete_probe/search with query hello and reply DONE followed by the tool result";
 const TRUST_PANE_RE = /hook needs review|review required|Trust to trust|New hook|untrusted hook/i;
-const SUMMARY_KEYS = ["compact_summary", "compaction_summary", "summary", "summary_text", "compactSummary", "text"];
 
 function cmdOf(ev) {
   const input = toolInputOf(ev) || {};
@@ -98,14 +102,6 @@ const EXPECTED = {
   },
 };
 
-function sleep(ms) {
-  return new Promise((r) => setTimeout(r, ms));
-}
-
-function shQuote(s) {
-  return "'" + String(s).replace(/'/g, `'\\''`) + "'";
-}
-
 function eventsFile(home) {
   return path.join(home, "events.jsonl");
 }
@@ -152,25 +148,6 @@ function widenSessionStart(home) {
   fs.writeFileSync(p, JSON.stringify(j, null, 2));
 }
 
-function summaryOf(stdin) {
-  if (!stdin || typeof stdin !== "object") return { field: null, length: 0 };
-  for (const k of SUMMARY_KEYS) {
-    if (!(k in stdin) || stdin[k] == null || stdin[k] === "") continue;
-    const v = stdin[k];
-    return { field: k, length: typeof v === "string" ? v.length : JSON.stringify(v).length };
-  }
-  return { field: null, length: 0 };
-}
-
-function identityFields(stdin) {
-  if (!stdin || typeof stdin !== "object") return {};
-  const out = {};
-  for (const k of ["compaction_id", "compact_id", "id", "counter", "epoch", "compact_count", "turn_id", "trigger"]) {
-    if (k in stdin) out[k] = stdin[k];
-  }
-  return out;
-}
-
 function compactTimeline(events) {
   return events
     .filter((e) => ["PreCompact", "PostCompact", "SessionStart", "UserPromptSubmit"].includes(e.event))
@@ -201,22 +178,20 @@ function orderOk(events) {
 }
 
 async function waitEvents(home, pred, ms) {
-  const start = Date.now();
-  let ev = parseEvents(eventsFile(home));
-  while (Date.now() - start < ms) {
-    if (pred(ev)) return ev;
-    await sleep(250);
-    ev = parseEvents(eventsFile(home));
-  }
-  return ev;
+  return (
+    (await waitUntil(() => {
+      const ev = parseEvents(eventsFile(home));
+      return pred(ev) ? ev : null;
+    }, ms, 250)) || parseEvents(eventsFile(home))
+  );
 }
 
 function tuiCmd(home, extra) {
   return [
     "env",
-    `CODEX_HOME=${shQuote(home)}`,
-    `PATH=${shQuote(agentPath())}`,
-    `HOME=${shQuote(os.homedir())}`,
+    `CODEX_HOME=${shellQuote(home)}`,
+    `PATH=${shellQuote(agentPath())}`,
+    `HOME=${shellQuote(os.homedir())}`,
     "TERM=xterm-256color",
     "codex",
     "--sandbox",
@@ -245,22 +220,18 @@ async function withTui(dir, { home, repo, extra = [], run }) {
     } catch {
       /* ignore */
     }
-    spawnSync("tmux", ["kill-session", "-t", name], { encoding: "utf8" });
+    tmux(["kill-session", "-t", name]);
   }
 }
 
-function sendCtrlC(name) {
-  spawnSync("tmux", ["send-keys", "-t", name, "C-c"], { encoding: "utf8" });
-}
-
 function tuiKeys(name, ...keys) {
-  spawnSync("tmux", ["send-keys", "-t", name, ...keys], { encoding: "utf8" });
+  tmux(["send-keys", "-t", name, ...keys]);
 }
 
 async function tuiSubmit(name, tui, text) {
   tuiKeys(name, "Escape");
   await sleep(80);
-  spawnSync("tmux", ["send-keys", "-t", name, "-l", text], { encoding: "utf8" });
+  tmux(["send-keys", "-t", name, "-l", text]);
   await sleep(250);
   tuiKeys(name, "C-m");
   await sleep(400);
@@ -273,13 +244,12 @@ async function tuiSubmit(name, tui, text) {
 }
 
 async function waitPane(tui, re, ms) {
-  const start = Date.now();
-  while (Date.now() - start < ms) {
-    const p = tui.capture();
-    if (re.test(p)) return p;
-    await sleep(200);
-  }
-  return tui.capture();
+  let p = "";
+  await waitUntil(() => {
+    p = tui.capture();
+    return re.test(p) ? p : null;
+  }, ms, 200);
+  return p || tui.capture();
 }
 
 async function tuiQuit(tui, name) {
@@ -289,39 +259,26 @@ async function tuiQuit(tui, name) {
   } catch {
     /* ignore */
   }
-  sendCtrlC(name);
+  tuiKeys(name, "C-c");
   await sleep(200);
-  sendCtrlC(name);
+  tuiKeys(name, "C-c");
+}
+
+async function tuiComposerTurn(tui, name, home, dir) {
+  const startPane = await waitPane(tui, /›/, 25_000);
+  saveText(dir, "pane-start.txt", startPane);
+  if (!/›/.test(startPane)) {
+    await tuiQuit(tui, name);
+    return { blocked: "TUI composer never appeared; pane=" + startPane.slice(-400) };
+  }
+  await tuiSubmit(name, tui, TUI_PROMPT);
+  await waitEvents(home, (ev) => ev.some((e) => e.event === "Stop" || e.event === "UserPromptSubmit"), 45_000);
+  saveText(dir, "pane-turn.txt", tui.capture());
+  return { blocked: null };
 }
 
 const TUI_MANUAL =
   "manual: CODEX_HOME=<tmp hooks.json> tmux `codex --sandbox danger-full-access --ask-for-approval never` in the throwaway repo; wait for composer (›); send a short turn; /compact; /new (expect SessionStart source=clear); /quit. Record events.jsonl labels and pane text.";
-
-function mcpFrames(file) {
-  if (!fs.existsSync(file)) return [];
-  return fs
-    .readFileSync(file, "utf8")
-    .split("\n")
-    .filter(Boolean)
-    .map((l) => {
-      try {
-        return JSON.parse(l);
-      } catch {
-        return { parse_error: l.slice(0, 120) };
-      }
-    });
-}
-
-function mcpMethods(frames) {
-  const methods = [];
-  let protocolVersion = null;
-  for (const f of frames) {
-    const msg = f.frame || f;
-    if (f.dir === "in" && msg.method === "initialize") protocolVersion = msg.params?.protocolVersion || null;
-    if (f.dir === "in" && msg.method) methods.push(msg.method);
-  }
-  return { methods, protocolVersion, hasList: methods.includes("tools/list"), hasCall: methods.includes("tools/call") };
-}
 
 export const probes = [
   {
@@ -421,6 +378,9 @@ export const probes = [
       if (!threadId) {
         evidence.push("A produced no session_id; resume skipped");
       } else {
+        fs.copyFileSync(path.join(dirA, "stdout.txt"), path.join(dirA, "a-stdout.txt"));
+        fs.copyFileSync(path.join(dirA, "stderr.txt"), path.join(dirA, "a-stderr.txt"));
+        fs.copyFileSync(path.join(a.tree, "events.jsonl"), path.join(dirA, "a-events.jsonl"));
         const b = await ctx.codex(dirA, { extraArgs: ["resume", threadId], prompt: RESUME_PROMPT });
         const srcB = sessionSources(b.events);
         observed.push(...srcB);
@@ -464,16 +424,11 @@ export const probes = [
           repo: seed.repo,
           extra: ["--dangerously-bypass-hook-trust"],
           async run(tui, name) {
-            const startPane = await waitPane(tui, /›/, 25_000);
-            saveText(dirD, "pane-start.txt", startPane);
-            if (!/›/.test(startPane)) {
-              tuiBlocked = "TUI composer never appeared; pane=" + startPane.slice(-400);
-              await tuiQuit(tui, name);
+            const ready = await tuiComposerTurn(tui, name, seed.tree, dirD);
+            if (ready.blocked) {
+              tuiBlocked = ready.blocked;
               return;
             }
-            await tuiSubmit(name, tui, TUI_PROMPT);
-            await waitEvents(seed.tree, (ev) => ev.some((e) => e.event === "Stop" || e.event === "UserPromptSubmit"), 45_000);
-            saveText(dirD, "pane-turn.txt", tui.capture());
             await tuiSubmit(name, tui, "/compact");
             await waitEvents(
               seed.tree,
@@ -541,7 +496,7 @@ export const probes = [
       const sumC = postC.map((e) => summaryOf(e.stdin));
       evidence.push(`C PreCompact n=${preC.length} keys=[${preC.map((e) => topKeys(e.stdin).join("|")).join(" ; ")}]`);
       evidence.push(
-        `C PostCompact n=${postC.length} keys=[${postC.map((e) => topKeys(e.stdin).join("|")).join(" ; ")}] summary=${JSON.stringify(sumC)} identity=${JSON.stringify(postC.map((e) => identityFields(e.stdin)))}`,
+        `C PostCompact n=${postC.length} keys=[${postC.map((e) => topKeys(e.stdin).join("|")).join(" ; ")}] summary=${JSON.stringify(sumC)} identity=${JSON.stringify(compactionIdentity(postC))}`,
       );
       evidence.push(`C timeline=${JSON.stringify(compactTimeline(c.events))}`);
       const ordC = orderOk(c.events);
@@ -558,16 +513,11 @@ export const probes = [
           repo: seed.repo,
           extra: ["--dangerously-bypass-hook-trust"],
           async run(tui, name) {
-            const startPane = await waitPane(tui, /›/, 25_000);
-            saveText(dirD, "pane-start.txt", startPane);
-            if (!/›/.test(startPane)) {
-              tuiBlocked = "TUI composer never appeared; pane=" + startPane.slice(-400);
-              await tuiQuit(tui, name);
+            const ready = await tuiComposerTurn(tui, name, seed.tree, dirD);
+            if (ready.blocked) {
+              tuiBlocked = ready.blocked;
               return;
             }
-            await tuiSubmit(name, tui, TUI_PROMPT);
-            await waitEvents(seed.tree, (ev) => ev.some((e) => e.event === "Stop" || e.event === "UserPromptSubmit"), 45_000);
-            saveText(dirD, "pane-turn.txt", tui.capture());
             await tuiSubmit(name, tui, "/compact");
             await waitEvents(seed.tree, (ev) => ev.filter((e) => e.event === "PostCompact").length >= 1, 45_000);
             saveText(dirD, "pane-compact1.txt", tui.capture());
@@ -588,7 +538,7 @@ export const probes = [
       const preD = dEvents.filter((e) => e.event === "PreCompact");
       evidence.push(`D PreCompact n=${preD.length} keys=[${preD.map((e) => topKeys(e.stdin).join("|")).join(" ; ")}]`);
       evidence.push(
-        `D PostCompact n=${postD.length} keys=[${postD.map((e) => topKeys(e.stdin).join("|")).join(" ; ")}] summary=${JSON.stringify(postD.map((e) => summaryOf(e.stdin)))} identity=${JSON.stringify(postD.map((e) => identityFields(e.stdin)))}`,
+        `D PostCompact n=${postD.length} keys=[${postD.map((e) => topKeys(e.stdin).join("|")).join(" ; ")}] summary=${JSON.stringify(postD.map((e) => summaryOf(e.stdin)))} identity=${JSON.stringify(compactionIdentity(postD))}`,
       );
       evidence.push(`D timeline=${JSON.stringify(compactTimeline(dEvents))}`);
       if (tuiBlocked) evidence.push(`D_tui_blocked=${tuiBlocked}`);
@@ -600,17 +550,9 @@ export const probes = [
       let aOk = false;
       let aDetail = "need two PostCompact payloads";
       if (postD.length >= 2) {
-        const x = postD[0].stdin || {};
-        const y = postD[1].stdin || {};
-        const idX = identityFields(x);
-        const idY = identityFields(y);
-        const nativeId = ["compaction_id", "compact_id", "id", "counter", "epoch", "compact_count"].some(
-          (k) => x[k] != null && y[k] != null && String(x[k]) !== String(y[k]),
-        );
-        const turnDiff = idX.turn_id && idY.turn_id && idX.turn_id !== idY.turn_id;
-        const sameTurn = idX.turn_id && idX.turn_id === idY.turn_id;
-        aOk = nativeId;
-        aDetail = `native_distinct_id=${nativeId} turn_id_diff=${turnDiff} same_turn=${sameTurn} a=${JSON.stringify(idX)} b=${JSON.stringify(idY)}`;
+        const ident = compactionIdentity(postD);
+        aOk = ident.ok;
+        aDetail = `candidates=[${ident.candidates.join(",")}] values=${JSON.stringify(ident.values)} note=${ident.note || ""}`;
       } else if (tuiBlocked) {
         aDetail = "TUI two-/compact not executed: " + tuiBlocked;
       } else {
@@ -793,8 +735,8 @@ export const probes = [
         },
       );
       const events = parseEvents(eventsFile(seed.tree));
-      const frames = mcpFrames(log);
-      const parsed = mcpMethods(frames);
+      const parsed = readMcpFrames(log);
+      const frames = parsed.frames;
       const pre = events.filter((e) => e.event === "PreToolUse");
       const toolNames = pre.map((e) => toolNameOf(e));
       const echoed = /dummy result for hello/i.test(proc.stdout || "");

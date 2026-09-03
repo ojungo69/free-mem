@@ -1,14 +1,14 @@
 {
   "agent": "pi",
   "agent_version": "0.84.4",
-  "captured_at": "2026-09-03T10:46:38.580Z",
+  "captured_at": "2026-09-03T16:10:19.550Z",
   "native_tool": "edit",
   "normalized_tool": "edit",
   "events": {
     "tool_call": {
       "type": "tool_call",
       "toolName": "edit",
-      "toolCallId": "call_ILreu3YUOm2PA6vlIJeVbw34|fc_07c53f9a965f21eb016a995006de6087d0bbaf7a6a8d2019e8",
+      "toolCallId": "call_F4BgRofOSI3mdpECPZlPDo1q|fc_09807d12189ab82e016a999be0ac5087d0a23bae5c8c0efeeb",
       "input": {
         "path": "notes.txt",
         "edits": [
@@ -22,7 +22,7 @@
     "tool_result": {
       "type": "tool_result",
       "toolName": "edit",
-      "toolCallId": "call_ILreu3YUOm2PA6vlIJeVbw34|fc_07c53f9a965f21eb016a995006de6087d0bbaf7a6a8d2019e8",
+      "toolCallId": "call_F4BgRofOSI3mdpECPZlPDo1q|fc_09807d12189ab82e016a999be0ac5087d0a23bae5c8c0efeeb",
       "input": {
         "path": "notes.txt",
         "edits": [

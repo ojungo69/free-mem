@@ -1,46 +1,46 @@
 {
   "agent": "grok",
   "agent_version": "grok 1.0.17 (a549186d9d39) [alpha]",
-  "captured_at": "2026-09-03T11:13:34.624Z",
+  "captured_at": "2026-09-03T15:53:47.240Z",
   "native_tool": "run_terminal_command",
   "normalized_tool": "bash",
   "events": {
     "PreToolUse": {
       "hookEventName": "pre_tool_use",
-      "sessionId": "01a066f9-398f-7061-8634-4211a049dded",
+      "sessionId": "01a067f7-94ec-7d90-9e94-7fac5f306978",
       "cwd": "<repo>",
       "workspaceRoot": "<repo>/",
-      "timestamp": "2026-09-03T11:13:32.474900393+00:00",
-      "transcriptPath": "~/.cache/oboete-probes/2026-09-03T11-13-23-409Z/grok-payload-shapes/grok-home/sessions/~%2F.cache%2Foboete-probes%2F2026-09-03T11-13-23-409Z%2Fgrok-payload-shapes%2Frepo/01a066f9-398f-7061-8634-4211a049dded/updates.jsonl",
+      "timestamp": "2026-09-03T15:53:12.907911447+00:00",
+      "transcriptPath": "<run>/grok-payload-shapes/grok-home/sessions/<run>%2Fgrok-payload-shapes%2Frepo/01a067f7-94ec-7d90-9e94-7fac5f306978/updates.jsonl",
       "permissionMode": "bypassPermissions",
       "toolName": "run_terminal_command",
-      "toolUseId": "call-f8f06311-6e7c-473e-8e07-a71df145dbee-3",
+      "toolUseId": "call-237aa69c-bed2-491e-8ffb-49660af8be50-3",
       "toolInput": {
         "command": "echo probe-ok",
         "description": "Echo probe-ok to stdout"
       },
       "toolInputTruncated": false,
       "hook_event_name": "PreToolUse",
-      "session_id": "01a066f9-398f-7061-8634-4211a049dded",
-      "transcript_path": "~/.cache/oboete-probes/2026-09-03T11-13-23-409Z/grok-payload-shapes/grok-home/sessions/~%2F.cache%2Foboete-probes%2F2026-09-03T11-13-23-409Z%2Fgrok-payload-shapes%2Frepo/01a066f9-398f-7061-8634-4211a049dded/updates.jsonl",
+      "session_id": "01a067f7-94ec-7d90-9e94-7fac5f306978",
+      "transcript_path": "<run>/grok-payload-shapes/grok-home/sessions/<run>%2Fgrok-payload-shapes%2Frepo/01a067f7-94ec-7d90-9e94-7fac5f306978/updates.jsonl",
       "permission_mode": "bypassPermissions",
       "tool_name": "run_terminal_command",
       "tool_input": {
         "command": "echo probe-ok",
         "description": "Echo probe-ok to stdout"
       },
-      "tool_use_id": "call-f8f06311-6e7c-473e-8e07-a71df145dbee-3"
+      "tool_use_id": "call-237aa69c-bed2-491e-8ffb-49660af8be50-3"
     },
     "PostToolUse": {
       "hookEventName": "post_tool_use",
-      "sessionId": "01a066f9-398f-7061-8634-4211a049dded",
+      "sessionId": "01a067f7-94ec-7d90-9e94-7fac5f306978",
       "cwd": "<repo>",
       "workspaceRoot": "<repo>/",
-      "timestamp": "2026-09-03T11:13:32.512237081+00:00",
-      "transcriptPath": "~/.cache/oboete-probes/2026-09-03T11-13-23-409Z/grok-payload-shapes/grok-home/sessions/~%2F.cache%2Foboete-probes%2F2026-09-03T11-13-23-409Z%2Fgrok-payload-shapes%2Frepo/01a066f9-398f-7061-8634-4211a049dded/updates.jsonl",
+      "timestamp": "2026-09-03T15:53:12.948304824+00:00",
+      "transcriptPath": "<run>/grok-payload-shapes/grok-home/sessions/<run>%2Fgrok-payload-shapes%2Frepo/01a067f7-94ec-7d90-9e94-7fac5f306978/updates.jsonl",
       "permissionMode": "bypassPermissions",
       "toolName": "run_terminal_command",
-      "toolUseId": "call-f8f06311-6e7c-473e-8e07-a71df145dbee-3",
+      "toolUseId": "call-237aa69c-bed2-491e-8ffb-49660af8be50-3",
       "toolInput": {
         "command": "echo probe-ok",
         "description": "Echo probe-ok to stdout"
@@ -66,7 +66,7 @@
         "timed_out": false,
         "description": "Echo probe-ok to stdout",
         "current_dir": "<repo>",
-        "output_file": "~/.cache/oboete-probes/2026-09-03T11-13-23-409Z/grok-payload-shapes/grok-home/sessions/~%2F.cache%2Foboete-probes%2F2026-09-03T11-13-23-409Z%2Fgrok-payload-shapes%2Frepo/01a066f9-398f-7061-8634-4211a049dded/terminal/call-f8f06311-6e7c-473e-8e07-a71df145dbee-3.log",
+        "output_file": "<run>/grok-payload-shapes/grok-home/sessions/<run>%2Fgrok-payload-shapes%2Frepo/01a067f7-94ec-7d90-9e94-7fac5f306978/terminal/call-237aa69c-bed2-491e-8ffb-49660af8be50-3.log",
         "total_bytes": 9,
         "was_bare_echo": true
       },
@@ -75,8 +75,8 @@
       "durationMs": 9,
       "isBackgrounded": false,
       "hook_event_name": "PostToolUse",
-      "session_id": "01a066f9-398f-7061-8634-4211a049dded",
-      "transcript_path": "~/.cache/oboete-probes/2026-09-03T11-13-23-409Z/grok-payload-shapes/grok-home/sessions/~%2F.cache%2Foboete-probes%2F2026-09-03T11-13-23-409Z%2Fgrok-payload-shapes%2Frepo/01a066f9-398f-7061-8634-4211a049dded/updates.jsonl",
+      "session_id": "01a067f7-94ec-7d90-9e94-7fac5f306978",
+      "transcript_path": "<run>/grok-payload-shapes/grok-home/sessions/<run>%2Fgrok-payload-shapes%2Frepo/01a067f7-94ec-7d90-9e94-7fac5f306978/updates.jsonl",
       "permission_mode": "bypassPermissions",
       "tool_name": "run_terminal_command",
       "tool_input": {
@@ -104,11 +104,11 @@
         "timed_out": false,
         "description": "Echo probe-ok to stdout",
         "current_dir": "<repo>",
-        "output_file": "~/.cache/oboete-probes/2026-09-03T11-13-23-409Z/grok-payload-shapes/grok-home/sessions/~%2F.cache%2Foboete-probes%2F2026-09-03T11-13-23-409Z%2Fgrok-payload-shapes%2Frepo/01a066f9-398f-7061-8634-4211a049dded/terminal/call-f8f06311-6e7c-473e-8e07-a71df145dbee-3.log",
+        "output_file": "<run>/grok-payload-shapes/grok-home/sessions/<run>%2Fgrok-payload-shapes%2Frepo/01a067f7-94ec-7d90-9e94-7fac5f306978/terminal/call-237aa69c-bed2-491e-8ffb-49660af8be50-3.log",
         "total_bytes": 9,
         "was_bare_echo": true
       },
-      "tool_use_id": "call-f8f06311-6e7c-473e-8e07-a71df145dbee-3",
+      "tool_use_id": "call-237aa69c-bed2-491e-8ffb-49660af8be50-3",
       "duration_ms": 9
     }
   },

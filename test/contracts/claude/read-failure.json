@@ -1,15 +1,15 @@
 {
   "agent": "claude",
   "agent_version": "2.1.259 (Claude Code)",
-  "captured_at": "2026-09-03T11:05:52.516Z",
+  "captured_at": "2026-09-03T15:44:43.851Z",
   "native_tool": "Read",
   "normalized_tool": "read",
   "events": {
     "PreToolUse": {
-      "session_id": "a3f5d97a-93e4-4e8b-aab2-1f8b991759b3",
-      "transcript_path": "~/.claude/projects/~-cache-oboete-probes-2026-09-03T11-05-25-351Z-claude-tool-failure-repo/a3f5d97a-93e4-4e8b-aab2-1f8b991759b3.jsonl",
+      "session_id": "f65937f4-f116-4da1-b263-a55fba0ddb90",
+      "transcript_path": "~/.claude/projects/<run>-claude-tool-failure-repo/f65937f4-f116-4da1-b263-a55fba0ddb90.jsonl",
       "cwd": "<repo>",
-      "prompt_id": "f50a38cf-a957-4409-9741-e3bbc37b4859",
+      "prompt_id": "2ac7769c-0c79-48db-a827-9b8f6916d950",
       "permission_mode": "bypassPermissions",
       "effort": {
         "level": "high"
@@ -19,13 +19,13 @@
       "tool_input": {
         "file_path": "<repo>/missing-probe-file-does-not-exist.txt"
       },
-      "tool_use_id": "toolu_01HYtWURwDmqbQbUKkrA4JyB"
+      "tool_use_id": "toolu_01RqUXTsxEgXedyiJhnMCCKT"
     },
     "PostToolUseFailure": {
-      "session_id": "a3f5d97a-93e4-4e8b-aab2-1f8b991759b3",
-      "transcript_path": "~/.claude/projects/~-cache-oboete-probes-2026-09-03T11-05-25-351Z-claude-tool-failure-repo/a3f5d97a-93e4-4e8b-aab2-1f8b991759b3.jsonl",
+      "session_id": "f65937f4-f116-4da1-b263-a55fba0ddb90",
+      "transcript_path": "~/.claude/projects/<run>-claude-tool-failure-repo/f65937f4-f116-4da1-b263-a55fba0ddb90.jsonl",
       "cwd": "<repo>",
-      "prompt_id": "f50a38cf-a957-4409-9741-e3bbc37b4859",
+      "prompt_id": "2ac7769c-0c79-48db-a827-9b8f6916d950",
       "permission_mode": "bypassPermissions",
       "effort": {
         "level": "high"
@@ -35,10 +35,10 @@
       "tool_input": {
         "file_path": "<repo>/missing-probe-file-does-not-exist.txt"
       },
-      "tool_use_id": "toolu_01HYtWURwDmqbQbUKkrA4JyB",
+      "tool_use_id": "toolu_01RqUXTsxEgXedyiJhnMCCKT",
       "error": "File does not exist. Note: your current working directory is <repo>.",
       "is_interrupt": false,
-      "duration_ms": 2
+      "duration_ms": 3
     }
   },
   "notes": "PostToolUse also fires for this failed call: false; error is string (string)"

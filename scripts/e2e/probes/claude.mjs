@@ -1,13 +1,15 @@
 import { spawnSync } from "node:child_process";
 import fs from "node:fs";
 import path from "node:path";
-import { fileURLToPath } from "node:url";
+import { setTimeout as sleep } from "node:timers/promises";
 import {
   CLAUDE_EVENTS,
   binVersion,
   childEnv,
+  compactionIdentity,
   finalText,
   gitInit,
+  named,
   oversizedOutcome,
   oversizedPrompt,
   pairFor,
@@ -16,6 +18,8 @@ import {
   shapeProbe,
   topKeys,
   toolUsePrompt,
+  waitUntil,
+  writeClaudeSettings,
   writeFixture,
 } from "../probe-lib/agents.mjs";
 import { tmuxSession } from "../probe-lib/tmux.mjs";
@@ -25,8 +29,6 @@ const ROW_OVER = "Hook runner behaviour when the hook exits with unread stdin ab
 const ROW_COMPACT = "Compaction identity and order per agent";
 const ROW_STOP = "Codex and Grok `PostCompact` payload (summary text field); Grok `Stop` `lastAssistantMessage` field";
 
-const HERE = path.dirname(fileURLToPath(import.meta.url));
-const HOOK_SRC = path.join(HERE, "../probe-lib/hook.mjs");
 const ECHO_PROMPT =
   "Reply with exactly the word DONE followed by every marker token you have seen. Do not use tools.";
 const TUI_MANUAL = [
@@ -67,10 +69,6 @@ const EXPECTED = {
   },
 };
 
-function sleep(ms) {
-  return new Promise((r) => setTimeout(r, ms));
-}
-
 function ssSource(events) {
   const ev = events.find((e) => e.event === "SessionStart");
   return ev?.stdin?.source ?? null;
@@ -95,70 +93,40 @@ function compactRelated(events) {
     });
 }
 
-function postCompacts(events) {
-  return events.filter((e) => e.event === "PostCompact");
-}
-
-function evalA(posts) {
-  const payloads = posts.map((e) => (e.stdin && typeof e.stdin === "object" ? e.stdin : {}));
-  const keys = [...new Set(payloads.flatMap((p) => Object.keys(p)))];
-  const envelope = new Set([
-    "session_id",
-    "transcript_path",
-    "cwd",
-    "hook_event_name",
-    "permission_mode",
-    "prompt_id",
-    "trigger",
-    "compact_summary",
-  ]);
-  const native = keys.filter(
-    (k) => !envelope.has(k) && /(^id$|compaction_id|compact_id|counter|seq|ordinal|uuid|timestamp|^at$|^time$|index)/i.test(k),
-  );
-  const summaries = payloads.map((p) =>
-    typeof p.compact_summary === "string" ? p.compact_summary.length : p.compact_summary == null ? "absent" : typeof p.compact_summary,
-  );
-  let unique = false;
-  if (payloads.length >= 2 && native.length) {
-    const sig = payloads.map((p) => native.map((k) => JSON.stringify(p[k])).join("|"));
-    unique = new Set(sig).size === payloads.length;
-  }
-  return {
-    n: payloads.length,
-    keys,
-    native,
-    unique,
-    ok: payloads.length >= 2 && native.length > 0 && unique,
-    triggers: payloads.map((p) => p.trigger ?? null),
-    summary_len: summaries,
-  };
-}
-
 function evalB(events) {
-  const posts = events.map((e, i) => ({ i, e })).filter((x) => x.e.event === "PostCompact");
-  const inj = events
-    .map((e, i) => ({ i, e }))
-    .filter(
-      (x) =>
-        (x.e.event === "SessionStart" && x.e.stdin?.source === "compact") || x.e.event === "UserPromptSubmit",
-    );
+  const indexed = (events || []).map((e, i) => ({ i, e }));
+  const posts = indexed.filter((x) => x.e.event === "PostCompact");
+  const pres = indexed.filter((x) => x.e.event === "PreCompact");
   if (!posts.length) return { ok: null, details: ["no PostCompact"] };
+  const isInj = (x) =>
+    (x.e.event === "SessionStart" && x.e.stdin?.source === "compact") || x.e.event === "UserPromptSubmit";
   const details = [];
   let ok = true;
   for (const p of posts) {
-    const prevPost = [...posts].reverse().find((q) => q.i < p.i);
-    const lo = prevPost ? prevPost.i : -1;
-    const before = inj.find((x) => x.i > lo && x.i < p.i && x.e.event === "SessionStart");
-    const after = inj.find((x) => x.i > p.i);
+    const prevPre = [...pres].reverse().find((q) => q.i < p.i);
+    let lo;
+    let noPre = false;
+    if (prevPre) {
+      lo = prevPre.i;
+    } else {
+      noPre = true;
+      const prevPost = [...posts].reverse().find((q) => q.i < p.i);
+      lo = prevPost ? prevPost.i : -1;
+    }
+    const note = noPre ? " (no PreCompact recorded)" : "";
+    const before = indexed.find((x) => x.i > lo && x.i < p.i && isInj(x));
+    const after = indexed.find((x) => x.i > p.i && isInj(x));
     if (before) {
       ok = false;
       details.push(
-        `injection SessionStart:${before.e.stdin?.source} idx ${before.i} BEFORE PostCompact idx ${p.i} (at ${before.e.at} vs ${p.e.at})`,
+        `injection ${before.e.event}:${before.e.stdin?.source || ""} idx ${before.i} BEFORE PostCompact idx ${p.i} (at ${before.e.at} vs ${p.e.at})${note}`,
       );
     } else if (after) {
-      details.push(`PostCompact idx ${p.i} @${p.e.at} before ${after.e.event}:${after.e.stdin?.source || ""} idx ${after.i} @${after.e.at}`);
+      details.push(
+        `PostCompact idx ${p.i} @${p.e.at} before ${after.e.event}:${after.e.stdin?.source || ""} idx ${after.i} @${after.e.at}${note}`,
+      );
     } else {
-      details.push(`PostCompact idx ${p.i} @${p.e.at} with no later injection hook`);
+      details.push(`PostCompact idx ${p.i} @${p.e.at} with no later injection hook${note}`);
     }
   }
   return { ok, details };
@@ -182,30 +150,12 @@ function writeBigTxt(file) {
 }
 
 async function waitPostCompact(eventsPath, n, ms) {
-  const start = Date.now();
-  while (Date.now() - start < ms) {
-    const ev = parseEvents(eventsPath);
-    if (postCompacts(ev).length >= n) return ev;
-    await sleep(400);
-  }
-  return parseEvents(eventsPath);
-}
-
-function writeClaudeSettings(dir) {
-  fs.mkdirSync(dir, { recursive: true });
-  const hookPath = path.join(dir, "hook.mjs");
-  fs.copyFileSync(HOOK_SRC, hookPath);
-  const eventsPath = path.join(dir, "events.jsonl");
-  fs.writeFileSync(eventsPath, "");
-  const hooks = {};
-  for (const event of CLAUDE_EVENTS) {
-    const timeout = event === "SessionEnd" ? 10 : 20;
-    const command = `PROBE_EVENTS='${eventsPath.replace(/'/g, `'\\''`)}' node '${hookPath.replace(/'/g, `'\\''`)}' ${event}`;
-    hooks[event] = [{ hooks: [{ type: "command", command, timeout }] }];
-  }
-  const settingsPath = path.join(dir, "settings.json");
-  fs.writeFileSync(settingsPath, JSON.stringify({ hooks }, null, 2));
-  return { settingsPath, eventsPath };
+  return (
+    (await waitUntil(() => {
+      const ev = parseEvents(eventsPath);
+      return named(ev, "PostCompact").length >= n ? ev : null;
+    }, ms, 400)) || parseEvents(eventsPath)
+  );
 }
 
 function paneLoginWall(pane) {
@@ -281,7 +231,7 @@ async function tuiTwoCompacts(dir, repo) {
     if (/compact this conversation|Are you sure|Yes/i.test(tmux.capture())) tmux.send("");
     let events = await waitPostCompact(eventsPath, 1, 120_000);
     dump("after-compact-1");
-    if (postCompacts(events).length < 1) {
+    if (named(events, "PostCompact").length < 1) {
       tmux.send("");
       events = await waitPostCompact(eventsPath, 1, 60_000);
     }
@@ -508,7 +458,7 @@ export const probes = [
         "Do not stop after a few chunks.",
       ].join(" ");
       let auto = await ctx.claude(autoDir, { repo, prompt: autoPrompt, env: autoEnv });
-      if (!postCompacts(auto.events).length && auto.sessionId) {
+      if (!named(auto.events, "PostCompact").length && auto.sessionId) {
         const auto2 = await ctx.claude(path.join(ctx.dir, "auto2"), {
           repo,
           prompt: "Reply with exactly the word DONE. Do not use tools.",
@@ -520,11 +470,11 @@ export const probes = [
           events: [...auto.events, ...auto2.events],
           elapsedMs: auto.elapsedMs + auto2.elapsedMs,
         };
-        evidence.push(`auto2 resume exit=${auto2.exitCode} PostCompact=${postCompacts(auto2.events).length} elapsed_s=${(auto2.elapsedMs / 1000).toFixed(1)}`);
+        evidence.push(`auto2 resume exit=${auto2.exitCode} PostCompact=${named(auto2.events, "PostCompact").length} elapsed_s=${(auto2.elapsedMs / 1000).toFixed(1)}`);
       }
       const usage = usageOf(auto);
       evidence.push(
-        `auto exit=${auto.exitCode} elapsed_s=${(auto.elapsedMs / 1000).toFixed(1)} PostCompact=${postCompacts(auto.events).length} PreCompact=${auto.events.filter((e) => e.event === "PreCompact").length} usage=${usage ? JSON.stringify(usage) : "none"}`,
+        `auto exit=${auto.exitCode} elapsed_s=${(auto.elapsedMs / 1000).toFixed(1)} PostCompact=${named(auto.events, "PostCompact").length} PreCompact=${named(auto.events, "PreCompact").length} usage=${usage ? JSON.stringify(usage) : "none"}`,
       );
       evidence.push(`auto seq=${compactRelated(auto.events).join(" | ") || "none"}`);
       for (const ev of auto.events.filter((e) => e.event === "PreCompact" || e.event === "PostCompact")) {
@@ -541,7 +491,7 @@ export const probes = [
         tui = { events: [], error: String(e && e.message ? e.message : e), pane: "" };
       }
       evidence.push(
-        `tui PostCompact=${postCompacts(tui.events).length} PreCompact=${tui.events.filter((e) => e.event === "PreCompact").length} error=${tui.error || "none"} pane_chars=${(tui.pane || "").length}`,
+        `tui PostCompact=${named(tui.events, "PostCompact").length} PreCompact=${named(tui.events, "PreCompact").length} error=${tui.error || "none"} pane_chars=${(tui.pane || "").length}`,
       );
       evidence.push(`tui seq=${compactRelated(tui.events).join(" | ") || "none"}`);
       if (tui.error) evidence.push(`tui_error=${tui.error.replace(/https:\S+/g, "<url>").slice(0, 400)}`);
@@ -553,15 +503,15 @@ export const probes = [
         );
       }
 
-      const autoPosts = postCompacts(auto.events);
-      const tuiPosts = postCompacts(tui.events);
+      const autoPosts = named(auto.events, "PostCompact");
+      const tuiPosts = named(tui.events, "PostCompact");
       const posts = tuiPosts.length >= 2 ? tuiPosts : autoPosts.length >= 2 ? autoPosts : [...autoPosts, ...tuiPosts];
-      const a = evalA(posts);
+      const a = compactionIdentity(posts);
       const bAuto = evalB(auto.events);
       const bTui = evalB(tui.events);
       const bOk = (autoPosts.length ? bAuto.ok : true) && (tuiPosts.length ? bTui.ok : true);
       evidence.push(
-        `(a) n=${a.n} keys=[${a.keys.join(",")}] native_distinguisher=[${a.native.join(",")}] unique=${a.unique} triggers=${a.triggers.join(",")} summary_len=${a.summary_len.join(",")} ok=${a.ok}`,
+        `(a) n=${a.n} candidates=[${a.candidates.join(",")}] ok=${a.ok}${a.note ? " note=" + a.note : ""} values=${JSON.stringify(a.values)}`,
       );
       evidence.push(`(b) auto=${bAuto.ok} ${bAuto.details.join(" | ")}`);
       evidence.push(`(b) tui=${bTui.ok} ${bTui.details.join(" | ")}`);

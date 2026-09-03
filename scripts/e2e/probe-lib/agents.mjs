@@ -2,6 +2,7 @@ import { spawn, spawnSync } from "node:child_process";
 import fs from "node:fs";
 import os from "node:os";
 import path from "node:path";
+import { setTimeout as sleep } from "node:timers/promises";
 import { fileURLToPath } from "node:url";
 import { trustedHashToml } from "./trusthash.mjs";
 
@@ -15,6 +16,14 @@ function reEscape(s) {
   return String(s).replace(/[.*+?^${}()|[\]\\]/g, "\\$&");
 }
 const HOME_RE = new RegExp(`(/home/|%2[Ff]home%2[Ff]|-home-)${reEscape(USERNAME)}-?`, "g");
+const RUN_ID_RE = String.raw`\d{4}-\d{2}-\d{2}T\d{2}-\d{2}-\d{2}-\d{3}Z`;
+const RUN_RE = new RegExp(
+  String.raw`~(?:/\.cache/oboete-probes/|%2[Ff]\.cache%2[Ff]oboete-probes%2[Ff]|-cache-oboete-probes-)${RUN_ID_RE}`,
+  "g",
+);
+const COMPACTION_KEY_EXACT =
+  /^(compaction_?id|compact_?id|id|counter|seq(uence)?|ordinal|epoch|generation|timestamp|count)$/i;
+const COMPACTION_KEY_SUFFIX = /(_id|Id)$/;
 
 export const CLAUDE_EVENTS = [
   "SessionStart",
@@ -49,6 +58,46 @@ export const GROK_EVENTS = [
   "PostCompact",
   "SessionEnd",
 ];
+
+export const GROK_ISOLATION_ENV = {
+  GROK_CLAUDE_HOOKS_ENABLED: "0",
+  GROK_CLAUDE_MCPS_ENABLED: "0",
+  GROK_CURSOR_HOOKS_ENABLED: "0",
+  GROK_CURSOR_MCPS_ENABLED: "0",
+};
+
+export const SUMMARY_KEYS = [
+  "compact_summary",
+  "compactSummary",
+  "compaction_summary",
+  "summary",
+  "summary_text",
+  "summaryText",
+  "compactedSummary",
+  "text",
+];
+
+const COMPACTION_EXCLUDE = new Set([
+  "session_id",
+  "sessionId",
+  "transcript_path",
+  "transcriptPath",
+  "cwd",
+  "hook_event_name",
+  "hookEventName",
+  "permission_mode",
+  "permissionMode",
+  "workspaceRoot",
+  "prompt_id",
+  "turn_id",
+  "model",
+  "trigger",
+  "matcher",
+  "source",
+  "compact_summary",
+  "compaction_summary",
+  "summary",
+]);
 
 const grokSeeds = new Map();
 
@@ -178,7 +227,7 @@ export function redactValue(value, repoPath) {
     if (typeof v === "string") {
       let s = v;
       if (repoPath) s = s.split(repoPath).join("<repo>");
-      return s.replace(HOME_RE, "~");
+      return s.replace(HOME_RE, "~").replace(RUN_RE, "<run>");
     }
     if (Array.isArray(v)) return v.map(walk);
     if (v && typeof v === "object") {
@@ -239,7 +288,7 @@ function hookCommand(hookPath, eventsPath, label, flags = []) {
   return `PROBE_EVENTS=${shellQuote(eventsPath)} node ${shellQuote(hookPath)} ${label}${extra}`;
 }
 
-function shellQuote(s) {
+export function shellQuote(s) {
   return "'" + String(s).replace(/'/g, `'\\''`) + "'";
 }
 
@@ -264,7 +313,8 @@ function buildHooksJson(agent, hookPath, eventsPath, specs) {
     const handler = { type: "command", command: hookCommand(hookPath, eventsPath, label, spec.flags || []), timeout };
     if (!hooks[event]) {
       const group = { hooks: [handler] };
-      if (agent === "codex" && event === "SessionStart") {
+      if (spec.matcher) group.matcher = spec.matcher;
+      else if (agent === "codex" && event === "SessionStart") {
         group.matcher = "startup|resume|clear|compact";
       }
       hooks[event] = [group];
@@ -286,7 +336,7 @@ function writeHookTree(dir, agent, opts) {
   return { hookPath, eventsPath, json };
 }
 
-function parseMaybeJson(text) {
+export function parseMaybeJson(text) {
   const t = (text || "").trim();
   if (!t) return null;
   try {
@@ -320,11 +370,11 @@ export function parseJsonl(text) {
     .filter(Boolean);
 }
 
-function envelopeMeta(agent, proc, events) {
+function envelopeMeta(agent, proc, events, envelope) {
   let sessionId = null;
   let model = null;
   if (agent === "claude") {
-    const env = parseMaybeJson(proc.stdout);
+    const env = envelope;
     sessionId = env?.session_id || null;
     const mu = env?.modelUsage || {};
     let best = -1;
@@ -345,7 +395,7 @@ function envelopeMeta(agent, proc, events) {
       if (s.session_id) sessionId = sessionId || s.session_id;
     }
   } else if (agent === "grok") {
-    const env = parseMaybeJson(proc.stdout);
+    const env = envelope;
     sessionId = env?.sessionId || env?.session_id || null;
     const mu = env?.modelUsage || {};
     model = Object.keys(mu)[0] || null;
@@ -424,7 +474,8 @@ export function finalText(agent, proc, events) {
 
 function packResult(agent, dir, repo, tree, proc, eventsPath) {
   const events = parseEvents(eventsPath);
-  const { sessionId, model } = envelopeMeta(agent, proc, events);
+  const envelope = agent === "claude" || agent === "grok" ? parseMaybeJson(proc.stdout) : null;
+  const { sessionId, model } = envelopeMeta(agent, proc, events, envelope);
   return {
     agent,
     exitCode: proc.exitCode,
@@ -434,6 +485,7 @@ function packResult(agent, dir, repo, tree, proc, eventsPath) {
     elapsedMs: proc.elapsedMs,
     sessionId,
     model,
+    envelope,
     tree,
     repo,
     dir,
@@ -456,13 +508,13 @@ export async function seedGrokHome(runRoot) {
   return seed;
 }
 
-function copyGrokSeed(seed, dest) {
-  fs.cpSync(seed, dest, { recursive: true });
+function copyGrokHome(src, dest, { wipeSessions = true } = {}) {
+  fs.cpSync(src, dest, { recursive: true });
   fs.mkdirSync(path.join(dest, "hooks"), { recursive: true });
   for (const name of fs.readdirSync(path.join(dest, "hooks"))) {
     fs.rmSync(path.join(dest, "hooks", name), { force: true });
   }
-  fs.rmSync(path.join(dest, "sessions"), { recursive: true, force: true });
+  if (wipeSessions) fs.rmSync(path.join(dest, "sessions"), { recursive: true, force: true });
 }
 
 function deepMerge(a, b) {
@@ -477,12 +529,18 @@ function deepMerge(a, b) {
   return out;
 }
 
-export async function claude(dir, opts = {}) {
+export function writeClaudeSettings(dir, opts = {}) {
   fs.mkdirSync(dir, { recursive: true });
-  const repo = resolveRepo(dir, opts);
   const { eventsPath, json } = writeHookTree(dir, "claude", opts);
   const settingsPath = path.join(dir, "settings.json");
   fs.writeFileSync(settingsPath, JSON.stringify(json, null, 2));
+  return { settingsPath, eventsPath };
+}
+
+export async function claude(dir, opts = {}) {
+  fs.mkdirSync(dir, { recursive: true });
+  const repo = resolveRepo(dir, opts);
+  const { settingsPath, eventsPath } = writeClaudeSettings(dir, opts);
   const proc = await runTimed(
     [
       "claude",
@@ -547,12 +605,13 @@ export async function codex(dir, opts = {}) {
   return packResult("codex", dir, repo, home, proc, eventsPath);
 }
 
-export async function grok(dir, opts = {}) {
+export function prepareGrokHome(dir, opts = {}) {
   fs.mkdirSync(dir, { recursive: true });
   const repo = resolveRepo(dir, opts);
-  const seed = opts.grokSeed || (await seedGrokHome(path.dirname(dir)));
+  const src = opts.homeFrom || opts.grokSeed;
+  if (!src) throw new Error("prepareGrokHome: grokSeed or homeFrom required");
   const home = path.join(dir, "grok-home");
-  copyGrokSeed(seed, home);
+  copyGrokHome(src, home, { wipeSessions: !opts.homeFrom });
   const { eventsPath, json } = writeHookTree(home, "grok", opts);
   fs.writeFileSync(path.join(home, "hooks", "probe.json"), JSON.stringify(json, null, 2));
   if (opts.configToml) {
@@ -561,14 +620,21 @@ export async function grok(dir, opts = {}) {
     const extra = String(opts.configToml);
     fs.writeFileSync(cfg, prev + (prev && !prev.endsWith("\n") ? "\n" : "") + extra + (extra.endsWith("\n") ? "" : "\n"));
   }
+  return { home, repo, eventsPath };
+}
+
+export async function grok(dir, opts = {}) {
+  const grokSeed = opts.homeFrom ? opts.grokSeed : opts.grokSeed || (await seedGrokHome(path.dirname(dir)));
+  const { home, repo, eventsPath } = prepareGrokHome(dir, { ...opts, grokSeed });
   const argv = ["grok", "-p", opts.prompt || toolUsePrompt("grok")];
   if (!opts.noApprove) argv.push("--always-approve");
   argv.push("--output-format", "json", "--cwd", repo, ...(opts.extraArgs || []));
   const proc = await runTimed(argv, {
     cwd: repo,
-    env: childEnv({ GROK_HOME: home, GROK_CLAUDE_HOOKS_ENABLED: "0", ...(opts.env || {}) }),
+    env: childEnv({ GROK_HOME: home, ...GROK_ISOLATION_ENV, ...(opts.env || {}) }),
     stdoutPath: path.join(dir, "stdout.txt"),
     stderrPath: path.join(dir, "stderr.txt"),
+    timeoutMs: opts.timeoutMs,
   });
   return packResult("grok", dir, repo, home, proc, eventsPath);
 }
@@ -618,6 +684,70 @@ export function topKeys(v) {
   if (Array.isArray(v)) return ["(array)"];
   if (typeof v === "object") return Object.keys(v);
   return [typeof v];
+}
+
+export function named(events, name) {
+  return (events || []).filter((e) => e.event === name);
+}
+
+export async function waitUntil(fn, ms, stepMs = 250) {
+  const start = Date.now();
+  let last;
+  while (Date.now() - start < ms) {
+    last = await fn();
+    if (last) return last;
+    await sleep(stepMs);
+  }
+  return last;
+}
+
+export function summaryOf(stdin) {
+  if (!stdin || typeof stdin !== "object") return { field: null, length: 0 };
+  for (const k of SUMMARY_KEYS) {
+    if (!(k in stdin) || stdin[k] == null || stdin[k] === "") continue;
+    const v = stdin[k];
+    return { field: k, length: typeof v === "string" ? v.length : JSON.stringify(v).length };
+  }
+  return { field: null, length: 0 };
+}
+
+function flattenOneLevel(stdin) {
+  const s = stdin && typeof stdin === "object" && !Array.isArray(stdin) ? stdin : {};
+  const out = { ...s };
+  for (const v of Object.values(s)) {
+    if (!v || typeof v !== "object" || Array.isArray(v)) continue;
+    for (const [ik, iv] of Object.entries(v)) {
+      if (!(ik in out)) out[ik] = iv;
+    }
+  }
+  return out;
+}
+
+export function compactionIdentity(posts) {
+  const payloads = (posts || []).map((e) => flattenOneLevel(e?.stdin));
+  const n = payloads.length;
+  const keySet = new Set();
+  for (const p of payloads) {
+    for (const k of Object.keys(p)) {
+      if (COMPACTION_EXCLUDE.has(k)) continue;
+      if (COMPACTION_KEY_EXACT.test(k) || COMPACTION_KEY_SUFFIX.test(k)) keySet.add(k);
+    }
+  }
+  const candidates = [...keySet];
+  const values = payloads.map((p) => Object.fromEntries(candidates.map((k) => [k, p[k]])));
+  if (n === 1) {
+    return { ok: false, candidates, values, n, note: `single observation; candidate keys = [${candidates.join(", ")}]` };
+  }
+  if (n < 2) return { ok: false, candidates, values, n, note: "no observations" };
+  const sigs = values.map((v) => JSON.stringify(v));
+  const unique = new Set(sigs).size === n;
+  return {
+    ok: unique,
+    candidates,
+    values,
+    n,
+    note: unique ? undefined : candidates.length ? "no distinguishing candidate" : "no candidate",
+  };
 }
 
 export function grepLines(text, patterns) {

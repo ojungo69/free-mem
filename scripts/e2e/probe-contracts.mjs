@@ -4,6 +4,7 @@ import os from "node:os";
 import path from "node:path";
 import { fileURLToPath, pathToFileURL } from "node:url";
 import * as agents from "./probe-lib/agents.mjs";
+import { tmux } from "./probe-lib/tmux.mjs";
 
 const HERE = path.dirname(fileURLToPath(import.meta.url));
 const PROBE_MS = 20 * 60 * 1000;
@@ -105,6 +106,34 @@ function withTimeout(promise, ms, label) {
   return Promise.race([promise, timeout]).finally(() => clearTimeout(t));
 }
 
+export function blockAgentApiFailure(dir, result) {
+  if (!result || !["fail", "blocked"].includes(result.status)) return result;
+  let entries;
+  try {
+    entries = fs.readdirSync(dir, { recursive: true, withFileTypes: true });
+  } catch {
+    return result;
+  }
+  const signature = /API Error|529 Overloaded|overloaded_error|rate.?limit|stream (?:disconnected|error)|ECONNRESET|ETIMEDOUT|fetch failed/i;
+  for (const entry of entries) {
+    if (!entry.isFile() || !/^(?:stdout|stderr).*\.txt$/i.test(entry.name)) continue;
+    const file = path.join(entry.parentPath || entry.path || dir, entry.name);
+    let text;
+    try {
+      if (fs.statSync(file).size > 5 * 1024 * 1024) continue;
+      text = fs.readFileSync(file, "utf8");
+    } catch {
+      continue;
+    }
+    const line = text.split(/\r?\n/).find((value) => signature.test(value));
+    if (!line) continue;
+    result.status = "blocked";
+    result.evidence = [...(result.evidence || []), `agent API error: ${line.trim().slice(0, 200)} (${path.relative(dir, file)})`];
+    return result;
+  }
+  return result;
+}
+
 async function main() {
   const opts = parseArgs(process.argv.slice(2));
   const all = await loadProbes();
@@ -174,9 +203,15 @@ async function main() {
           result = { status: "fail", evidence: ["invalid result status"], data: result };
         }
       } catch (e) {
-        result = { status: "fail", evidence: [String(e && e.stack ? e.stack : e)] };
+        const evidence = [String(e && e.stack ? e.stack : e)];
+        if (/probe timeout /.test(String(e && e.message ? e.message : e))) {
+          tmux(["kill-server"]);
+          evidence.push("tmux server oboete-probes killed");
+        }
+        result = { status: "fail", evidence };
       }
     }
+    blockAgentApiFailure(dir, result);
     result.id = probe.id;
     result.agent = probe.agent;
     result.row = probe.row;
@@ -195,7 +230,9 @@ async function main() {
   process.exit(failed ? 1 : 0);
 }
 
-main().catch((e) => {
-  console.error(e);
-  process.exit(1);
-});
+if (path.resolve(process.argv[1] || "") === fileURLToPath(import.meta.url)) {
+  main().catch((e) => {
+    console.error(e);
+    process.exit(1);
+  });
+}

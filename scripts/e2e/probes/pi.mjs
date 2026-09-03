@@ -1,7 +1,17 @@
 import fs from "node:fs";
 import os from "node:os";
 import path from "node:path";
-import { binVersion, finalText, redactValue, shapeProbe, toolUsePrompt, writeFixture } from "../probe-lib/agents.mjs";
+import {
+  binVersion,
+  compactionIdentity,
+  finalText,
+  named,
+  redactValue,
+  shapeProbe,
+  toolUsePrompt,
+  topKeys,
+  writeFixture,
+} from "../probe-lib/agents.mjs";
 
 const ROW_SHAPES = "Native tool payload shapes for read/write/edit/bash on all four agents";
 const ROW_OVER = "Hook runner behaviour when the hook exits with unread stdin above 1 MB";
@@ -29,14 +39,6 @@ const EXPECTED = {
   },
   bash: { file: "bash.json", normalized: "bash", input: ["command"], output: ["content"], path: "input.command" },
 };
-
-function named(events, name) {
-  return (events || []).filter((e) => e.event === name);
-}
-
-function keysOf(v) {
-  return v && typeof v === "object" && !Array.isArray(v) ? Object.keys(v) : [];
-}
 
 function writeBigTxt(repo) {
   fs.mkdirSync(repo, { recursive: true });
@@ -90,15 +92,15 @@ function compactBits(ev) {
   return {
     event: ev.event,
     at: ev.at,
-    keys: keysOf(s),
+    keys: topKeys(s),
     reason: s.reason,
     willRetry: s.willRetry,
     fromExtension: s.fromExtension,
     id: ce.id || null,
     summaryLen: typeof ce.summary === "string" ? ce.summary.length : null,
     firstKeptEntryId: ce.firstKeptEntryId || prep.firstKeptEntryId || null,
-    ceKeys: keysOf(ce),
-    prepKeys: keysOf(prep),
+    ceKeys: topKeys(ce),
+    prepKeys: topKeys(prep),
   };
 }
 
@@ -118,43 +120,55 @@ function sessionJsonlPaths(tree) {
   return fs.readdirSync(dir).filter((f) => f.endsWith(".jsonl")).map((f) => path.join(dir, f));
 }
 
+function entryPath(root, e) {
+  return path.join(e.parentPath ?? e.path ?? root, e.name);
+}
+
+function hasNodeModules(p) {
+  return String(p).split(path.sep).includes("node_modules");
+}
+
+function parentDepth(root, parent) {
+  const rel = path.relative(root, parent);
+  if (!rel || rel === ".") return 0;
+  return rel.split(path.sep).length;
+}
+
 function listTree(root, maxDepth = 2) {
   if (!fs.existsSync(root)) return { exists: false, entries: [] };
+  let ents;
+  try {
+    ents = fs.readdirSync(root, { recursive: true, withFileTypes: true });
+  } catch {
+    return { exists: true, entries: [] };
+  }
   const entries = [];
-  const walk = (dir, rel, depth) => {
-    let names;
+  for (const e of ents) {
+    const parent = e.parentPath ?? e.path ?? root;
+    const fp = path.join(parent, e.name);
+    if (hasNodeModules(fp)) continue;
+    if (parentDepth(root, parent) > maxDepth) continue;
+    let st;
     try {
-      names = fs.readdirSync(dir);
+      st = fs.statSync(fp);
     } catch {
-      return;
+      continue;
     }
-    for (const name of names.sort()) {
-      const fp = path.join(dir, name);
-      const r = rel ? rel + "/" + name : name;
-      let st;
-      try {
-        st = fs.statSync(fp);
-      } catch {
-        continue;
-      }
-      entries.push({ path: r, size: st.size, mtimeMs: st.mtimeMs, dir: st.isDirectory() });
-      if (st.isDirectory() && depth < maxDepth) walk(fp, r, depth + 1);
-    }
-  };
-  walk(root, "", 0);
+    const rel = path.relative(root, fp).split(path.sep).join("/");
+    entries.push({ path: rel, size: st.size, mtimeMs: st.mtimeMs, dir: st.isDirectory() });
+  }
+  entries.sort((a, b) => a.path.localeCompare(b.path));
   return { exists: true, entries };
 }
 
 function listingDiff(before, after) {
   const b = new Map((before.entries || []).map((e) => [e.path, e]));
-  const a = new Map((after.entries || []).map((e) => [e.path, e]));
   const added = [];
   const changed = [];
-  for (const [p, e] of a) {
-    if (!b.has(p)) added.push(p + " size=" + e.size);
-    else if (b.get(p).size !== e.size || b.get(p).mtimeMs !== e.mtimeMs) {
-      changed.push(p + " size " + b.get(p).size + "->" + e.size);
-    }
+  for (const e of after.entries || []) {
+    const prev = b.get(e.path);
+    if (!prev) added.push(e.path + " size=" + e.size);
+    else if (prev.size !== e.size || prev.mtimeMs !== e.mtimeMs) changed.push(e.path + " size " + prev.size + "->" + e.size);
   }
   return { added, changed };
 }
@@ -176,11 +190,6 @@ function bashChildId(r) {
     if (t) return t.split(/\s+/)[0];
   }
   return null;
-}
-
-function usageTokens(events) {
-  const rows = named(events, "probe_context_usage").map((e) => e.stdin);
-  return rows;
 }
 
 function nextAfter(events, compactAt, names) {
@@ -264,16 +273,18 @@ export const probes = [
       }
       const events = [...(r1.events || []), ...(r2?.events || [])];
       const before = named(events, "session_before_compact").map(compactBits);
-      const compact = named(events, "session_compact").map(compactBits);
+      const compactEvs = named(events, "session_compact");
+      const compact = compactEvs.map(compactBits);
       const failed = named(events, "session_compact_failed").map(compactBits);
+      const ident = compactionIdentity(compactEvs);
       const ids = compact.map((c) => c.id).filter(Boolean);
       const uniqueIds = [...new Set(ids)];
-      const a = uniqueIds.length >= 2;
+      const a = ident.ok;
       const firstCompact = compact[0];
       const injectNames = ["before_agent_start", "turn_start", "context"];
       const nextInj = firstCompact ? nextAfter(events, firstCompact.at, injectNames) : null;
       const b = Boolean(firstCompact && nextInj && Date.parse(nextInj.at) > Date.parse(firstCompact.at));
-      const usages = usageTokens(events);
+      const usages = named(events, "probe_context_usage").map((e) => e.stdin);
       const lastUsage = usages.length ? usages[usages.length - 1] : null;
       if (compact.length) {
         writeFixture(ctx.repoRoot, "test/contracts/pi/compaction.json", {
@@ -293,7 +304,7 @@ export const probes = [
         `session_before_compact=${before.length} ${before.map((c) => `keys=[${c.keys}] reason=${c.reason} firstKept=${c.firstKeptEntryId}`).join(" | ") || "none"}`,
         `session_compact=${compact.length} ${compact.map((c) => `keys=[${c.keys}] id=${c.id} summaryLen=${c.summaryLen} firstKept=${c.firstKeptEntryId} reason=${c.reason} at=${c.at} ceKeys=[${c.ceKeys}]`).join(" | ") || "none"}`,
         `session_compact_failed=${failed.length} ${failed.map((c) => `reason=${c.reason}`).join(" | ") || "none"}`,
-        `compactionEntry.ids=${ids.join(",") || "none"} unique=${uniqueIds.length} (a) distinguishing=${a}`,
+        `compactionEntry.ids=${ids.join(",") || "none"} unique=${uniqueIds.length} (a) distinguishing=${a} candidates=[${ident.candidates.join(",")}] note=${ident.note || ""}`,
         `first compact at=${firstCompact?.at || "none"} next inject ${nextInj ? nextInj.event + " at=" + nextInj.at : "none"} (b) committed_before_next_inject=${b}`,
         `probe_compact_called=${named(events, "probe_compact_called").length} complete=${named(events, "probe_compact_complete").length} error=${JSON.stringify(named(events, "probe_compact_error").map((e) => e.stdin))}`,
         `getContextUsage=${JSON.stringify(lastUsage)}`,
@@ -343,8 +354,8 @@ export const probes = [
       }
       const evidence = [
         `exit=${r.exitCode} elapsed_s=${(r.elapsedMs / 1000).toFixed(1)}`,
-        `tool_call n=${calls.length} toolName=${calls[0]?.stdin?.toolName || "none"} input=${JSON.stringify(calls[0]?.stdin?.input ?? null)} keys=[${keysOf(calls[0]?.stdin)}]`,
-        `tool_result n=${results.length} toolName=${results[0]?.stdin?.toolName || "none"} content=${JSON.stringify(results[0]?.stdin?.content ?? null)} keys=[${keysOf(results[0]?.stdin)}]`,
+        `tool_call n=${calls.length} toolName=${calls[0]?.stdin?.toolName || "none"} input=${JSON.stringify(calls[0]?.stdin?.input ?? null)} keys=[${topKeys(calls[0]?.stdin)}]`,
+        `tool_result n=${results.length} toolName=${results[0]?.stdin?.toolName || "none"} content=${JSON.stringify(results[0]?.stdin?.content ?? null)} keys=[${topKeys(results[0]?.stdin)}]`,
         `before_agent_start.systemPromptOptions.selectedTools=${JSON.stringify(selected || null)} includes_oboete_probe=${inSelected}`,
         `model_text=${JSON.stringify(text).slice(0, 300)} echoed=${echoed}`,
       ];
@@ -437,39 +448,34 @@ export const probes = [
       const skipLog = new Set(["events.jsonl", "stdout.txt", "stderr.txt"]);
       const walkLogs = (root) => {
         if (!fs.existsSync(root)) return [];
+        let ents;
+        try {
+          ents = fs.readdirSync(root, { recursive: true, withFileTypes: true });
+        } catch {
+          return [];
+        }
         const out = [];
-        const stack = [root];
-        while (stack.length) {
-          const d = stack.pop();
-          let names;
-          try {
-            names = fs.readdirSync(d);
-          } catch {
-            continue;
-          }
-          for (const n of names) {
-            const fp = path.join(d, n);
-            let st;
-            try {
-              st = fs.statSync(fp);
-            } catch {
-              continue;
-            }
-            if (st.isDirectory()) {
-              if (n !== "node_modules") stack.push(fp);
-            } else if (/\.(log|txt|jsonl)$/i.test(n) && !skipLog.has(n)) {
-              const body = fs.readFileSync(fp, "utf8");
-              if (throwRe.test(body)) out.push({ path: fp, hits: searchLines(body, throwRe) });
-            }
-          }
+        for (const e of ents) {
+          if (!e.isFile()) continue;
+          const fp = entryPath(root, e);
+          if (hasNodeModules(fp)) continue;
+          if (!/\.(log|txt|jsonl)$/i.test(e.name) || skipLog.has(e.name)) continue;
+          const body = fs.readFileSync(fp, "utf8");
+          if (throwRe.test(body)) out.push({ path: fp, hits: searchLines(body, throwRe) });
         }
         return out;
       };
       const tmpLogs = walkLogs(r.tree);
-      const realLogs = (afterReal.entries || [])
-        .filter((e) => !e.dir && /\.(log|txt)$/i.test(e.path))
-        .map((e) => path.join(real, e.path))
-        .filter((p) => fs.existsSync(p) && throwRe.test(fs.readFileSync(p, "utf8")));
+      const realLogs = [];
+      for (const e of afterReal.entries || []) {
+        if (e.dir || !/\.(log|txt)$/i.test(e.path)) continue;
+        const p = path.join(real, e.path);
+        try {
+          if (fs.existsSync(p) && throwRe.test(fs.readFileSync(p, "utf8"))) realLogs.push(p);
+        } catch {
+          /* unreadable */
+        }
+      }
       const text = finalText("pi", r, r.events);
       const continued = /\bDONE\b/.test(text) || named(r.events, "agent_settled").length > 0;
       const durableNamed = durable[0]
@@ -501,7 +507,7 @@ export const probes = [
       const before = named(r.events, "before_provider_request");
       const evidence = [
         `exit=${r.exitCode} elapsed_s=${(r.elapsedMs / 1000).toFixed(1)} model=${r.model || "none"}`,
-        `after_provider_response count=${after.length} keys=${after[0] ? "[" + keysOf(after[0].stdin) + "]" : "n/a"}`,
+        `after_provider_response count=${after.length} keys=${after[0] ? "[" + topKeys(after[0].stdin) + "]" : "n/a"}`,
         `before_provider_request count=${before.length}`,
         `event names=${[...new Set((r.events || []).map((e) => e.event))].join(",")}`,
       ];
