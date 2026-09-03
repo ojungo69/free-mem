@@ -1,0 +1,34 @@
+{
+  "agent": "pi",
+  "agent_version": "0.84.4",
+  "captured_at": "2026-09-03T11:14:02.078Z",
+  "native_tool": "oboete_probe",
+  "events": {
+    "tool_call": {
+      "type": "tool_call",
+      "toolName": "oboete_probe",
+      "toolCallId": "call_gjCk5XiymhweMWFxN4GCr7fk|fc_0b088d2e62308dc5016a9956730dc087d0b9db80b954d36ee3",
+      "input": {}
+    },
+    "tool_result": {
+      "type": "tool_result",
+      "toolName": "oboete_probe",
+      "toolCallId": "call_gjCk5XiymhweMWFxN4GCr7fk|fc_0b088d2e62308dc5016a9956730dc087d0b9db80b954d36ee3",
+      "input": {},
+      "content": [
+        {
+          "type": "text",
+          "text": "oboete_probe ok"
+        }
+      ],
+      "isError": false
+    }
+  },
+  "selectedTools": [
+    "read",
+    "bash",
+    "edit",
+    "write",
+    "oboete_probe"
+  ]
+}

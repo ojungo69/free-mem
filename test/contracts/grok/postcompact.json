@@ -1,0 +1,45 @@
+{
+  "agent": "grok",
+  "PreCompact": {
+    "hookEventName": "pre_compact",
+    "sessionId": "01a066fa-39c4-7823-b66f-68067ac43b44",
+    "cwd": "<repo>",
+    "workspaceRoot": "<repo>/",
+    "timestamp": "2026-09-03T11:14:30.082537763+00:00",
+    "transcriptPath": "~/.cache/oboete-probes/2026-09-03T11-13-23-409Z/grok-postcompact/auto/grok-home/sessions/~%2F.cache%2Foboete-probes%2F2026-09-03T11-13-23-409Z%2Fgrok-postcompact%2Fauto%2Frepo/01a066fa-39c4-7823-b66f-68067ac43b44/updates.jsonl",
+    "permissionMode": "bypassPermissions",
+    "source": "auto",
+    "hook_event_name": "PreCompact",
+    "session_id": "01a066fa-39c4-7823-b66f-68067ac43b44",
+    "transcript_path": "~/.cache/oboete-probes/2026-09-03T11-13-23-409Z/grok-postcompact/auto/grok-home/sessions/~%2F.cache%2Foboete-probes%2F2026-09-03T11-13-23-409Z%2Fgrok-postcompact%2Fauto%2Frepo/01a066fa-39c4-7823-b66f-68067ac43b44/updates.jsonl",
+    "permission_mode": "bypassPermissions"
+  },
+  "PostCompact": {
+    "hookEventName": "post_compact",
+    "sessionId": "01a066fa-39c4-7823-b66f-68067ac43b44",
+    "cwd": "<repo>",
+    "workspaceRoot": "<repo>/",
+    "timestamp": "2026-09-03T11:15:44.758932727+00:00",
+    "transcriptPath": "~/.cache/oboete-probes/2026-09-03T11-13-23-409Z/grok-postcompact/auto/grok-home/sessions/~%2F.cache%2Foboete-probes%2F2026-09-03T11-13-23-409Z%2Fgrok-postcompact%2Fauto%2Frepo/01a066fa-39c4-7823-b66f-68067ac43b44/updates.jsonl",
+    "permissionMode": "bypassPermissions",
+    "source": "auto",
+    "hook_event_name": "PostCompact",
+    "session_id": "01a066fa-39c4-7823-b66f-68067ac43b44",
+    "transcript_path": "~/.cache/oboete-probes/2026-09-03T11-13-23-409Z/grok-postcompact/auto/grok-home/sessions/~%2F.cache%2Foboete-probes%2F2026-09-03T11-13-23-409Z%2Fgrok-postcompact%2Fauto%2Frepo/01a066fa-39c4-7823-b66f-68067ac43b44/updates.jsonl",
+    "permission_mode": "bypassPermissions"
+  },
+  "tuiPostCompact": {
+    "hookEventName": "post_compact",
+    "sessionId": "01a066fd-107c-7322-8c8b-99f5095d4a29",
+    "cwd": "~/.cache/oboete-probes/2026-09-03T11-13-23-409Z/grok-postcompact/tui/repo",
+    "workspaceRoot": "~/.cache/oboete-probes/2026-09-03T11-13-23-409Z/grok-postcompact/tui/repo/",
+    "timestamp": "2026-09-03T11:18:14.533803727+00:00",
+    "transcriptPath": "~/.cache/oboete-probes/2026-09-03T11-13-23-409Z/grok-postcompact/tui/grok-home/sessions/~%2F.cache%2Foboete-probes%2F2026-09-03T11-13-23-409Z%2Fgrok-postcompact%2Ftui%2Frepo/01a066fd-107c-7322-8c8b-99f5095d4a29/updates.jsonl",
+    "permissionMode": "bypassPermissions",
+    "source": "auto",
+    "hook_event_name": "PostCompact",
+    "session_id": "01a066fd-107c-7322-8c8b-99f5095d4a29",
+    "transcript_path": "~/.cache/oboete-probes/2026-09-03T11-13-23-409Z/grok-postcompact/tui/grok-home/sessions/~%2F.cache%2Foboete-probes%2F2026-09-03T11-13-23-409Z%2Fgrok-postcompact%2Ftui%2Frepo/01a066fd-107c-7322-8c8b-99f5095d4a29/updates.jsonl",
+    "permission_mode": "bypassPermissions"
+  }
+}

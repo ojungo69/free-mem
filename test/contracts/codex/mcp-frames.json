@@ -1,0 +1,60 @@
+{
+  "agent": "codex",
+  "agent_version": "codex-cli 0.153.0",
+  "captured_at": "2026-09-03T11:39:53.281Z",
+  "protocolVersion": "2025-06-18",
+  "methods": [
+    "initialize",
+    "notifications/initialized",
+    "tools/list",
+    "tools/call"
+  ],
+  "tool_names": [
+    "mcp__oboete_probe__search"
+  ],
+  "echoed_dummy": true,
+  "frames": [
+    {
+      "dir": "in",
+      "at": "2026-09-03T11:39:40.457Z",
+      "method": "initialize",
+      "protocolVersion": "2025-06-18"
+    },
+    {
+      "dir": "out",
+      "at": "2026-09-03T11:39:40.458Z",
+      "method": "oboete-dummy",
+      "protocolVersion": "2025-06-18"
+    },
+    {
+      "dir": "in",
+      "at": "2026-09-03T11:39:40.459Z",
+      "method": "notifications/initialized",
+      "protocolVersion": null
+    },
+    {
+      "dir": "in",
+      "at": "2026-09-03T11:39:40.460Z",
+      "method": "tools/list",
+      "protocolVersion": null
+    },
+    {
+      "dir": "out",
+      "at": "2026-09-03T11:39:40.460Z",
+      "method": null,
+      "protocolVersion": null
+    },
+    {
+      "dir": "in",
+      "at": "2026-09-03T11:39:48.519Z",
+      "method": "tools/call",
+      "protocolVersion": null
+    },
+    {
+      "dir": "out",
+      "at": "2026-09-03T11:39:48.519Z",
+      "method": null,
+      "protocolVersion": null
+    }
+  ]
+}

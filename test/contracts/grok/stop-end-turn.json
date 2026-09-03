@@ -1,0 +1,51 @@
+{
+  "agent": "grok",
+  "end_turn": {
+    "hookEventName": "stop",
+    "sessionId": "01a066ff-6f01-7980-8063-75ae0fcce7f0",
+    "cwd": "<repo>",
+    "workspaceRoot": "<repo>/",
+    "timestamp": "2026-09-03T11:20:15.922140037+00:00",
+    "transcriptPath": "~/.cache/oboete-probes/2026-09-03T11-13-23-409Z/grok-stop-messages/grok-home/sessions/~%2F.cache%2Foboete-probes%2F2026-09-03T11-13-23-409Z%2Fgrok-stop-messages%2Frepo/01a066ff-6f01-7980-8063-75ae0fcce7f0/updates.jsonl",
+    "promptId": "d686f776-14cd-4688-ab07-817ea297d92d",
+    "permissionMode": "bypassPermissions",
+    "reason": "end_turn",
+    "stopHookActive": false,
+    "lastAssistantMessage": "DONE",
+    "backgroundTasks": [],
+    "sessionCrons": [],
+    "hook_event_name": "Stop",
+    "session_id": "01a066ff-6f01-7980-8063-75ae0fcce7f0",
+    "transcript_path": "~/.cache/oboete-probes/2026-09-03T11-13-23-409Z/grok-stop-messages/grok-home/sessions/~%2F.cache%2Foboete-probes%2F2026-09-03T11-13-23-409Z%2Fgrok-stop-messages%2Frepo/01a066ff-6f01-7980-8063-75ae0fcce7f0/updates.jsonl",
+    "permission_mode": "bypassPermissions"
+  },
+  "shutdown": {
+    "hookEventName": "stop",
+    "sessionId": "01a066ff-6f01-7980-8063-75ae0fcce7f0",
+    "cwd": "<repo>",
+    "workspaceRoot": "<repo>/",
+    "timestamp": "2026-09-03T11:20:16.017478618+00:00",
+    "transcriptPath": "~/.cache/oboete-probes/2026-09-03T11-13-23-409Z/grok-stop-messages/grok-home/sessions/~%2F.cache%2Foboete-probes%2F2026-09-03T11-13-23-409Z%2Fgrok-stop-messages%2Frepo/01a066ff-6f01-7980-8063-75ae0fcce7f0/updates.jsonl",
+    "permissionMode": "bypassPermissions",
+    "reason": "shutdown",
+    "stopHookActive": false,
+    "hook_event_name": "Stop",
+    "session_id": "01a066ff-6f01-7980-8063-75ae0fcce7f0",
+    "transcript_path": "~/.cache/oboete-probes/2026-09-03T11-13-23-409Z/grok-stop-messages/grok-home/sessions/~%2F.cache%2Foboete-probes%2F2026-09-03T11-13-23-409Z%2Fgrok-stop-messages%2Frepo/01a066ff-6f01-7980-8063-75ae0fcce7f0/updates.jsonl",
+    "permission_mode": "bypassPermissions"
+  },
+  "SessionEnd": {
+    "hookEventName": "session_end",
+    "sessionId": "01a066ff-6f01-7980-8063-75ae0fcce7f0",
+    "cwd": "<repo>",
+    "workspaceRoot": "<repo>/",
+    "timestamp": "2026-09-03T11:20:15.986230043+00:00",
+    "transcriptPath": "~/.cache/oboete-probes/2026-09-03T11-13-23-409Z/grok-stop-messages/grok-home/sessions/~%2F.cache%2Foboete-probes%2F2026-09-03T11-13-23-409Z%2Fgrok-stop-messages%2Frepo/01a066ff-6f01-7980-8063-75ae0fcce7f0/updates.jsonl",
+    "permissionMode": "bypassPermissions",
+    "reason": "shutdown",
+    "hook_event_name": "SessionEnd",
+    "session_id": "01a066ff-6f01-7980-8063-75ae0fcce7f0",
+    "transcript_path": "~/.cache/oboete-probes/2026-09-03T11-13-23-409Z/grok-stop-messages/grok-home/sessions/~%2F.cache%2Foboete-probes%2F2026-09-03T11-13-23-409Z%2Fgrok-stop-messages%2Frepo/01a066ff-6f01-7980-8063-75ae0fcce7f0/updates.jsonl",
+    "permission_mode": "bypassPermissions"
+  }
+}

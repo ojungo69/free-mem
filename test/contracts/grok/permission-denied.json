@@ -1,0 +1,31 @@
+{
+  "agent": "grok",
+  "noApproveHookDeny": null,
+  "alwaysApproveHookDeny": null,
+  "permissionRule": {
+    "hookEventName": "permission_denied",
+    "sessionId": "01a06702-c80f-7891-8898-dd8ad41dfbdd",
+    "cwd": "~/.cache/oboete-probes/2026-09-03T11-23-23-344Z/grok-permission-denied/rule-deny/repo",
+    "workspaceRoot": "~/.cache/oboete-probes/2026-09-03T11-23-23-344Z/grok-permission-denied/rule-deny/repo/",
+    "timestamp": "2026-09-03T11:23:53.411192575+00:00",
+    "transcriptPath": "~/.cache/oboete-probes/2026-09-03T11-23-23-344Z/grok-permission-denied/rule-deny/grok-home/sessions/~%2F.cache%2Foboete-probes%2F2026-09-03T11-23-23-344Z%2Fgrok-permission-denied%2Frule-deny%2Frepo/01a06702-c80f-7891-8898-dd8ad41dfbdd/updates.jsonl",
+    "permissionMode": "bypassPermissions",
+    "toolName": "run_terminal_command",
+    "toolUseId": "call-fdc1b6a8-a916-467a-9193-39b000719626-0",
+    "toolInput": {
+      "command": "echo perm-probe",
+      "description": "Echo perm-probe for permission probe"
+    },
+    "toolInputTruncated": false,
+    "hook_event_name": "PermissionDenied",
+    "session_id": "01a06702-c80f-7891-8898-dd8ad41dfbdd",
+    "transcript_path": "~/.cache/oboete-probes/2026-09-03T11-23-23-344Z/grok-permission-denied/rule-deny/grok-home/sessions/~%2F.cache%2Foboete-probes%2F2026-09-03T11-23-23-344Z%2Fgrok-permission-denied%2Frule-deny%2Frepo/01a06702-c80f-7891-8898-dd8ad41dfbdd/updates.jsonl",
+    "permission_mode": "bypassPermissions",
+    "tool_name": "run_terminal_command",
+    "tool_input": {
+      "command": "echo perm-probe",
+      "description": "Echo perm-probe for permission probe"
+    },
+    "tool_use_id": "call-fdc1b6a8-a916-467a-9193-39b000719626-0"
+  }
+}

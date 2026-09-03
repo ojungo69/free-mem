@@ -1,20 +1,20 @@
 {
   "agent": "grok",
   "agent_version": "grok 1.0.17 (a549186d9d39) [alpha]",
-  "captured_at": "2026-09-03T10:46:03.032Z",
+  "captured_at": "2026-09-03T11:13:34.624Z",
   "native_tool": "search_replace",
   "normalized_tool": "edit",
   "events": {
     "PreToolUse": {
       "hookEventName": "pre_tool_use",
-      "sessionId": "01a066df-fa4d-7eb3-8883-a61e08184226",
+      "sessionId": "01a066f9-398f-7061-8634-4211a049dded",
       "cwd": "<repo>",
       "workspaceRoot": "<repo>/",
-      "timestamp": "2026-09-03T10:45:59.166534138+00:00",
-      "transcriptPath": "~/.cache/oboete-probes/2026-09-03T10-45-48-964Z/grok-payload-shapes/grok-home/sessions/~%2F.cache%2Foboete-probes%2F2026-09-03T10-45-48-964Z%2Fgrok-payload-shapes%2Frepo/01a066df-fa4d-7eb3-8883-a61e08184226/updates.jsonl",
+      "timestamp": "2026-09-03T11:13:31.236098589+00:00",
+      "transcriptPath": "~/.cache/oboete-probes/2026-09-03T11-13-23-409Z/grok-payload-shapes/grok-home/sessions/~%2F.cache%2Foboete-probes%2F2026-09-03T11-13-23-409Z%2Fgrok-payload-shapes%2Frepo/01a066f9-398f-7061-8634-4211a049dded/updates.jsonl",
       "permissionMode": "bypassPermissions",
       "toolName": "search_replace",
-      "toolUseId": "call-f1c40f65-386c-444c-ab57-57c804ff03e0-2",
+      "toolUseId": "call-982bd21a-e3dd-4c7a-881a-4db94bb75407-2",
       "toolInput": {
         "file_path": "notes.txt",
         "old_string": "alpha",
@@ -22,8 +22,8 @@
       },
       "toolInputTruncated": false,
       "hook_event_name": "PreToolUse",
-      "session_id": "01a066df-fa4d-7eb3-8883-a61e08184226",
-      "transcript_path": "~/.cache/oboete-probes/2026-09-03T10-45-48-964Z/grok-payload-shapes/grok-home/sessions/~%2F.cache%2Foboete-probes%2F2026-09-03T10-45-48-964Z%2Fgrok-payload-shapes%2Frepo/01a066df-fa4d-7eb3-8883-a61e08184226/updates.jsonl",
+      "session_id": "01a066f9-398f-7061-8634-4211a049dded",
+      "transcript_path": "~/.cache/oboete-probes/2026-09-03T11-13-23-409Z/grok-payload-shapes/grok-home/sessions/~%2F.cache%2Foboete-probes%2F2026-09-03T11-13-23-409Z%2Fgrok-payload-shapes%2Frepo/01a066f9-398f-7061-8634-4211a049dded/updates.jsonl",
       "permission_mode": "bypassPermissions",
       "tool_name": "search_replace",
       "tool_input": {
@@ -31,18 +31,18 @@
         "old_string": "alpha",
         "new_string": "beta"
       },
-      "tool_use_id": "call-f1c40f65-386c-444c-ab57-57c804ff03e0-2"
+      "tool_use_id": "call-982bd21a-e3dd-4c7a-881a-4db94bb75407-2"
     },
     "PostToolUse": {
       "hookEventName": "post_tool_use",
-      "sessionId": "01a066df-fa4d-7eb3-8883-a61e08184226",
+      "sessionId": "01a066f9-398f-7061-8634-4211a049dded",
       "cwd": "<repo>",
       "workspaceRoot": "<repo>/",
-      "timestamp": "2026-09-03T10:45:59.200450924+00:00",
-      "transcriptPath": "~/.cache/oboete-probes/2026-09-03T10-45-48-964Z/grok-payload-shapes/grok-home/sessions/~%2F.cache%2Foboete-probes%2F2026-09-03T10-45-48-964Z%2Fgrok-payload-shapes%2Frepo/01a066df-fa4d-7eb3-8883-a61e08184226/updates.jsonl",
+      "timestamp": "2026-09-03T11:13:31.265668597+00:00",
+      "transcriptPath": "~/.cache/oboete-probes/2026-09-03T11-13-23-409Z/grok-payload-shapes/grok-home/sessions/~%2F.cache%2Foboete-probes%2F2026-09-03T11-13-23-409Z%2Fgrok-payload-shapes%2Frepo/01a066f9-398f-7061-8634-4211a049dded/updates.jsonl",
       "permissionMode": "bypassPermissions",
       "toolName": "search_replace",
-      "toolUseId": "call-f1c40f65-386c-444c-ab57-57c804ff03e0-2",
+      "toolUseId": "call-982bd21a-e3dd-4c7a-881a-4db94bb75407-2",
       "toolInput": {
         "file_path": "notes.txt",
         "old_string": "alpha",
@@ -76,8 +76,8 @@
       "durationMs": 0,
       "isBackgrounded": false,
       "hook_event_name": "PostToolUse",
-      "session_id": "01a066df-fa4d-7eb3-8883-a61e08184226",
-      "transcript_path": "~/.cache/oboete-probes/2026-09-03T10-45-48-964Z/grok-payload-shapes/grok-home/sessions/~%2F.cache%2Foboete-probes%2F2026-09-03T10-45-48-964Z%2Fgrok-payload-shapes%2Frepo/01a066df-fa4d-7eb3-8883-a61e08184226/updates.jsonl",
+      "session_id": "01a066f9-398f-7061-8634-4211a049dded",
+      "transcript_path": "~/.cache/oboete-probes/2026-09-03T11-13-23-409Z/grok-payload-shapes/grok-home/sessions/~%2F.cache%2Foboete-probes%2F2026-09-03T11-13-23-409Z%2Fgrok-payload-shapes%2Frepo/01a066f9-398f-7061-8634-4211a049dded/updates.jsonl",
       "permission_mode": "bypassPermissions",
       "tool_name": "search_replace",
       "tool_input": {
@@ -108,7 +108,7 @@
           }
         }
       },
-      "tool_use_id": "call-f1c40f65-386c-444c-ab57-57c804ff03e0-2",
+      "tool_use_id": "call-982bd21a-e3dd-4c7a-881a-4db94bb75407-2",
       "duration_ms": 0
     }
   },

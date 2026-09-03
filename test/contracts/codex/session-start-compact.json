@@ -1,0 +1,57 @@
+{
+  "agent": "codex",
+  "agent_version": "codex-cli 0.153.0",
+  "captured_at": "2026-09-03T11:57:11.964Z",
+  "sources": [
+    "startup"
+  ],
+  "timeline": [
+    {
+      "event": "SessionStart",
+      "at": "2026-09-03T11:57:01.549Z",
+      "source": "startup",
+      "trigger": null,
+      "turn_id": null,
+      "session_id": "01a06721-1f2b-7861-bf52-9c54a148a81c",
+      "keys": [
+        "session_id",
+        "transcript_path",
+        "cwd",
+        "hook_event_name",
+        "model",
+        "permission_mode",
+        "source"
+      ]
+    },
+    {
+      "event": "UserPromptSubmit",
+      "at": "2026-09-03T11:57:01.576Z",
+      "source": null,
+      "trigger": null,
+      "turn_id": "01a06721-1f42-74a0-9ec5-44fe6c3b476b",
+      "session_id": "01a06721-1f2b-7861-bf52-9c54a148a81c",
+      "keys": [
+        "session_id",
+        "turn_id",
+        "transcript_path",
+        "cwd",
+        "hook_event_name",
+        "model",
+        "permission_mode",
+        "prompt"
+      ]
+    }
+  ],
+  "session_starts": [
+    {
+      "session_id": "01a06721-1f2b-7861-bf52-9c54a148a81c",
+      "transcript_path": "~/.cache/oboete-probes/2026-09-03T11-56-45-888Z/codex-session-start-sources/c/codex-home/sessions/2026/09/03/rollout-2026-09-03T20-56-59-01a06721-1f2b-7861-bf52-9c54a148a81c.jsonl",
+      "cwd": "<repo>",
+      "hook_event_name": "SessionStart",
+      "model": "gpt-5.6-sol",
+      "permission_mode": "bypassPermissions",
+      "source": "startup"
+    }
+  ],
+  "pre_post": []
+}
