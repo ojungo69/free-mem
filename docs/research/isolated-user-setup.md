@@ -128,7 +128,7 @@ touch ~/.oboete-credentials && chmod 600 ~/.oboete-credentials
 export OBOETE_CF_API_TOKEN=...        # Cloudflare Workers AI 用 API token(任意。既定の要約先を使う場合)
 export OBOETE_CF_ACCOUNT_ID=...       # Cloudflare Account ID(同上)
 export OBOETE_NIM_API_KEY=...         # 検証に含めるプロバイダの分だけ。名前は OBOETE_<プロバイダ名>_API_KEY
-export OBOETE_OPENROUTER_API_KEY=...   #   (NIM / OPENROUTER / GEMINI / ANTHROPIC)。無い行の検証は飛ばされる
+export OBOETE_OPENROUTER_API_KEY=...   #   (NIM / OPENROUTER / GEMINI)。無い行の検証は飛ばされる
 ```
 
 Cloudflare の値の取り方: https://dash.cloudflare.com で無料登録 → 右上のプロフィール →

@@ -1,5 +1,9 @@
 <!--
 Sync Impact Report
+- Version change: 3.1.0 -> 3.2.0 (2026-09-04, owner decision A19: the Anthropic observer preset is
+  removed from the product constraints; decision record in docs/research/m1-amendments-2026-09.md;
+  affected: spec 007 research R2/R13, plan Complexity Tracking row 15, contracts/cli.md,
+  contracts/observer.md, tasks T035, scripts/e2e/probes/providers.mjs)
 - Version change: 3.0.0 -> 3.1.0 (2026-09-03, M1 plan amendments A1-A10; decision record in
   docs/research/m1-amendments-2026-09.md)
 - Modified principles:
@@ -136,7 +140,8 @@ Deletion is preferred over addition; every abstraction needs a second concrete u
   a cooperative deadline and MUST wrap every call in try/catch; the child imports the capture
   functions. Search is exposed through `oboete mcp` over stdio.
 - Observer: one OpenAI-compatible client with presets (Cloudflare Workers AI default, NVIDIA
-  NIM, OpenRouter, Gemini, Ollama, Anthropic). The prompt classifies against nearby existing
+  NIM, OpenRouter, Gemini, Ollama; the Anthropic API is not a preset, owner decision A19 of
+  2026-09-04). The prompt classifies against nearby existing
   memories as ADD, UPDATE, DELETE, or NOOP. Free-model availability is resolved from the
   provider catalog at run time, not hardcoded.
 - Retrieval and injection: session start injects the latest summary and pinned memories;
@@ -191,4 +196,4 @@ new or materially expanded principle, and PATCH for non-semantic clarification. 
 plan and pull request MUST state whether it complies with Principles I-VI and identify any
 approved exception. Unexplained violations block implementation or merge.
 
-**Version**: 3.1.0 | **Ratified**: 2026-08-12 | **Last Amended**: 2026-09-03
+**Version**: 3.2.0 | **Ratified**: 2026-08-12 | **Last Amended**: 2026-09-04

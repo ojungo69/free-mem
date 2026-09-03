@@ -50,13 +50,15 @@ approval before implementation starts (task 0).
 
 - **Decision**: `ai` + `workers-ai-provider` (REST mode; peers `ai`, `@ai-sdk/provider`) for the
   default `@cf/zai-org/glm-4.7-flash`; `@ai-sdk/openai-compatible` for `ollama` (required local
-  option), `nim`, `openrouter`, `gemini`, `anthropic`; an optional `agent-cli` preset runs the
+  option), `nim`, `openrouter`, `gemini` (the `anthropic` preset was removed by the owner on
+  2026-09-04, A19); an optional `agent-cli` preset runs the
   developer's already-authenticated `claude -p` / `codex exec` / `grok -p` as a child process
   (text-JSON, no credentials, consumes that subscription, uncapped by oboete) so that a developer
   with no Cloudflare account still gets model-quality summaries, as claude-mem's host provider
   does. Schema-constrained output where the endpoint
-  supports `response_format`; text-JSON (prompt for one JSON object, parse, validate with zod) for
-  `anthropic` and for any preset whose R13 probe shows no schema support. Every HTTP attempt:
+  supports `response_format` (verified 2026-09-04: OpenRouter, Workers AI); text-JSON (prompt for one
+  JSON object, parse, validate with zod) for any preset whose R13 probe shows no schema support
+  (verified: NIM, Gemini). Every HTTP attempt:
   `maxRetries: 0`, `abortSignal: AbortSignal.timeout(60_000)`, its own reservation (R6), and
   oboete's error classification by status and body code (429/3036 exhausted, 403/5035 paid,
   401 or 403 without 5035 `auth_failed`, 408/3007 and 429/3040 one retry, `length`/null/invalid
@@ -64,7 +66,8 @@ approval before implementation starts (task 0).
   network `unreachable`). One observer preset is enabled at a time in M1. Neurons from the `cf-ai-neurons` header
   when exposed, else estimated from tokens (5,500 / 36,400 per million).
 - **Reviewer changes**: retries disabled; error table only on the binding path; deadline mandatory;
-  Anthropic kept as text-JSON; Anthropic compatibility, model and auth added to R13.
+  Anthropic was kept as text-JSON and added to R13, then removed as a preset by the owner on
+  2026-09-04 (A19) before its row was probed.
 
 ## R4. Secret detection and redaction (before any write)
 
@@ -345,7 +348,7 @@ skeleton (task 1).
 | Codex rollout flush at `PostToolUse`; TUI trust path | grep the just-completed `tool_use_id`; interactive trust run | capture from hook stdin only (rollout is never a required source) |
 | Grok Build user-scoped MCP registration | write configuration, call `search` headless | blocked for Grok's tool surface (FR-030) pending owner amendment |
 | Pi compaction event; Pi tool registration surface | extension probe on 0.84.4 | compaction re-injection on Pi blocked pending amendment; tools blocked likewise |
-| NIM / OpenRouter / Gemini / Anthropic transport, auth header, model id | one call per preset | blocked: the preset is listed by the constitution, so M1 completion is blocked until the row passes or the owner approves an exception removing that preset |
+| NIM / OpenRouter / Gemini transport, auth header, model id (Anthropic removed 2026-09-04, A19) | one call per preset | blocked: the preset is listed by the constitution, so M1 completion is blocked until the row passes or the owner approves an exception removing that preset |
 | NIM / OpenRouter / Gemini structured output (`response_format`) | same call, schema requested | text-JSON path for that preset (already compliant) |
 | Grok Build `PreToolUse` context on an executed-but-failed call (`PostToolUseFailure`) | force a failing tool call with an attempted pack; check what the model received | if dropped: the attempt is marked `delivery = dropped`, the record stays non-emitted, and the next `PreToolUse` attaches the pack again; if delivered: `PostToolUseFailure` confirms delivery |
 | Pi `resume` / `fork`: `session_start` firing and `PI_SESSION_ID` continuity | resume and fork a session under the isolated user | if the id does not continue: Pi resume detection is blocked and FR-024/FR-026 on Pi resume go to an owner amendment |

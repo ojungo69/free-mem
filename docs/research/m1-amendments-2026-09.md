@@ -41,11 +41,12 @@ Claude Code under the 2026-09-03 delegation (claude-mem yardstick); the owner ma
 | A15 | Grok Build: `additionalContext` attached to two calls of one parallel batch reaches the model once per call (twice in the transcript) | default applied: per-call duplicates inside one batch are accepted and counted in `why` and SC-010; delivery is never excluded |
 | A16 | Claude Code: `PostCompact` carries no per-compaction id (only `compact_summary`), and `SessionStart source = compact` fires about 24 ms before `PostCompact`. Codex: `PostCompact` carries `turn_id` and `trigger` only; ordering is fine. Grok Build (`timestamp`) and Pi (`compactionEntry.id`) pass both conditions | default applied to Claude Code and Codex: the epoch key is the `PostCompact` event id (byte-identical same-turn compactions collapse). Documented ordering limit on Claude Code: the `SessionStart source = compact` hook opens the new epoch itself (it carries `source = compact`) and `PostCompact` only confirms it |
 | A14 | not evaluated: the detector does not exist yet (after T025); hook runners cap delivered tool results at about 31 KB (Claude Code), 5 KB (Codex), 165-190 KB (Grok Build), so the 1 MB path is reachable only through prompts and transcripts | pending |
+| A19 (new, owner) | owner statement 2026-09-04: "Anthropic API は使いません" | the `anthropic` observer preset is removed from M1 and from the constitution's preset list (3.1.0 → 3.2.0); `OBOETE_ANTHROPIC_API_KEY` dropped from contracts/cli.md; provider probe removed; Complexity Tracking row 15 closed. No R13 row stays blocked on credentials |
 | A18 (new) | Codex: `/new` in the TUI ends the session (`SessionEnd`) but fires no `SessionStart` with `source = clear`; `startup`, `resume`, `compact` are verified | FR-024 on Codex: a cleared session is detected by the session id changing on the next hook (`UserPromptSubmit`); the session-start pack is injected there through `additionalContext`, one prompt later than on the other agents. Not blocked: the same pack reaches the model on the first prompt of the new session |
 
-Blocked rows after T011: Anthropic transport only (NIM, OpenRouter, Gemini and Workers AI passed on
-2026-09-04 once `~/.oboete-credentials` held their keys; `OBOETE_ANTHROPIC_API_KEY` is still absent, so
-M1 completion stays blocked on that preset until a key exists or the owner removes it); detector 1 MB
+Blocked rows after T011: none on credentials (NIM, OpenRouter, Gemini and Workers AI passed on
+2026-09-04 once `~/.oboete-credentials` held their keys; the Anthropic preset was removed by the owner,
+A19); detector 1 MB
 (after T025); bundle cold start and installed size (after T012); legacy MCP server against Claude Code
 (needs the T077 server).
 
