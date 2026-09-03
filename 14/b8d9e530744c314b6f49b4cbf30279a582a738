@@ -1,0 +1,37 @@
+test/unit/catalog.test.ts
+  s_38281c31807bab::t_5bb31303a33a19 79,98-118
+  s_38281c31807bab::t_3c29cf42fe5d3b 1-78,80-97,119-120
+  s_38281c31807bab::t_698265e3d30b8d 121-170
+test/unit/fallback.test.ts
+  s_38281c31807bab::t_56812a9c58c5a9 1-219
+  s_38281c31807bab::t_1b0fd913c9aa7c 220-317
+  s_38281c31807bab::t_5d2a4c697ab300 318-337
+src/observer/fallback.ts
+  s_38281c31807bab::t_cb6e817bada52e 1-95,98-181,186-196,200-256,258-289
+  s_38281c31807bab::t_d923d273f90c20 96-97,257
+  s_38281c31807bab::t_ae7199eb2346b0 197-199
+  s_38281c31807bab::t_7fb5d01876fe24 182-185
+src/observer/catalog.ts
+  s_38281c31807bab::t_3e64317586fae7 1-6,10,14-15,20-28,30-41,43-45,47,51-53,56-61,67,69-70,72-74,76,78-79
+  s_38281c31807bab::t_dbaf3d01396691 29
+  s_38281c31807bab::t_7ec7f8459e5d0d 7-9,11,13,19,46,48-50,54-55,68,75,77
+  s_38281c31807bab::t_581447930bb159 62-64,71
+  s_38281c31807bab::t_dd4cd7f24e8120 16-18,42,65-66
+  s_38281c31807bab::t_b2b1bbc180f02e 12
+---
+{
+  "schema_version": "authorship/3.0.0",
+  "git_ai_version": "1.6.16",
+  "base_commit_sha": "14b8d9e530744c314b6f49b4cbf30279a582a738",
+  "prompts": {},
+  "sessions": {
+    "s_38281c31807bab": {
+      "agent_id": {
+        "tool": "codex",
+        "id": "01a068a8-6dd6-7280-807f-52cf53b9bae4",
+        "model": "gpt-5.6-sol"
+      },
+      "human_author": "ojungo69 <210335670+ojungo69@users.noreply.github.com>"
+    }
+  }
+}
