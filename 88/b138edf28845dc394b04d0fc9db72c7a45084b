@@ -1,0 +1,35 @@
+test/contracts/codex/rollout-flush.json
+  s_767fcd19c0d8da::t_23b27e105c070c 1-31
+scripts/e2e/probes/codex.mjs
+  s_767fcd19c0d8da::t_6d8cde8c1202c2 1,3,5,8,10,13,15,24-27,32-53,101-325,408-832
+test/contracts/codex/apply_patch-add.json
+  s_767fcd19c0d8da::t_b4cc97285e58d5 4,9-11,20,23-25,35
+test/contracts/codex/apply_patch-update.json
+  s_767fcd19c0d8da::t_93ec0b788ab37f 4,9-11,20,23-25,35
+test/contracts/codex/bash-read.json
+  s_767fcd19c0d8da::t_6bb0848a36fb6d 4,9-11,20,23-25,35
+test/contracts/codex/bash.json
+  s_767fcd19c0d8da::t_a4a7f10cf4cea9 4,9-11,20,23-25,35
+test/contracts/codex/mcp-frames.json
+  s_767fcd19c0d8da::t_b926acf123ac1e 1-60
+test/contracts/codex/postcompact.json
+  s_767fcd19c0d8da::t_674e9800520b5e 1-268
+test/contracts/codex/session-start-compact.json
+  s_767fcd19c0d8da::t_70181b8c3d3697 1-57
+---
+{
+  "schema_version": "authorship/3.0.0",
+  "git_ai_version": "1.6.16",
+  "base_commit_sha": "88b138edf28845dc394b04d0fc9db72c7a45084b",
+  "prompts": {},
+  "sessions": {
+    "s_767fcd19c0d8da": {
+      "agent_id": {
+        "tool": "claude",
+        "id": "bf5a7bc1-9f1a-4019-ba5b-a2aa509f2da2",
+        "model": "unknown"
+      },
+      "human_author": "ojungo69 <210335670+ojungo69@users.noreply.github.com>"
+    }
+  }
+}
