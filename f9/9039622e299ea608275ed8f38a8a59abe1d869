@@ -1,0 +1,29 @@
+src/retrieval/query.ts
+  s_77a95622748c7c::t_944d63230b756e 106-107,109-110,119-120,129
+test/unit/retrieval.test.ts
+  s_77a95622748c7c::t_38544d144435e4 159,167
+  s_77a95622748c7c::t_f663793e143ba3 344-348
+  s_77a95622748c7c::t_3a46d0fb1ac410 7,68-69,75-76,107-113,148-149,152-154,160-166,192-201,225-245,262-289,307,312-328,332,339,350
+  s_77a95622748c7c::t_4f5df4d0c97863 176-179
+  s_77a95622748c7c::t_8925474c56c7b5 150-151
+  s_77a95622748c7c::t_7c23f5ffa357c5 155
+src/retrieval/fts.ts
+  s_77a95622748c7c::t_944d63230b756e 6-28,99-100,102-105,112-113,131,133-134,138-139,143-147
+  s_77a95622748c7c::t_38544d144435e4 106-111,114-122,125-130
+---
+{
+  "schema_version": "authorship/3.0.0",
+  "git_ai_version": "1.6.16",
+  "base_commit_sha": "f99039622e299ea608275ed8f38a8a59abe1d869",
+  "prompts": {},
+  "sessions": {
+    "s_77a95622748c7c": {
+      "agent_id": {
+        "tool": "codex",
+        "id": "01a068d3-abc2-7152-94b1-5ef0fa5879da",
+        "model": "gpt-5.6-sol"
+      },
+      "human_author": "ojungo69 <210335670+ojungo69@users.noreply.github.com>"
+    }
+  }
+}
