@@ -1,0 +1,27 @@
+docs/research/isolated-user-setup.md
+  s_767fcd19c0d8da::t_15470c384e4baf 136-137
+docs/research/m1-amendments-2026-09.md
+  s_767fcd19c0d8da::t_6fd2af8c074d99 46-50
+docs/research/oboete-contracts-probes.md
+  s_767fcd19c0d8da::t_350973223a9afb 83-90,263-264,278-300
+scripts/e2e/probes/providers.mjs
+  s_767fcd19c0d8da::t_609bb4b261f1ff 33,112
+specs/007-oboete-m1-alpha/tasks.md
+  s_767fcd19c0d8da::t_d0c5546e6925be 50
+---
+{
+  "schema_version": "authorship/3.0.0",
+  "git_ai_version": "1.6.16",
+  "base_commit_sha": "37999c03d15c9440f695fc81f6ec6860572278f1",
+  "prompts": {},
+  "sessions": {
+    "s_767fcd19c0d8da": {
+      "agent_id": {
+        "tool": "claude",
+        "id": "bf5a7bc1-9f1a-4019-ba5b-a2aa509f2da2",
+        "model": "claude-fable-5-1"
+      },
+      "human_author": "ojungo69 <210335670+ojungo69@users.noreply.github.com>"
+    }
+  }
+}
