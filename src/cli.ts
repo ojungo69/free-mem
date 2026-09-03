@@ -1,4 +1,5 @@
 import { parseArgs } from 'node:util';
+import { isMainThread, workerData } from 'node:worker_threads';
 
 const knownCommands = [
   'setup',
@@ -69,10 +70,18 @@ async function main(argv: string[]): Promise<number> {
   return 2;
 }
 
-try {
-  process.exitCode = await main(process.argv.slice(2));
-} catch (error) {
-  const message = error instanceof Error ? error.message : String(error);
-  process.stderr.write(`${message.split('\n')[0]}\n`);
-  process.exitCode = 3;
+// The detector Worker runs this same bundle (R4), so the CLI dispatch must not run inside it: any
+// worker on this bundle stays silent, even one carrying a role this build does not know.
+if (!isMainThread) {
+  if (workerData?.role === 'oboete-detector') {
+    await (await import('./privacy/detect.js')).detectorWorkerMain();
+  }
+} else {
+  try {
+    process.exitCode = await main(process.argv.slice(2));
+  } catch (error) {
+    const message = error instanceof Error ? error.message : String(error);
+    process.stderr.write(`${message.split('\n')[0]}\n`);
+    process.exitCode = 3;
+  }
 }
