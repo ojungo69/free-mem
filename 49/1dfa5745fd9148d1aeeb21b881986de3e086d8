@@ -1,0 +1,39 @@
+scripts/e2e/probes/grok.mjs
+  s_767fcd19c0d8da::t_66eeb3dc784e30 1-3,6-8,11-12,14-15,17-18,20-24,28-37,84-453,482-945
+test/contracts/grok/mcp-search.json
+  s_767fcd19c0d8da::t_ca37666f2068b3 1-34
+test/contracts/grok/permission-denied.json
+  s_767fcd19c0d8da::t_4d7a5631142e03 1-31
+test/contracts/grok/postcompact.json
+  s_767fcd19c0d8da::t_16ab39299b37e7 1-45
+test/contracts/grok/posttooluse-failure.json
+  s_767fcd19c0d8da::t_467ea4ada9a45b 1-74
+test/contracts/grok/read_file.json
+  s_767fcd19c0d8da::t_c99e00542aa502 4,10,13-14,17,23-24,30,34,37-38,41,61-62,79
+test/contracts/grok/run_terminal_command.json
+  s_767fcd19c0d8da::t_84ffc8a208fdc5 4,10,13-14,17,20,24-25,30,32,36,39-40,43,46,67,69,78-79,84,105,107,111
+test/contracts/grok/search_replace.json
+  s_767fcd19c0d8da::t_d1def0a0eb9772 4,10,13-14,17,25-26,34,38,41-42,45,79-80,111
+test/contracts/grok/session-start-resume.json
+  s_767fcd19c0d8da::t_1aa8fa550534f8 1-43
+test/contracts/grok/stop-end-turn.json
+  s_767fcd19c0d8da::t_ff10e561c072ac 1-51
+test/contracts/grok/write.json
+  s_767fcd19c0d8da::t_2e0ea60b4412d8 4,10,13-14,17,24-25,32,36,39-40,43,76-77,107
+---
+{
+  "schema_version": "authorship/3.0.0",
+  "git_ai_version": "1.6.16",
+  "base_commit_sha": "491dfa5745fd9148d1aeeb21b881986de3e086d8",
+  "prompts": {},
+  "sessions": {
+    "s_767fcd19c0d8da": {
+      "agent_id": {
+        "tool": "claude",
+        "id": "bf5a7bc1-9f1a-4019-ba5b-a2aa509f2da2",
+        "model": "unknown"
+      },
+      "human_author": "ojungo69 <210335670+ojungo69@users.noreply.github.com>"
+    }
+  }
+}
