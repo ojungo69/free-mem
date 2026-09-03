@@ -1,0 +1,43 @@
+{
+  "agent": "grok",
+  "A": {
+    "hookEventName": "session_start",
+    "sessionId": "01a066ff-0066-7041-a8eb-e6b7d852155b",
+    "cwd": "<repo>",
+    "workspaceRoot": "<repo>/",
+    "timestamp": "2026-09-03T11:19:43.002478136+00:00",
+    "permissionMode": "bypassPermissions",
+    "source": "new",
+    "hook_event_name": "SessionStart",
+    "session_id": "01a066ff-0066-7041-a8eb-e6b7d852155b",
+    "permission_mode": "bypassPermissions"
+  },
+  "B": {
+    "hookEventName": "session_start",
+    "sessionId": "01a066ff-0066-7041-a8eb-e6b7d852155b",
+    "cwd": "<repo>",
+    "workspaceRoot": "<repo>/",
+    "timestamp": "2026-09-03T11:19:46.005485581+00:00",
+    "transcriptPath": "~/.cache/oboete-probes/2026-09-03T11-13-23-409Z/grok-resume/B/grok-home/sessions/~%2F.cache%2Foboete-probes%2F2026-09-03T11-13-23-409Z%2Fgrok-resume%2FA%2Frepo/01a066ff-0066-7041-a8eb-e6b7d852155b/updates.jsonl",
+    "permissionMode": "bypassPermissions",
+    "source": "load",
+    "hook_event_name": "SessionStart",
+    "session_id": "01a066ff-0066-7041-a8eb-e6b7d852155b",
+    "transcript_path": "~/.cache/oboete-probes/2026-09-03T11-13-23-409Z/grok-resume/B/grok-home/sessions/~%2F.cache%2Foboete-probes%2F2026-09-03T11-13-23-409Z%2Fgrok-resume%2FA%2Frepo/01a066ff-0066-7041-a8eb-e6b7d852155b/updates.jsonl",
+    "permission_mode": "bypassPermissions"
+  },
+  "C": {
+    "hookEventName": "session_start",
+    "sessionId": "01a066ff-2742-7840-ab4c-72c1c0e978f8",
+    "cwd": "<repo>",
+    "workspaceRoot": "<repo>/",
+    "timestamp": "2026-09-03T11:19:52.961894776+00:00",
+    "transcriptPath": "~/.cache/oboete-probes/2026-09-03T11-13-23-409Z/grok-resume/C/grok-home/sessions/~%2F.cache%2Foboete-probes%2F2026-09-03T11-13-23-409Z%2Fgrok-resume%2FA%2Frepo/01a066ff-2742-7840-ab4c-72c1c0e978f8/updates.jsonl",
+    "permissionMode": "bypassPermissions",
+    "source": "load",
+    "hook_event_name": "SessionStart",
+    "session_id": "01a066ff-2742-7840-ab4c-72c1c0e978f8",
+    "transcript_path": "~/.cache/oboete-probes/2026-09-03T11-13-23-409Z/grok-resume/C/grok-home/sessions/~%2F.cache%2Foboete-probes%2F2026-09-03T11-13-23-409Z%2Fgrok-resume%2FA%2Frepo/01a066ff-2742-7840-ab4c-72c1c0e978f8/updates.jsonl",
+    "permission_mode": "bypassPermissions"
+  }
+}
