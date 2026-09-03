@@ -1,0 +1,19 @@
+specs/007-oboete-m1-alpha/verify-tasks-report.md
+  s_767fcd19c0d8da::t_89107d8aa91fb3 1,3-5,7-11,17,31-34,36,38-41
+---
+{
+  "schema_version": "authorship/3.0.0",
+  "git_ai_version": "1.6.16",
+  "base_commit_sha": "95f2e58b4e7b6fa8dd42d62dc6e057fcf35600da",
+  "prompts": {},
+  "sessions": {
+    "s_767fcd19c0d8da": {
+      "agent_id": {
+        "tool": "claude",
+        "id": "bf5a7bc1-9f1a-4019-ba5b-a2aa509f2da2",
+        "model": "claude-fable-5-1"
+      },
+      "human_author": "ojungo69 <210335670+ojungo69@users.noreply.github.com>"
+    }
+  }
+}
