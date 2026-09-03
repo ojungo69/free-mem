@@ -106,6 +106,8 @@ same commit. Conditional items (A8, A14, A15, A16) carry their pre-approved defa
 All non-conditional items are approved and applied; conditional items apply their defaults when
 their probe fails, except that an A14 bound under 200 KB returns to the owner. A8 is raised only if the R13 Pi error-surface probe fails.
 
+R13 outcome (T011, 2026-09-03; evaluation table in `docs/research/oboete-contracts-probes.md`): A8 triggered (Pi has no durable error surface), A15 triggered (Grok delivers `additionalContext` once per call), A16 triggered for Claude Code (no per-compaction id; `SessionStart source = compact` runs before `PostCompact`) and Codex (no per-compaction id; ordering fine), not for Grok Build or Pi. A14 waits for the detector (T025). Codex fires no `SessionStart` on `/new`: A18 in `docs/research/m1-amendments-2026-09.md`.
+
 Post-design re-check: no violation remains after constitution 3.1.0 and the applied spec amendments; conditional items A8, A14, A15, A16 apply their pre-approved defaults only if their R13 probes fail.
 
 ## Requirement traceability

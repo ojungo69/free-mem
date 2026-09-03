@@ -19,16 +19,34 @@ is appended verbatim below.
 | A5 | approved | CONSTITUTION Product Constraints |
 | A6 | approved | CONSTITUTION Development Workflow |
 | A7 | approved with change: payloads above the 1 MB read bound keep a **redacted, detector-processed prefix** marked truncated (`classification_state = partial`); partial rows contribute only metadata to the rule-based summarizer, never text to any provider, and are never injected | spec edge case; research R4; data-model; contracts/agents.md |
-| A8 | approved (conditional on the Pi error-surface probe) | spec FR-007 only if the probe fails |
+| A8 | approved (conditional on the Pi error-surface probe); **triggered 2026-09-03** (R13: extension throws reach stderr only) | spec FR-007 (applied 2026-09-03) |
 | A9 | approved | CONSTITUTION Principle II (loopback foreground viewer) |
 | A10 | approved | CONSTITUTION Product Constraints (Pi child-process capture) |
 | A11 | approved | spec User Story 2 scenario 2 wording |
 | A12 | approved | spec FR-024, FR-026, User Story 1 scenario 2, SC-010 (context epoch) |
 | A13 | approved with change: content identity is (normalized title, normalized body) **without type** | spec FR-035; contracts/observer.md; data-model; research |
-| A14 | approved (conditional): same treatment as A7 (prefix kept); a measured bound under 200 KB is escalated to the owner | plan amendment table |
-| A15 | approved (conditional): default = accept counted per-call duplicates inside one parallel batch; never exclude delivery | plan amendment table |
-| A16 | approved (conditional): default = `PostCompact` event id as the epoch key with the documented ordering limit | plan amendment table |
+| A14 | approved (conditional): same treatment as A7 (prefix kept); a measured bound under 200 KB is escalated to the owner; not yet evaluated (detector probe runs after T025) | plan amendment table |
+| A15 | approved (conditional): default = accept counted per-call duplicates inside one parallel batch; never exclude delivery; **triggered 2026-09-03** (R13: Grok delivers once per call) | plan amendment table |
+| A16 | approved (conditional): default = `PostCompact` event id as the epoch key with the documented ordering limit; **triggered 2026-09-03 for Claude Code and Codex** (no per-compaction id; Claude Code also runs `SessionStart source = compact` before `PostCompact`); Grok Build and Pi pass | plan amendment table; contracts/agents.md |
 | A17 | owner decision 2026-09-03 (isolated-user setup): remote-preset credentials are one variable per preset, `OBOETE_<PRESET>_API_KEY` (`OBOETE_NIM_API_KEY`, `OBOETE_OPENROUTER_API_KEY`, `OBOETE_GEMINI_API_KEY`, `OBOETE_ANTHROPIC_API_KEY`), replacing the single `OBOETE_PROVIDER_API_KEY`; lets the R13 provider probe hold every preset's key at once and keeps a key bound to its host | contracts/cli.md, contracts/observer.md, docs/research/isolated-user-setup.md |
+
+## R13 outcome (T011, 2026-09-03)
+
+Evidence: `docs/research/oboete-contracts-probes.md` (section "R13 evaluation"). Decisions taken by
+Claude Code under the 2026-09-03 delegation (claude-mem yardstick); the owner may override any of them.
+
+| id | trigger observed | decision |
+|---|---|---|
+| A8 | Pi: an extension throw is printed to stderr only; the session JSONL has no error record; the session continues | default applied to spec FR-007: in-memory counters handed to the next child spawn plus the `oboete doctor` wiring probe |
+| A15 | Grok Build: `additionalContext` attached to two calls of one parallel batch reaches the model once per call (twice in the transcript) | default applied: per-call duplicates inside one batch are accepted and counted in `why` and SC-010; delivery is never excluded |
+| A16 | Claude Code: `PostCompact` carries no per-compaction id (only `compact_summary`), and `SessionStart source = compact` fires about 24 ms before `PostCompact`. Codex: `PostCompact` carries `turn_id` and `trigger` only; ordering is fine. Grok Build (`timestamp`) and Pi (`compactionEntry.id`) pass both conditions | default applied to Claude Code and Codex: the epoch key is the `PostCompact` event id (byte-identical same-turn compactions collapse). Documented ordering limit on Claude Code: the `SessionStart source = compact` hook opens the new epoch itself (it carries `source = compact`) and `PostCompact` only confirms it |
+| A14 | not evaluated: the detector does not exist yet (after T025); hook runners cap delivered tool results at about 31 KB (Claude Code), 5 KB (Codex), 165-190 KB (Grok Build), so the 1 MB path is reachable only through prompts and transcripts | pending |
+| A18 (new) | Codex: `/new` in the TUI ends the session (`SessionEnd`) but fires no `SessionStart` with `source = clear`; `startup`, `resume`, `compact` are verified | FR-024 on Codex: a cleared session is detected by the session id changing on the next hook (`UserPromptSubmit`); the session-start pack is injected there through `additionalContext`, one prompt later than on the other agents. Not blocked: the same pack reaches the model on the first prompt of the new session |
+
+Blocked rows after T011: NIM / OpenRouter / Gemini / Anthropic transport and structured output
+(no `OBOETE_<PRESET>_API_KEY` in `~/.oboete-credentials` yet; M1 completion stays blocked on this
+row until keys exist or the owner removes a preset); detector 1 MB (after T025); bundle cold start
+and installed size (after T012); legacy MCP server against Claude Code (needs the T077 server).
 
 ## Additional M1 changes adopted from the comparison
 

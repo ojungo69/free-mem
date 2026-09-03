@@ -311,7 +311,9 @@ Capture
 - **FR-007**: The Pi integration runs inside Pi's process, which has no handler timeout; therefore
   its handlers MUST NOT perform storage or network work in-process. Capture is handed to a detached
   child process, the in-process step is a bounded enqueue with a cooperative deadline, and every
-  thrown error is contained and recorded so that Pi's turn continues.
+  thrown error is contained so that Pi's turn continues. Pi keeps no durable record of extension
+  errors (R13 probe, 2026-09-03: a throw reaches stderr only), so errors are recorded through
+  in-memory counters handed to the next child spawn and surfaced by `oboete doctor` (A8).
 - **FR-008**: Raw captured events MUST be retained for 7 days and then removed; memories MUST be
   permanent except through explicit deletion (tombstone) or supersession by a newer memory.
 - **FR-009**: The system MUST NOT run a resident background service; all background work MUST be

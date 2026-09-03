@@ -62,19 +62,21 @@ byte-identical events of the last form inside one turn collapse to one row; a re
 prompt in a later turn does not.
 
 `conversation_id` is the oboete id of the root session. Claude Code `resume` (same `session_id`),
-Codex `resume`, Pi `resume` (when `PI_SESSION_ID` continues, R13 probe), and Grok Build resume
-(the `SessionStart` source value and session id continuity are an R13 probe; until it passes a
-Grok session whose native id already exists is treated as a resume of that root) keep the root;
-`fork` and Grok `new` start a new root.
+Codex `resume`, Pi `resume` (`PI_SESSION_ID` continues and `session_start.reason` stays `startup`,
+so resume is detected by id continuity, R13 probe 2026-09-03), and Grok Build resume
+(`SessionStart.source = "load"`, same `sessionId`, `transcriptPath` present; `--fork-session` gives a
+new id with `source = "load"`, R13 probe 2026-09-03) keep the root; `fork` and Grok `new` start a
+new root. Codex `/new` fires `SessionEnd` and no `SessionStart` (A18): the new root is detected by
+the session id changing on the next hook.
 
 ## Capture and injection per agent
 
 | Agent | Capture events | Injection channel and policy | Cap | Setup writes |
 |---|---|---|---|---|
 | Claude Code | SessionStart, UserPromptSubmit, PreToolUse, PostToolUse, PostToolUseFailure → `tool_failure`, Stop → `last_assistant_message` (and `turn_end`), PostCompact → `compaction_summary`, SessionEnd (capture only, 1.5 s shared budget) | plain stdout on SessionStart when `source` is `startup`, `clear`, or `compact`; nothing on `resume` or `fork` (transcript replay); plain stdout on UserPromptSubmit | 10,000 characters per value | oboete-owned handlers (`"oboete": true`) merged into `~/.claude/settings.json`; timeouts 12 s on injection hooks, 3 s on capture hooks; `claude mcp add oboete -- "<node>" "<bundle>" mcp` |
-| Codex CLI | SessionStart, UserPromptSubmit, PreToolUse, PostToolUse, Stop, PostCompact → `compaction_summary` (field per R13 probe), SessionEnd (1 s default, capture only) | `hookSpecificOutput.additionalContext` on SessionStart with matcher `startup\|clear\|compact` (verified enum; `resume` excluded) and on UserPromptSubmit; `additionalContextLimit = 0` | provider context, no spill | `~/.codex/hooks.json` handlers; managed block in `~/.codex/config.toml` with `[hooks.state."<abs path>:<event>:<group>:<handler>"] trusted_hash = "sha256:<hex of canonical handler json>"` and `[mcp_servers.oboete]` |
-| Grok Build | SessionStart (`source: "new"` when headless; resume value per R13 probe), UserPromptSubmit, PreToolUse, PostToolUse, PostToolUseFailure, PermissionDenied (payload per R13 probe), Stop (`reason: end_turn` only) → `last_assistant_message` from the verified `lastAssistantMessage` field, PostCompact → `compaction_summary` (field per R13 probe), SessionEnd | FR-045 state machine below | 10,000 characters (silent clip) | `~/.grok/hooks/oboete.json` with explicit `timeout` per hook (12 s injection, 3 s capture); handlers deduplicated against the Claude compat layer; MCP registration per R13 probe (blocked for FR-030 if the probe fails) |
-| Pi | `session_start` (from `session_start`), `input` (source filter), `tool_result` (input + content + isError), `agent_settled` → `turn_end` + `last_assistant_message` when available, `session_shutdown` (reason `quit|reload|new|resume|fork`), compaction event (R13 probe) | `before_agent_start` returns the pack produced by a bounded child `oboete inject` (`AbortSignal.timeout`: 1.3 s at session start while a summary is pending, 300 ms otherwise); capture through a detached child `oboete capture --invocation <id>` that writes a two-phase acknowledgement (`<invocation>.started` before reading stdin → `.done`); the extension itself only try/catches, generates invocation ids, spawns, and counts failures in memory (message code only), handing the counters to the next child it spawns as `--prior-failures`; no in-process file or network write (FR-007; recording guarantee per amendment A8 and the R13 Pi error-surface probe) | provider context | `~/.pi/agent/extensions/oboete.js` loader importing `piExtension` from the bundle; tools call `oboete search\|timeline\|get --json` as child processes |
+| Codex CLI | SessionStart, UserPromptSubmit, PreToolUse, PostToolUse, Stop, PostCompact (no summary field: keys `session_id`, `turn_id`, `transcript_path`, `cwd`, `hook_event_name`, `model`, `trigger`; `compaction_summary` absent by contract, R13 probe 2026-09-03), SessionEnd (1 s default, capture only) | `hookSpecificOutput.additionalContext` on SessionStart with matcher `startup\|clear\|compact` (verified enum; `resume` excluded; `clear` never observed on `/new`, A18) and on UserPromptSubmit; `additionalContextLimit = 0` | provider context, no spill | `~/.codex/hooks.json` handlers; managed block in `~/.codex/config.toml` with `[hooks.state."<abs path>:<event>:<group>:<handler>"] trusted_hash = "sha256:<hex of canonical handler json>"` and `[mcp_servers.oboete]` |
+| Grok Build | SessionStart (`source: "new"` when headless, `"load"` on resume and fork), UserPromptSubmit, PreToolUse, PostToolUse (a failed shell call arrives here with `exit_code`, not as PostToolUseFailure), PostToolUseFailure, PermissionDenied (fires only for a permission-rule deny, never for a hook deny; keys `hookEventName`, `sessionId`, `cwd`, `workspaceRoot`, `timestamp`, `transcriptPath`, `permissionMode`, `toolName`, `toolUseId`, `toolInput`, `toolInputTruncated`; no reason field), Stop (`reason: end_turn` only) → `last_assistant_message` from the verified `lastAssistantMessage` field, PostCompact (no summary field; `timestamp` is the per-compaction key; `compaction_summary` absent by contract, R13 probe 2026-09-03), SessionEnd | FR-045 state machine below | 10,000 characters (silent clip) | `~/.grok/hooks/oboete.json` with explicit `timeout` per hook (12 s injection, 3 s capture); handlers deduplicated against the Claude compat layer; MCP registration verified 2026-09-03 (`[mcp_servers.oboete]` in `~/.grok/config.toml` or `grok mcp add --scope user`; the tool name seen by hooks is `oboete__<tool>`) |
+| Pi | `session_start` (from `session_start`), `input` (source filter), `tool_result` (input + content + isError), `agent_settled` → `turn_end` + `last_assistant_message` when available, `session_shutdown` (reason `quit|reload|new|resume|fork`), `session_compact` (`compactionEntry.id` is the per-compaction key; `session_before_compact` precedes it; R13 probe 2026-09-03) | `before_agent_start` returns the pack produced by a bounded child `oboete inject` (`AbortSignal.timeout`: 1.3 s at session start while a summary is pending, 300 ms otherwise); capture through a detached child `oboete capture --invocation <id>` that writes a two-phase acknowledgement (`<invocation>.started` before reading stdin → `.done`); the extension itself only try/catches, generates invocation ids, spawns, and counts failures in memory (message code only), handing the counters to the next child it spawns as `--prior-failures`; no in-process file or network write (FR-007; recording guarantee per amendment A8 and the R13 Pi error-surface probe) | provider context | `~/.pi/agent/extensions/oboete.js` loader importing `piExtension` from the bundle; tools call `oboete search\|timeline\|get --json` as child processes |
 
 ### Grok Build deferred delivery (FR-045)
 
@@ -126,11 +128,12 @@ Same repository only (FR-044); never the same memory twice in one conversation (
 on delivery); the session-start pack is emitted at most once per context epoch (an epoch starts at the root
 session and advances once per compaction, A12; the authoritative compaction event is one per
 agent: `PostCompact` on Claude Code (carries `compact_summary`), Codex, and Grok Build, and the
-compaction event the R13 probe identifies on Pi; the companion `SessionStart source = compact`
-never advances the epoch and only reads it. The epoch key is the native per-compaction value the R13
-probe verifies (uniqueness across byte-identical compactions and re-deliveries, and epoch commit
-before any post-compaction injection hook are the pass conditions); an agent that fails either
-condition is blocked for compaction re-injection until the owner decides A16), which gives FR-024's "not again on resume" and its
+`session_compact` event on Pi; the companion `SessionStart source = compact`
+never advances the epoch and only reads it, except on Claude Code (A16, 2026-09-03), where that hook
+runs about 24 ms before `PostCompact` and therefore opens the epoch itself, `PostCompact` only
+confirming it. The epoch key is the native per-compaction value where the R13 probe found one
+(Grok Build `PostCompact.timestamp`, Pi `compactionEntry.id`) and the `PostCompact` event id on
+Claude Code and Codex (A16 default: byte-identical same-turn compactions collapse)), which gives FR-024's "not again on resume" and its
 re-injection after compaction on every agent; session start
 = latest session summary + pinned memories, bounded to the channel cap, pinned trimmed in pin
 order; prompt submit = memories above the threshold up to a character
