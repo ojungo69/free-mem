@@ -26,8 +26,9 @@ Commands invoked by agents (`hook`, `capture`, `inject`) always exit `0`.
 | `oboete fixture replay <file>` | Replay native payloads through the real hook and record evidence | | `docs/evidence/m1-resource-envelope.md` |
 
 Environment: `OBOETE_HOME` relocates the data directory; `OBOETE_CF_API_TOKEN`,
-`OBOETE_CF_ACCOUNT_ID`, `OBOETE_PROVIDER_API_KEY` supply credentials without writing them to the
-config file; `OBOETE_TEST_FAULT` is honoured only when `NODE_ENV=test`.
+`OBOETE_CF_ACCOUNT_ID`, and one `OBOETE_<PRESET>_API_KEY` per preset (`OBOETE_NIM_API_KEY`,
+`OBOETE_OPENROUTER_API_KEY`, `OBOETE_GEMINI_API_KEY`, `OBOETE_ANTHROPIC_API_KEY`) supply
+credentials without writing them to the config file; `OBOETE_TEST_FAULT` is honoured only when `NODE_ENV=test`.
 
 Output rules: packs are plain factual text framed by the label lines `oboete memory context` and
 `end of oboete memory context`, never start with `{`, and quote bodies with a `> ` prefix.

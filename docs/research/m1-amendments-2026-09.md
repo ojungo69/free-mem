@@ -28,6 +28,7 @@ is appended verbatim below.
 | A14 | approved (conditional): same treatment as A7 (prefix kept); a measured bound under 200 KB is escalated to the owner | plan amendment table |
 | A15 | approved (conditional): default = accept counted per-call duplicates inside one parallel batch; never exclude delivery | plan amendment table |
 | A16 | approved (conditional): default = `PostCompact` event id as the epoch key with the documented ordering limit | plan amendment table |
+| A17 | owner decision 2026-09-03 (isolated-user setup): remote-preset credentials are one variable per preset, `OBOETE_<PRESET>_API_KEY` (`OBOETE_NIM_API_KEY`, `OBOETE_OPENROUTER_API_KEY`, `OBOETE_GEMINI_API_KEY`, `OBOETE_ANTHROPIC_API_KEY`), replacing the single `OBOETE_PROVIDER_API_KEY`; lets the R13 provider probe hold every preset's key at once and keeps a key bound to its host | contracts/cli.md, contracts/observer.md, docs/research/isolated-user-setup.md |
 
 ## Additional M1 changes adopted from the comparison
 

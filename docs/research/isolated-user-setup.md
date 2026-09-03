@@ -78,7 +78,7 @@ codex login status               # Logged in と出れば成功
 ```bash
 curl -fsSL https://x.ai/cli/install.sh | bash
 source ~/.bashrc
-grok update --alpha --version 1.0.17   # 契約調査は 1.0.17 で検証済み。同じ版に揃える
+grok update --alpha --version 1.0.17   # 契約調査は 1.0.17 で検証済み。同じ版に揃える(install.sh は stable 1.0.13 を入れる)
 grok --version
 grok login                       # ブラウザで X(xAI)アカウントにログイン
 grok -p "reply with the single word ok"   # ok と返れば成功
@@ -127,7 +127,8 @@ touch ~/.oboete-credentials && chmod 600 ~/.oboete-credentials
 ```bash
 export OBOETE_CF_API_TOKEN=...        # Cloudflare Workers AI 用 API token(任意。既定の要約先を使う場合)
 export OBOETE_CF_ACCOUNT_ID=...       # Cloudflare Account ID(同上)
-export OBOETE_PROVIDER_API_KEY=...    # NIM / OpenRouter / Gemini / Anthropic のいずれかを検証に含める場合のみ
+export OBOETE_NIM_API_KEY=...         # 検証に含めるプロバイダの分だけ。名前は OBOETE_<プロバイダ名>_API_KEY
+export OBOETE_OPENROUTER_API_KEY=...   #   (NIM / OPENROUTER / GEMINI / ANTHROPIC)。無い行の検証は飛ばされる
 ```
 
 Cloudflare の値の取り方: https://dash.cloudflare.com で無料登録 → 右上のプロフィール →
