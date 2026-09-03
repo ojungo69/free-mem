@@ -1,0 +1,23 @@
+scripts/e2e/probes/claude.mjs
+  s_767fcd19c0d8da::t_31ed632ebf615f 1-4,7-10,13-15,17,19,21,25-37,70-320,346-580
+test/contracts/claude/bash-failure.json
+  s_767fcd19c0d8da::t_10c0dba4b79911 1-47
+test/contracts/claude/read-failure.json
+  s_767fcd19c0d8da::t_baf8ef784e0b5c 1-45
+---
+{
+  "schema_version": "authorship/3.0.0",
+  "git_ai_version": "1.6.16",
+  "base_commit_sha": "0e7ddfc298a03c0fa0a4fd823fbff6858b36ec7f",
+  "prompts": {},
+  "sessions": {
+    "s_767fcd19c0d8da": {
+      "agent_id": {
+        "tool": "claude",
+        "id": "bf5a7bc1-9f1a-4019-ba5b-a2aa509f2da2",
+        "model": "unknown"
+      },
+      "human_author": "ojungo69 <210335670+ojungo69@users.noreply.github.com>"
+    }
+  }
+}
