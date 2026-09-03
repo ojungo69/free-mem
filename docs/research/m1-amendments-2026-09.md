@@ -43,10 +43,11 @@ Claude Code under the 2026-09-03 delegation (claude-mem yardstick); the owner ma
 | A14 | not evaluated: the detector does not exist yet (after T025); hook runners cap delivered tool results at about 31 KB (Claude Code), 5 KB (Codex), 165-190 KB (Grok Build), so the 1 MB path is reachable only through prompts and transcripts | pending |
 | A18 (new) | Codex: `/new` in the TUI ends the session (`SessionEnd`) but fires no `SessionStart` with `source = clear`; `startup`, `resume`, `compact` are verified | FR-024 on Codex: a cleared session is detected by the session id changing on the next hook (`UserPromptSubmit`); the session-start pack is injected there through `additionalContext`, one prompt later than on the other agents. Not blocked: the same pack reaches the model on the first prompt of the new session |
 
-Blocked rows after T011: NIM / OpenRouter / Gemini / Anthropic transport and structured output
-(no `OBOETE_<PRESET>_API_KEY` in `~/.oboete-credentials` yet; M1 completion stays blocked on this
-row until keys exist or the owner removes a preset); detector 1 MB (after T025); bundle cold start
-and installed size (after T012); legacy MCP server against Claude Code (needs the T077 server).
+Blocked rows after T011: Anthropic transport only (NIM, OpenRouter, Gemini and Workers AI passed on
+2026-09-04 once `~/.oboete-credentials` held their keys; `OBOETE_ANTHROPIC_API_KEY` is still absent, so
+M1 completion stays blocked on that preset until a key exists or the owner removes it); detector 1 MB
+(after T025); bundle cold start and installed size (after T012); legacy MCP server against Claude Code
+(needs the T077 server).
 
 ## Additional M1 changes adopted from the comparison
 

@@ -133,6 +133,8 @@ export OBOETE_OPENROUTER_API_KEY=...   #   (NIM / OPENROUTER / GEMINI / ANTHROPI
 
 Cloudflare の値の取り方: https://dash.cloudflare.com で無料登録 → 右上のプロフィール →
 「API Tokens」→「Create Token」→ テンプレート「Workers AI」→ 発行された token を控える。
+AI Gateway を使う場合も token には「Workers AI - Read」権限が必要（AI Gateway 権限だけの token は
+401 になる）。gateway 経由は同じ token で `cf-aig-gateway-id: <gateway 名>` ヘッダを付けるだけ。
 Account ID はダッシュボードの「Workers & Pages」画面の右側に表示される。
 ログイン済みのエージェントに要約させる方式(`agent-cli`)を使うなら、この 3 つはどれも不要。
 

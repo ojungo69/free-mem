@@ -30,7 +30,7 @@ const SCHEMA = {
 const PRESETS = {
   nim: {
     url: "https://integrate.api.nvidia.com/v1/chat/completions",
-    model: "meta/llama-3.1-8b-instruct",
+    model: "meta/llama-3.2-11b-vision-instruct",
     cred: ["OBOETE_NIM_API_KEY"],
     headers: (c) => ({ Authorization: "Bearer " + c.OBOETE_NIM_API_KEY }),
     authName: "Authorization",
@@ -109,7 +109,7 @@ async function dummyKeySelfCheck() {
       method: "POST",
       headers: { Authorization: "Bearer nvapi-oboete-dummy", "content-type": "application/json" },
       body: JSON.stringify({
-        model: "meta/llama-3.1-8b-instruct",
+        model: "meta/llama-3.2-11b-vision-instruct",
         messages: [{ role: "user", content: "reply with {\"ok\":true}" }],
         max_tokens: 8,
       }),

@@ -80,9 +80,14 @@ recorded in docs/research/m1-amendments-2026-09.md (task T011).
 - **Model ids reported at runtime**: `claude-opus-5[1m]` (with a `claude-haiku-4-5` side call),
   `gpt-5.6-sol` (Codex), `grok-4.6-build`, `gpt-5.6-luna` (Pi via `openai-codex`). Their documented
   windows and the runtime-id → catalog-id rules are in docs/research/context-windows.md.
-- **Provider presets** (rows "transport, auth header, model id" and "response_format"): not run; no key is
-  present in `~/.oboete-credentials` (`OBOETE_<PRESET>_API_KEY`, A17). The probes skip with
-  "credential absent" and re-run once keys exist.
+- **Provider presets** (rows "transport, auth header, model id" and "response_format"): first run skipped
+  (no key); on 2026-09-04 the owner filled `~/.oboete-credentials` (`OBOETE_<PRESET>_API_KEY`, A17) for
+  NIM, OpenRouter, Gemini and Cloudflare, and all four pass (see the R13 evaluation table below and the
+  run section 2026-09-03T16-48-21-133Z). Cloudflare: the token has Workers AI Read, so the direct
+  `/accounts/<id>/ai/run/@cf/...` call works; routing through the owner's AI Gateway `oboete` is the same
+  token on `/accounts/<id>/ai/v1/chat/completions` plus the header `cf-aig-gateway-id: oboete`
+  (Cloudflare docs, AI Gateway REST API, Aug 2026); a token holding only the AI Gateway permission would
+  return 401 code 10000. Optional for M1; worth adopting for logging and caching in the Workers AI adapter.
 - **Hermeticity**: every run left the isolated user's real configuration untouched (seven protected paths,
   sha256 or absence identical before and after).
 ## 2026-09-03 run 2026-09-03T15-43-30-145Z
@@ -255,8 +260,8 @@ applies; blocked = not executable yet; skipped = not applicable.
 | Codex rollout flush at PostToolUse; TUI trust path | Codex | pass (flush), pass (TUI trust) | the just-completed tool_use_id was already in `transcript_path` when PostToolUse ran (`transcript_has_tool_use_id=true` for every call); trusted_hash rows fire hooks headless without the bypass flag (`codex-trust-hash`); TUI: with `trusted_hash` rows in `config.toml` and no bypass flag the TUI starts with hooks active (`SessionStart`, `UserPromptSubmit`, `SessionEnd` recorded) and shows no trust prompt | capture stays hook-stdin based; installer writes trust rows per `trusthash.mjs` |
 | Grok user-scoped MCP registration | Grok | pass | `[mcp_servers.oboete_probe]` in config.toml and `grok mcp add --scope user` both work; frames initialize / tools/list / tools/call recorded; PreToolUse `toolName = oboete_probe__search` | FR-030 on Grok unblocked |
 | Pi compaction event; Pi tool registration | Pi | pass, pass | `session_before_compact` / `session_compact` fire (reason `threshold`); `pi.registerTool` tool is offered (`selectedTools`), called and its result reaches the model | none |
-| NIM / OpenRouter / Gemini / Anthropic transport | — | blocked (no key) | `~/.oboete-credentials` empty | M1 completion blocked on this row until keys exist or the owner removes the preset |
-| structured output (`response_format`) | — | blocked (no key) | | text-JSON path stays |
+| NIM / OpenRouter / Gemini / Anthropic transport | — | pass (nim, openrouter, gemini, workers-ai), blocked (anthropic: no key) | run 2026-09-03T16-48-21-133Z: HTTP 200 with `Authorization: Bearer`, model ids `meta/llama-3.2-11b-vision-instruct`, `openai/gpt-4o-mini`, `gemini-2.5-flash`, `@cf/zai-org/glm-4.7-flash`; NIM retired `meta/llama-3.1-8b-instruct` on 2026-08-26 (HTTP 410), and most catalog entries return 404 "Function not found for account", so the shipped NIM default must be one of the deployed models | Anthropic preset stays blocked until a key exists or the owner removes it |
+| structured output (`response_format`) | — | pass (openrouter, workers-ai honoured), pass (nim, gemini: text-JSON) | `{type: json_object}` honoured by OpenRouter and Workers AI (`json_schema`); NIM and Gemini answered with JSON text without the flag being honoured | text-JSON path for NIM, Gemini (and Anthropic by design) |
 | Grok PreToolUse context on a failed call | Grok | pass (delivered) | a non-zero `run_terminal_command` produces `PostToolUse` with `exit_code=3`, not `PostToolUseFailure`; the attached context reached the model | `execution = failed` is recorded from `exit_code`, delivery = delivered |
 | Pi resume / fork | Pi | pass | `--session` keeps `getSessionId()`, `--fork` gives a new id; `PI_SESSION_ID` in the bash child equals the extension's id; `session_start.reason` is `startup` in all three cases | resume detection by id continuity, not by reason |
 | Grok resume | Grok | pass | `--resume` → `SessionStart.source = "load"` (not the documented `resume`), same sessionId, `transcriptPath` present; `--fork-session` → new id, `source = load` | matcher must accept `load`; the agents.md wording "resume value per R13 probe" resolves to `load` |
@@ -270,3 +275,26 @@ applies; blocked = not executable yet; skipped = not applicable.
 Additional contract facts recorded for the adapters: Grok `PermissionDenied` fires only for a permission-rule deny (`--deny 'Bash(*)'`), never for a hook `deny` (keys: hookEventName, sessionId, cwd, workspaceRoot, timestamp, transcriptPath, permissionMode, toolName, toolUseId, toolInput, toolInputTruncated; no reason field); Claude Code resume/fork `SessionStart` plain stdout still reaches the model (oboete prints nothing there by policy); Claude Code failed tools produce `PostToolUseFailure` only (no `PostToolUse`), `error` is a string; Pi `after_provider_response` never fires with the `openai-codex` provider.
 
 Conditional amendments triggered: A8 (Pi), A15 (Grok), A16 (Claude Code and Codex; Grok and Pi unaffected); new A18 (Codex `/new`). A14 not evaluated yet (needs the detector). Decisions: `docs/research/m1-amendments-2026-09.md`, section "R13 outcome".
+## 2026-09-03 run 2026-09-03T16-48-21-133Z
+
+| tool | version |
+|---|---|
+| date | 2026-09-03T16:48:21.134Z |
+| claude | 2.1.259 (Claude Code) |
+| codex | codex-cli 0.153.0 |
+| grok | grok 1.0.17 (a549186d9d39) [alpha] |
+| pi | 0.84.4 |
+| node | v24.20.0 |
+
+| id | R13 row | agent | status |
+|---|---|---|---|
+| provider-nim | NIM / OpenRouter / Gemini / Anthropic transport, auth header, model id | providers | pass |
+| provider-openrouter | NIM / OpenRouter / Gemini / Anthropic transport, auth header, model id | providers | pass |
+| provider-gemini | NIM / OpenRouter / Gemini / Anthropic transport, auth header, model id | providers | pass |
+| provider-workers-ai | NIM / OpenRouter / Gemini / Anthropic transport, auth header, model id | providers | pass |
+
+- **provider-nim**: dummy-key self-check: HTTP 403 103ms; HTTP 200; auth=Authorization; model=meta/llama-3.2-11b-vision-instruct; response_format=text-JSON; elapsed_ms=1368
+- **provider-openrouter**: HTTP 200; auth=Authorization; model=openai/gpt-4o-mini; response_format=honoured; elapsed_ms=2199
+- **provider-gemini**: HTTP 200; auth=Authorization; model=gemini-2.5-flash; response_format=text-JSON; elapsed_ms=950
+- **provider-workers-ai**: HTTP 200; auth=Authorization; model=@cf/zai-org/glm-4.7-flash; response_format=honoured; elapsed_ms=1465
+
