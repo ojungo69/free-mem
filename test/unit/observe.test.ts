@@ -1,0 +1,594 @@
+import assert from 'node:assert/strict';
+import { existsSync, mkdirSync, readFileSync, writeFileSync } from 'node:fs';
+import { join } from 'node:path';
+import type { DatabaseSync } from 'node:sqlite';
+import { test } from 'node:test';
+
+import { captureEvent, type CaptureDeps } from '../../src/capture.js';
+import {
+  PRESET_CATALOG,
+  configSchema,
+  consentHash,
+  consentTuple,
+  type PresetName,
+} from '../../src/config.js';
+import { openDatabase } from '../../src/db/open.js';
+import type { ObserverOutput } from '../../src/observer/contract.js';
+import { ensureDirectories, oboetePaths, type OboetePaths } from '../../src/paths.js';
+import { detectSync } from '../../src/privacy/detect.js';
+import { claimLease } from '../../src/worker/lease.js';
+import { runObserve, type ObserveDeps } from '../../src/worker/observe.js';
+import { withTempHome } from '../helpers/home.js';
+
+const NOW = Date.UTC(2026, 8, 4, 0, 0, 0);
+const DAY = 24 * 60 * 60 * 1000;
+
+type Json = Record<string, unknown>;
+type Fixture = {
+  home: string;
+  paths: OboetePaths;
+  env: NodeJS.ProcessEnv;
+  capture(eventName: string, payload: Json): Promise<void>;
+  withDb<T>(fn: (db: DatabaseSync) => T): T;
+};
+
+function cleanEnv(home: string, extra: NodeJS.ProcessEnv = {}): NodeJS.ProcessEnv {
+  const env: NodeJS.ProcessEnv = { ...process.env, OBOETE_HOME: home, NODE_ENV: 'test' };
+  for (const key of Object.keys(env)) {
+    if (
+      key !== 'OBOETE_HOME' &&
+      key.startsWith('OBOETE_') &&
+      (key.endsWith('_API_KEY') || key.endsWith('_API_TOKEN') || key === 'OBOETE_CF_ACCOUNT_ID')
+    ) {
+      delete env[key];
+    }
+  }
+  return { ...env, ...extra };
+}
+
+async function withFixture(fn: (fixture: Fixture) => Promise<void>): Promise<void> {
+  await withTempHome(async (home) => {
+    const paths = oboetePaths(home);
+    ensureDirectories(paths);
+    openDatabase({ path: paths.db, timeoutMs: 1_000 }).db.close();
+    let capturedAt = NOW - DAY;
+    const captureDeps: CaptureDeps = {
+      detect: (input) => detectSync(input),
+      now: () => {
+        capturedAt += 1;
+        return capturedAt;
+      },
+      elapsedMs: () => 0,
+      spawnWorker: () => undefined,
+    };
+    const fixture: Fixture = {
+      home,
+      paths,
+      env: cleanEnv(home),
+      capture: async (eventName, payload) => {
+        const outcome = await captureEvent(captureDeps, {
+          agent: 'claude',
+          eventName,
+          paths,
+          readStdin: () => ({ text: JSON.stringify(payload), truncated: false }),
+        });
+        assert.equal(outcome.outcome, 'stored');
+      },
+      withDb: (work) => {
+        const opened = openDatabase({ path: paths.db, timeoutMs: 1_000 });
+        try {
+          return work(opened.db);
+        } finally {
+          opened.db.close();
+        }
+      },
+    };
+    await fn(fixture);
+  });
+}
+
+function writeConfig(
+  fixture: Fixture,
+  preset: PresetName | 'none',
+  env: NodeJS.ProcessEnv = fixture.env,
+  consent: 'valid' | 'invalid' = 'valid',
+): void {
+  const parsed = configSchema.parse({ observer: { preset } });
+  const hash = consent === 'valid' ? consentHash(consentTuple(parsed, env)) : 'not-the-live-consent-hash';
+  writeFileSync(
+    fixture.paths.config,
+    `[observer]\npreset = "${preset}"\n${preset === 'none' ? '' : `\n[consent]\nhash = "${hash}"\naccepted_at = ${NOW}\n`}`,
+  );
+}
+
+function eventBase(sessionId: string): Json {
+  return { session_id: sessionId, cwd: process.cwd() };
+}
+
+async function captureEndedSession(
+  fixture: Fixture,
+  options: {
+    sessionId: string;
+    prompts: string[];
+    assistant?: string;
+    tools?: { id: string; path: string; text?: string }[];
+  },
+): Promise<void> {
+  const common = eventBase(options.sessionId);
+  await fixture.capture('SessionStart', { ...common, source: 'startup' });
+  for (const [index, prompt] of options.prompts.entries()) {
+    await fixture.capture('UserPromptSubmit', {
+      ...common,
+      prompt_id: `prompt-${index + 1}`,
+      prompt,
+    });
+  }
+  for (const tool of options.tools ?? []) {
+    await fixture.capture('PreToolUse', {
+      ...common,
+      prompt_id: `prompt-${options.prompts.length}`,
+      tool_name: 'Edit',
+      tool_use_id: tool.id,
+      tool_input: {
+        file_path: tool.path,
+        old_string: tool.text ?? 'before',
+        new_string: 'after',
+      },
+    });
+  }
+  if (options.assistant !== undefined) {
+    await fixture.capture('Stop', {
+      ...common,
+      prompt_id: `prompt-${options.prompts.length}`,
+      last_assistant_message: options.assistant,
+    });
+  }
+  await fixture.capture('SessionEnd', { ...common, reason: 'prompt_input_exit' });
+}
+
+function eventId(fixture: Fixture, content: string): string {
+  return fixture.withDb((db) => {
+    const id = db.prepare('SELECT id FROM raw_events WHERE content = ?').get(content)?.id;
+    if (typeof id !== 'string') assert.fail(`event not found for ${content}`);
+    return id;
+  });
+}
+
+function providerOutput(
+  sourceEventId: string,
+  language: 'en' | 'ja' = 'en',
+): ObserverOutput {
+  return {
+    observations: [
+      {
+        type: 'discovery',
+        title: language === 'ja' ? '再試行の仕組み' : 'Retry behavior',
+        body:
+          language === 'ja'
+            ? 'アップロード処理は失敗時に再試行します。'
+            : 'The upload path retries after a failure.',
+        concepts: ['how-it-works'],
+        citations: { files_read: [], files_modified: [], commits: [] },
+        source_event_ids: [sourceEventId],
+        classification: { decision: 'add', target: null, reason: 'new behavior' },
+      },
+    ],
+  };
+}
+
+function openAiResponse(output: ObserverOutput, model = PRESET_CATALOG.openrouter.defaultModel): Response {
+  return new Response(
+    JSON.stringify({
+      id: 'response-1',
+      model,
+      choices: [{ index: 0, message: { role: 'assistant', content: JSON.stringify(output) }, finish_reason: 'stop' }],
+      usage: { prompt_tokens: 10, completion_tokens: 5, total_tokens: 15 },
+    }),
+    { status: 200, headers: { 'content-type': 'application/json' } },
+  );
+}
+
+function workersResponse(output: ObserverOutput): Response {
+  return new Response(
+    JSON.stringify({
+      success: true,
+      result: { response: output, usage: { prompt_tokens: 8, completion_tokens: 2 } },
+      errors: [],
+      messages: [],
+    }),
+    { status: 200, headers: { 'content-type': 'application/json' } },
+  );
+}
+
+function catalogResponse(): Response {
+  return new Response(
+    JSON.stringify({
+      success: true,
+      result: [{ name: PRESET_CATALOG['workers-ai'].defaultModel, properties: [] }],
+      errors: [],
+      messages: [],
+    }),
+    { status: 200, headers: { 'content-type': 'application/json' } },
+  );
+}
+
+function runObserveForFixture(
+  fixture: Fixture,
+  overrides: Partial<ObserveDeps> = {},
+): Promise<number> {
+  return runObserve([], {
+    env: fixture.env,
+    now: () => NOW,
+    detect: detectSync,
+    heartbeatMs: 60_000,
+    fetch: async () => assert.fail('an observer request was not expected'),
+    ...overrides,
+  });
+}
+
+test('no preset applies one fallback batch, writes a degraded session summary, releases, and checkpoints', async () => {
+  await withFixture(async (fixture) => {
+    writeConfig(fixture, 'none');
+    await captureEndedSession(fixture, {
+      sessionId: 'fallback-session',
+      prompts: ['Add retry handling.', 'Inspect the upload path.', 'Finish the change.'],
+      tools: [
+        { id: 'edit-one', path: 'src/upload.ts' },
+        { id: 'edit-two', path: 'test/upload.test.ts' },
+      ],
+      assistant: 'The upload path now retries safely.',
+    });
+
+    assert.equal(await runObserveForFixture(fixture), 1);
+    fixture.withDb((db) => {
+      const batches = db
+        .prepare('SELECT destination, state, degraded_reason FROM observation_batches')
+        .all()
+        .map((row) => ({ ...row }));
+      assert.deepEqual(batches, [{ destination: 'fallback', state: 'fallback', degraded_reason: 'no_provider' }]);
+      assert.ok(Number(db.prepare('SELECT COUNT(*) AS n FROM memories').get()?.n) > 1);
+      const summary = db.prepare("SELECT degraded_reason FROM memories WHERE type = 'session_summary'").get();
+      assert.equal(summary?.degraded_reason, 'no_provider');
+      assert.equal(db.prepare('SELECT summary_state FROM sessions').get()?.summary_state, 'done');
+      assert.equal(db.prepare('SELECT owner_token FROM worker_lease WHERE id = 1').get()?.owner_token, null);
+      assert.equal(db.prepare("SELECT citations_ok FROM memories WHERE type = 'change'").get()?.citations_ok, 0);
+      const wal = db.prepare('PRAGMA wal_checkpoint(PASSIVE)').get();
+      assert.equal(wal?.log, 0);
+      assert.equal(wal?.checkpointed, 0);
+    });
+    const log = readFileSync(fixture.paths.observeLog, 'utf8');
+    assert.match(log, /run start/);
+    assert.match(log, /batch .*state=fallback reason=no_provider/);
+    assert.match(log, /run end .*recovered=0 .*batches=1 .*fallback=1/);
+    assert.equal(log.includes('The upload path now retries safely.'), false);
+  });
+});
+
+test('Workers AI applies eligible rows and keeps local-only text out of the outbound body', async () => {
+  await withFixture(async (fixture) => {
+    fixture.env = cleanEnv(fixture.home, {
+      OBOETE_CF_API_TOKEN: 'worker-test-token',
+      OBOETE_CF_ACCOUNT_ID: 'worker-test-account',
+    });
+    writeConfig(fixture, 'workers-ai', fixture.env);
+    const remoteText = 'Describe the upload retry behavior.';
+    const localText = 'LOCAL-ONLY-CONTENT';
+    await captureEndedSession(fixture, {
+      sessionId: 'remote-session',
+      prompts: [remoteText],
+      tools: [{ id: 'local-edit', path: 'src/local.ts', text: localText }],
+      assistant: 'The upload path retries once.',
+    });
+    const sourceId = eventId(fixture, remoteText);
+    fixture.withDb((db) => {
+      db.prepare(
+        "UPDATE raw_events SET sensitivity = 'local_only', classification_state = 'partial' WHERE content LIKE ?",
+      ).run(`%${localText}%`);
+    });
+
+    let catalogCalls = 0;
+    let providerCalls = 0;
+    let providerBody = '';
+    const fetchImpl: typeof fetch = async (input, init) => {
+      if (String(input).includes('/models/search')) {
+        catalogCalls += 1;
+        return catalogResponse();
+      }
+      providerCalls += 1;
+      providerBody = String(init?.body ?? '');
+      return workersResponse(providerOutput(sourceId));
+    };
+
+    assert.equal(await runObserveForFixture(fixture, { fetch: fetchImpl }), 0);
+    assert.equal(catalogCalls, 1);
+    assert.equal(providerCalls, 1);
+    assert.equal(providerBody.includes(localText), false);
+    fixture.withDb((db) => {
+      const batches = db
+        .prepare('SELECT destination, state, degraded_reason FROM observation_batches ORDER BY destination')
+        .all()
+        .map((row) => ({ ...row }));
+      assert.deepEqual(batches, [
+        { destination: 'fallback', state: 'fallback', degraded_reason: 'rule_based' },
+        { destination: 'remote_observer', state: 'applied', degraded_reason: null },
+      ]);
+      assert.equal(
+        db.prepare("SELECT degraded_reason FROM memories WHERE source_batch_id = (SELECT id FROM observation_batches WHERE destination = 'remote_observer')").get()
+          ?.degraded_reason,
+        null,
+      );
+      assert.equal(db.prepare('SELECT calls FROM provider_usage').get()?.calls, 1);
+    });
+  });
+});
+
+test('provider 429/3036 persists exhaustion and falls back without retrying', async () => {
+  await withFixture(async (fixture) => {
+    fixture.env = cleanEnv(fixture.home, { OBOETE_OPENROUTER_API_KEY: 'openrouter-test-key' });
+    writeConfig(fixture, 'openrouter', fixture.env);
+    await captureEndedSession(fixture, {
+      sessionId: 'exhausted-session',
+      prompts: ['Record the retry behavior.'],
+      assistant: 'The upload path retries once.',
+    });
+    let calls = 0;
+    const fetchImpl: typeof fetch = async () => {
+      calls += 1;
+      return new Response(JSON.stringify({ error: { code: 3036, message: 'limit' } }), {
+        status: 429,
+        headers: { 'content-type': 'application/json' },
+      });
+    };
+
+    assert.equal(await runObserveForFixture(fixture, { fetch: fetchImpl }), 1);
+    assert.equal(calls, 1);
+    fixture.withDb((db) => {
+      const batch = db.prepare('SELECT state, degraded_reason, provider_attempts FROM observation_batches').get();
+      assert.deepEqual({ ...batch }, { state: 'fallback', degraded_reason: 'provider_exhausted', provider_attempts: 1 });
+      const usage = db.prepare('SELECT calls, exhausted_at FROM provider_usage').get();
+      assert.equal(usage?.calls, 1);
+      assert.equal(usage?.exhausted_at, NOW);
+    });
+  });
+});
+
+test('a consent hash mismatch never calls the provider and records consent_changed', async () => {
+  await withFixture(async (fixture) => {
+    fixture.env = cleanEnv(fixture.home, { OBOETE_OPENROUTER_API_KEY: 'openrouter-test-key' });
+    writeConfig(fixture, 'openrouter', fixture.env, 'invalid');
+    await captureEndedSession(fixture, {
+      sessionId: 'consent-session',
+      prompts: ['Record the retry behavior.'],
+      assistant: 'The upload path retries once.',
+    });
+    let calls = 0;
+    assert.equal(
+      await runObserveForFixture(fixture, {
+        fetch: async () => {
+          calls += 1;
+          return openAiResponse(providerOutput('unused'));
+        },
+      }),
+      1,
+    );
+    assert.equal(calls, 0);
+    fixture.withDb((db) => {
+      assert.equal(db.prepare('SELECT degraded_reason FROM observation_batches').get()?.degraded_reason, 'consent_changed');
+      assert.equal(db.prepare('SELECT COUNT(*) AS n FROM provider_usage').get()?.n, 0);
+    });
+  });
+});
+
+test('two English answers for Japanese input fall back with language_mismatch', async () => {
+  await withFixture(async (fixture) => {
+    fixture.env = cleanEnv(fixture.home, { OBOETE_OPENROUTER_API_KEY: 'openrouter-test-key' });
+    writeConfig(fixture, 'openrouter', fixture.env);
+    const prompt = 'アップロード処理の再試行を記録してください。';
+    await captureEndedSession(fixture, {
+      sessionId: 'language-session',
+      prompts: [prompt],
+      assistant: 'アップロード処理は一回再試行します。',
+    });
+    const sourceId = eventId(fixture, prompt);
+    let calls = 0;
+    const fetchImpl: typeof fetch = async () => {
+      calls += 1;
+      return openAiResponse(providerOutput(sourceId));
+    };
+
+    assert.equal(await runObserveForFixture(fixture, { fetch: fetchImpl }), 1);
+    assert.equal(calls, 2);
+    fixture.withDb((db) => {
+      const batch = db.prepare('SELECT state, degraded_reason, provider_attempts FROM observation_batches').get();
+      assert.deepEqual({ ...batch }, { state: 'fallback', degraded_reason: 'language_mismatch', provider_attempts: 2 });
+      assert.equal(db.prepare('SELECT calls FROM provider_usage').get()?.calls, 2);
+    });
+  });
+});
+
+test('a fully private session becomes no_content and is not revisited', async () => {
+  await withFixture(async (fixture) => {
+    writeConfig(fixture, 'none');
+    const common = eventBase('private-session');
+    await fixture.capture('SessionStart', { ...common, source: 'startup' });
+    await fixture.capture('UserPromptSubmit', {
+      ...common,
+      prompt_id: 'private-prompt',
+      prompt: '<private>この内容は保存しません。</private>',
+    });
+    await fixture.capture('SessionEnd', { ...common, reason: 'prompt_input_exit' });
+
+    assert.equal(await runObserveForFixture(fixture), 0);
+    const first = fixture.withDb((db) => ({
+      batches: Number(db.prepare('SELECT COUNT(*) AS n FROM observation_batches').get()?.n),
+      memories: Number(db.prepare('SELECT COUNT(*) AS n FROM memories').get()?.n),
+      runtime: Number(db.prepare('SELECT COUNT(*) AS n FROM runtime_state').get()?.n),
+      state: db.prepare('SELECT summary_state FROM sessions').get()?.summary_state,
+    }));
+    assert.deepEqual(first, { batches: 0, memories: 0, runtime: 1, state: 'no_content' });
+    assert.equal(await runObserveForFixture(fixture), 0);
+    const second = fixture.withDb((db) => ({
+      batches: Number(db.prepare('SELECT COUNT(*) AS n FROM observation_batches').get()?.n),
+      memories: Number(db.prepare('SELECT COUNT(*) AS n FROM memories').get()?.n),
+      runtime: Number(db.prepare('SELECT COUNT(*) AS n FROM runtime_state').get()?.n),
+      state: db.prepare('SELECT summary_state FROM sessions').get()?.summary_state,
+    }));
+    assert.deepEqual(second, first);
+  });
+});
+
+test('a live foreign lease makes observe exit without changing queued work', async () => {
+  await withFixture(async (fixture) => {
+    writeConfig(fixture, 'none');
+    await captureEndedSession(fixture, {
+      sessionId: 'held-session',
+      prompts: ['Queued work remains untouched.'],
+    });
+    const held = openDatabase({ path: fixture.paths.db, timeoutMs: 1_000 }).db;
+    try {
+      const token = claimLease(held, { pid: 999, now: NOW });
+      if (token === null) assert.fail('expected the foreign lease');
+      assert.equal(await runObserveForFixture(fixture), 0);
+      const state = held.prepare('SELECT owner_token FROM worker_lease WHERE id = 1').get();
+      assert.equal(state?.owner_token, token);
+      assert.equal(held.prepare('SELECT COUNT(*) AS n FROM observation_batches').get()?.n, 0);
+      assert.equal(held.prepare('SELECT COUNT(*) AS n FROM memories').get()?.n, 0);
+      assert.equal(held.prepare('SELECT summary_state FROM sessions').get()?.summary_state, 'pending');
+    } finally {
+      held.close();
+    }
+  });
+});
+
+test('a lease stolen after the provider response discards the apply and exits zero', async () => {
+  await withFixture(async (fixture) => {
+    fixture.env = cleanEnv(fixture.home, { OBOETE_OPENROUTER_API_KEY: 'openrouter-test-key' });
+    writeConfig(fixture, 'openrouter', fixture.env);
+    const prompt = 'Record the fenced apply behavior.';
+    await captureEndedSession(fixture, {
+      sessionId: 'stolen-session',
+      prompts: [prompt],
+    });
+    const sourceId = eventId(fixture, prompt);
+    let now = NOW;
+    let thiefToken: string | null = null;
+
+    const exit = await runObserveForFixture(fixture, {
+      now: () => now,
+      fetch: async () => openAiResponse(providerOutput(sourceId)),
+      applyHook: () => {
+        now += 7_000;
+        const thief = openDatabase({ path: fixture.paths.db, timeoutMs: 1_000 }).db;
+        try {
+          thiefToken = claimLease(thief, { pid: 998, now });
+          if (thiefToken === null) assert.fail('expected the stale lease to be stolen');
+        } finally {
+          thief.close();
+        }
+      },
+    });
+    assert.equal(exit, 0);
+    fixture.withDb((db) => {
+      assert.equal(db.prepare('SELECT COUNT(*) AS n FROM memories').get()?.n, 0);
+      assert.equal(db.prepare('SELECT state FROM observation_batches').get()?.state, 'running');
+      assert.equal(db.prepare('SELECT owner_token FROM worker_lease WHERE id = 1').get()?.owner_token, thiefToken);
+    });
+  });
+});
+
+test('a crash after response leaves running work that is reclaimed once with two calls and one apply', async () => {
+  await withFixture(async (fixture) => {
+    fixture.env = cleanEnv(fixture.home, { OBOETE_OPENROUTER_API_KEY: 'openrouter-test-key' });
+    writeConfig(fixture, 'openrouter', fixture.env);
+    const prompt = 'Record the crash recovery behavior.';
+    await captureEndedSession(fixture, {
+      sessionId: 'crash-session',
+      prompts: [prompt],
+    });
+    const sourceId = eventId(fixture, prompt);
+    let now = NOW;
+    let fetchCalls = 0;
+    let throwOnce = true;
+    const fetchImpl: typeof fetch = async () => {
+      fetchCalls += 1;
+      return openAiResponse(providerOutput(sourceId));
+    };
+    const applyHook = () => {
+      if (!throwOnce) return;
+      throwOnce = false;
+      throw new Error('simulated worker kill');
+    };
+
+    assert.equal(await runObserveForFixture(fixture, { now: () => now, fetch: fetchImpl, applyHook }), 0);
+    fixture.withDb((db) => {
+      assert.equal(db.prepare('SELECT state FROM observation_batches').get()?.state, 'running');
+      assert.equal(db.prepare('SELECT provider_attempts FROM observation_batches').get()?.provider_attempts, 1);
+      assert.equal(typeof db.prepare('SELECT owner_token FROM worker_lease WHERE id = 1').get()?.owner_token, 'string');
+      assert.equal(db.prepare('SELECT COUNT(*) AS n FROM memories').get()?.n, 0);
+    });
+
+    now += 120_001;
+    assert.equal(await runObserveForFixture(fixture, { now: () => now, fetch: fetchImpl, applyHook }), 0);
+    assert.equal(fetchCalls, 2);
+    fixture.withDb((db) => {
+      const batch = db.prepare('SELECT state, provider_attempts FROM observation_batches').get();
+      assert.deepEqual({ ...batch }, { state: 'applied', provider_attempts: 2 });
+      assert.equal(
+        db.prepare('SELECT COUNT(*) AS n FROM memories WHERE source_batch_id IS NOT NULL').get()?.n,
+        1,
+      );
+      assert.equal(db.prepare('SELECT calls FROM provider_usage').get()?.calls, 2);
+    });
+  });
+});
+
+test('maxRunMs releases the lease and leaves pending work for the next hook', async () => {
+  await withFixture(async (fixture) => {
+    writeConfig(fixture, 'none');
+    await captureEndedSession(fixture, {
+      sessionId: 'bounded-session',
+      prompts: ['Leave this work queued.'],
+    });
+    let calls = 0;
+    const now = () => (calls++ === 0 ? NOW : NOW + 1);
+    assert.equal(await runObserveForFixture(fixture, { now, maxRunMs: 1 }), 0);
+    fixture.withDb((db) => {
+      assert.equal(db.prepare('SELECT owner_token FROM worker_lease WHERE id = 1').get()?.owner_token, null);
+      assert.equal(db.prepare('SELECT batch_id FROM raw_events WHERE kind = ?').get('prompt')?.batch_id, null);
+      assert.equal(db.prepare('SELECT summary_state FROM sessions').get()?.summary_state, 'pending');
+    });
+  });
+});
+
+test('the loop purges expired terminal rows and folds Pi done acknowledgements', async () => {
+  await withFixture(async (fixture) => {
+    writeConfig(fixture, 'none');
+    await fixture.capture('SessionStart', { ...eventBase('purge-session'), source: 'startup' });
+    fixture.withDb((db) => {
+      const session = db.prepare('SELECT id, repo_id FROM sessions').get();
+      if (typeof session?.id !== 'string' || typeof session.repo_id !== 'string') {
+        assert.fail('expected the captured session');
+      }
+      db.prepare(
+        `INSERT INTO observation_batches
+           (id, repo_id, session_id, through_event_id, destination, trigger, state, provider_attempts, completed_at)
+         VALUES ('expired-batch', ?, ?, 'expired-event', 'fallback', 'retention', 'applied', 0, ?)`,
+      ).run(session.repo_id, session.id, NOW - 1);
+      db.prepare(
+        `INSERT INTO raw_events
+           (id, repo_id, session_id, kind, content, sensitivity, classification_state, captured_at, expires_at, batch_id)
+         VALUES ('expired-event', ?, ?, 'prompt', 'expired body', 'local_only', 'done', ?, ?, 'expired-batch')`,
+      ).run(session.repo_id, session.id, NOW - 2 * DAY, NOW - 1);
+    });
+    mkdirSync(fixture.paths.piAck, { recursive: true });
+    const done = join(fixture.paths.piAck, 'finished.done');
+    writeFileSync(done, 'must-not-be-read');
+
+    assert.equal(await runObserveForFixture(fixture), 0);
+    assert.equal(existsSync(done), false);
+    fixture.withDb((db) => {
+      assert.equal(db.prepare("SELECT COUNT(*) AS n FROM raw_events WHERE id = 'expired-event'").get()?.n, 0);
+      assert.equal(db.prepare('SELECT owner_token FROM worker_lease WHERE id = 1').get()?.owner_token, null);
+    });
+  });
+});
