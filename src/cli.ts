@@ -25,8 +25,24 @@ const knownCommands = [
 ];
 
 const commands: Record<string, () => Promise<(argv: string[]) => Promise<number>>> = {
-  // hook: () => import('./capture.js').then((m) => m.runHook),
+  hook: () => import('./capture.js').then((module) => module.runHook),
+  capture: () => import('./capture.js').then((module) => module.runCapture),
 };
+
+/**
+ * `node:sqlite` is bundled on the hook path, and on Node 22 loading it prints an experimental
+ * warning that the developer cannot act on. Without this filter every command and every hook
+ * invocation would carry those two lines, where research R6 reserves stderr for the count of
+ * events that could not be stored. Only that one warning is dropped; the rest still print.
+ */
+function silenceSqliteExperimentalWarning(): void {
+  const printers = process.listeners('warning');
+  process.removeAllListeners('warning');
+  process.on('warning', (warning) => {
+    if (warning.name === 'ExperimentalWarning' && warning.message.includes('SQLite')) return;
+    for (const printer of printers) printer(warning);
+  });
+}
 
 function usage(): string {
   return `Usage: oboete <command> [options]\n\nCommands: ${knownCommands.join(', ')}.\n`;
@@ -69,6 +85,8 @@ async function main(argv: string[]): Promise<number> {
   process.stderr.write(usage());
   return 2;
 }
+
+silenceSqliteExperimentalWarning();
 
 // The detector Worker runs this same bundle (R4), so the CLI dispatch must not run inside it: any
 // worker on this bundle stays silent, even one carrying a role this build does not know.

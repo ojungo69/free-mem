@@ -30,6 +30,12 @@ export type Redaction = { rule: string; count: number };
 
 export type DetectorInput = {
   text: string;
+  /**
+   * Extra strings redacted separately in the same run and returned in `texts`, one per field. The
+   * capture hook (T027) needs the redacted value of every event field back where it came from:
+   * storing one redacted concatenation would lose which event each string belongs to.
+   */
+  fields?: string[];
   paths: string[];
   repoRoot: string | null;
   secretPaths: string[];
@@ -39,6 +45,8 @@ export type DetectorResult =
   | {
       ok: true;
       text: string;
+      /** The redacted `fields`, in order; empty when the caller passed none. */
+      texts: string[];
       redactions: Redaction[];
       privateRemoved: number;
       sensitivity: 'local_only' | 'secret';
@@ -257,6 +265,15 @@ export async function redactSecrets(
   };
 }
 
+/** One entry per rule with the counts of every text summed, ordered by rule name. */
+function mergeRedactions(hits: Redaction[]): Redaction[] {
+  const counts = new Map<string, number>();
+  for (const hit of hits) counts.set(hit.rule, (counts.get(hit.rule) ?? 0) + hit.count);
+  return [...counts.entries()]
+    .map(([rule, count]) => ({ rule, count }))
+    .sort((left, right) => left.rule.localeCompare(right.rule));
+}
+
 /**
  * The detector in the R4 order: private strip, repository path rules, secretlint plus gated
  * entropy. Any failure fails closed, and the unsanitized text is never part of the result.
@@ -268,6 +285,9 @@ export async function detectSync(
 ): Promise<DetectorResult> {
   try {
     const stripped = stripPrivate(input.text);
+    const strippedFields = (input.fields ?? []).map((field) => stripPrivate(field));
+    let privateRemoved = stripped.removed;
+    for (const field of strippedFields) privateRemoved += field.removed;
 
     for (const path of input.paths) {
       const pathRule = matchSecretPath(path, input.secretPaths, input.repoRoot);
@@ -276,23 +296,35 @@ export async function detectSync(
         return {
           ok: true,
           text: '',
+          texts: [],
           redactions: [],
-          privateRemoved: stripped.removed,
+          privateRemoved,
           sensitivity: 'secret',
           pathRule,
         };
       }
     }
 
-    const redacted = await redactSecrets(stripped.text, options);
+    // A caller that passes fields only (the hook does) must not pay for linting an empty string.
+    const redacted =
+      stripped.text === '' ? { text: '', hits: [] } : await redactSecrets(stripped.text, options);
+    const hits = [...redacted.hits];
+    const texts: string[] = [];
+    for (const field of strippedFields) {
+      const redactedField = field.text === '' ? { text: '', hits: [] } : await redactSecrets(field.text, options);
+      texts.push(redactedField.text);
+      hits.push(...redactedField.hits);
+    }
+
     return {
       ok: true,
       text: redacted.text,
-      redactions: redacted.hits,
-      privateRemoved: stripped.removed,
+      texts,
+      redactions: mergeRedactions(hits),
+      privateRemoved,
       // FR-017: local_only by default; a rule or entropy hit classifies the row as secret here,
       // and promotion to eligible is the worker's decision (privacy/classify.ts).
-      sensitivity: redacted.hits.length > 0 ? 'secret' : 'local_only',
+      sensitivity: hits.length > 0 ? 'secret' : 'local_only',
       pathRule: null,
     };
   } catch {
