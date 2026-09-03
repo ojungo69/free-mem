@@ -57,20 +57,30 @@ export type ToolMapping = {
   name?: (raw: Record<string, unknown> | null) => ToolName;
 };
 
-// Where each agent spells the two fields the A7 bounded scan and the metadata-only rows need.
-const AGENT_KEYS: Record<AdapterAgent, { session: string; tool: string }> = {
-  claude: { session: 'session_id', tool: 'tool_name' },
-  codex: { session: 'session_id', tool: 'tool_name' },
-  grok: { session: 'sessionId', tool: 'toolName' },
+// Where each agent spells the fields the A7 bounded scan, the metadata-only rows and the event-name
+// cross-check need.
+const AGENT_KEYS: Record<AdapterAgent, { session: string; tool: string; event: string }> = {
+  claude: { session: 'session_id', tool: 'tool_name', event: 'hook_event_name' },
+  codex: { session: 'session_id', tool: 'tool_name', event: 'hook_event_name' },
+  grok: { session: 'sessionId', tool: 'toolName', event: 'hookEventName' },
   // The Pi capture child wraps the extension event in oboete's own envelope (piEnvelopeSchema).
-  pi: { session: 'session_id', tool: 'toolName' },
+  pi: { session: 'session_id', tool: 'toolName', event: 'event' },
 };
 
 // Fields that hold a path in one of the four agents' tool inputs. A `pattern` is a search
 // expression, not a path, so it is deliberately absent (contracts/agents.md "Size cap").
 const PATH_KEYS = ['file_path', 'filePath', 'path', 'target_file', 'notebook_path'];
 
-const PATH_SCAN = new RegExp(`"(?:${PATH_KEYS.join('|')})"\\s*:\\s*"([^"\\\\]{1,4096})"`, 'g');
+// A JSON string value: an escaped character counts as one, so a Windows path (`C:\\repo\\.env`)
+// is captured whole instead of ending at its first backslash.
+const JSON_VALUE = '"((?:[^"\\\\]|\\\\.){1,4096})"';
+
+const PATH_SCAN = new RegExp(`"(?:${PATH_KEYS.join('|')})"\\s*:\\s*${JSON_VALUE}`, 'g');
+
+/** The JSON escapes a path or an identifier can carry; the others cannot appear in one. */
+function unescapeJson(value: string): string {
+  return value.replace(/\\([\\/"])/g, '$1');
+}
 
 export function asRecord(value: unknown): Record<string, unknown> | null {
   if (typeof value !== 'object' || value === null || Array.isArray(value)) return null;
@@ -268,7 +278,7 @@ export function scanPartialPrefix(
   const keys = AGENT_KEYS[agent];
   const paths: string[] = [];
   for (const match of prefix.matchAll(PATH_SCAN)) {
-    const path = match[1];
+    const path = match[1] === undefined ? undefined : unescapeJson(match[1]);
     if (path !== undefined && !paths.includes(path)) paths.push(path);
     if (paths.length === MAX_TOOL_INPUT_PATHS) break;
   }
@@ -281,8 +291,13 @@ export function scanPartialPrefix(
 
 function scanKey(prefix: string, key: string): string | null {
   // The key is one of oboete's own constants, so it is never a pattern from a payload.
-  const match = new RegExp(`"${key}"\\s*:\\s*"([^"\\\\]{1,4096})"`).exec(prefix);
-  return match?.[1] ?? null;
+  const match = new RegExp(`"${key}"\\s*:\\s*${JSON_VALUE}`).exec(prefix);
+  return match?.[1] === undefined ? null : unescapeJson(match[1]);
+}
+
+/** `pre_tool_use` and `PreToolUse` are the same hook; Grok writes the first spelling. */
+function sameEventName(left: string, right: string): boolean {
+  return left.replaceAll('_', '').toLowerCase() === right.replaceAll('_', '').toLowerCase();
 }
 
 /**
@@ -291,6 +306,12 @@ function scanKey(prefix: string, key: string): string | null {
  */
 export function adapt(input: AdapterInput): AdapterOutput {
   try {
+    // contracts/agents.md "Normalized events": the kind comes from the fixed `--event` argument
+    // and is cross-checked against the payload whenever the payload names a hook of its own.
+    const declared = readString(asRecord(input.payload), AGENT_KEYS[input.agent].event);
+    if (declared !== undefined && !sameEventName(declared, input.eventName)) {
+      return metadataOnly(input, 'payload_invalid');
+    }
     switch (input.agent) {
       case 'claude':
         return adaptClaude(input);

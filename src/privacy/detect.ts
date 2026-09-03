@@ -78,15 +78,25 @@ export function stripPrivate(text: string): { text: string; removed: number } {
   return { text: kept + text.slice(cursor), removed };
 }
 
-/** Compiles one `.oboete.toml` path rule: `**` crosses directories, `*` and `?` do not. */
+/**
+ * Compiles one `.oboete.toml` path rule with gitignore semantics, because that is the form the
+ * rules are written in: a pattern without a slash matches the file name at any depth, `**` crosses
+ * directories (`**\/x` matches `x` at the root too), and `*` and `?` never cross one.
+ */
 export function globToRegExp(glob: string): RegExp {
-  let pattern = '';
+  let pattern = glob.includes('/') ? '' : '(?:.*/)?';
   for (let index = 0; index < glob.length; index += 1) {
     const character = glob[index] as string;
     if (character === '*') {
       if (glob[index + 1] === '*') {
-        pattern += '.*';
-        index += 1;
+        // `**/` is zero or more directories, so `a/**/b` matches `a/b` as well as `a/x/b`.
+        if (glob[index + 2] === '/') {
+          pattern += '(?:.*/)?';
+          index += 2;
+        } else {
+          pattern += '.*';
+          index += 1;
+        }
       } else {
         pattern += '[^/]*';
       }

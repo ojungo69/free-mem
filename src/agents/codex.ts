@@ -112,7 +112,7 @@ export function adaptCodex(input: AdapterInput): AdapterOutput {
     case 'SessionStart': {
       const source = CODEX_SOURCES.find((known) => known === readString(payload, 'source'));
       if (source === undefined) return metadataOnly(input, 'payload_invalid');
-      return toEvents([{ ...envelope, kind: 'session_start', source }]);
+      return toEvents([{ ...envelope, ...turn, kind: 'session_start', source }]);
     }
     case 'UserPromptSubmit': {
       const prompt = readContent(payload, 'prompt');
@@ -176,16 +176,17 @@ export function adaptCodex(input: AdapterInput): AdapterOutput {
       return toEvents([
         {
           ...envelope,
+          ...turn,
           kind: 'compaction_summary',
           // No summary field and no per-compaction id by contract, so the event id is the epoch
-          // key (R13 probe 2026-09-03, A16).
+          // key and the turn id above keeps two compactions apart (R13 probe 2026-09-03, A16).
           text: '',
           compaction_key: '',
         },
       ]);
     case 'SessionEnd':
       return toEvents([
-        { ...envelope, kind: 'session_end', reason: capText(readContent(payload, 'reason') ?? '') },
+        { ...envelope, ...turn, kind: 'session_end', reason: capText(readContent(payload, 'reason') ?? '') },
       ]);
     default:
       return metadataOnly(input, 'event_not_captured');

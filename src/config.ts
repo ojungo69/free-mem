@@ -1,9 +1,9 @@
-import { createHash } from 'node:crypto';
 import { existsSync, readFileSync } from 'node:fs';
 import { join } from 'node:path';
 import { parse as parseToml } from 'smol-toml';
 import { z } from 'zod';
 
+import { sha256Json } from './hash.js';
 import type { OboetePaths } from './paths.js';
 
 const PRESET_NAMES = ['workers-ai', 'ollama', 'nim', 'openrouter', 'gemini', 'agent-cli'] as const;
@@ -343,9 +343,13 @@ export function consentTuple(config: OboeteConfig, env: NodeJS.ProcessEnv = proc
 }
 
 export function consentHash(tuple: ConsentTuple): string {
-  // conventions "Identifiers, hashes, time": a composite key is hashed as JSON.stringify([...parts]).
-  const parts = [tuple.preset, tuple.host, tuple.credentialSource, tuple.costClass, tuple.egressClasses];
-  return createHash('sha256').update(JSON.stringify(parts), 'utf8').digest('hex');
+  return sha256Json([
+    tuple.preset,
+    tuple.host,
+    tuple.credentialSource,
+    tuple.costClass,
+    tuple.egressClasses,
+  ]);
 }
 
 /**

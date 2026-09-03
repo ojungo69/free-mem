@@ -6,6 +6,7 @@ import { fileURLToPath } from 'node:url';
 import {
   MAX_TOOL_INPUT_PATHS,
   MAX_TOOL_INPUT_TEXT,
+  eventId,
   eventSchema,
   type NormalizedEvent,
   type ToolName,
@@ -1043,4 +1044,159 @@ test('resolveAgent follows the fixed selectors', () => {
   assert.equal(resolveAgent('claude-or-grok', { GROK_SESSION_ID: '' }), 'claude');
   assert.equal(resolveAgent(undefined, { GROK_SESSION_ID: 's-1' }), 'unknown');
   assert.equal(resolveAgent('claude', {}), 'unknown');
+});
+
+test('two Codex compactions of one session keep the turn they belong to', () => {
+  const post = record(record(loadFixture('codex', 'postcompact.json').headless).post);
+  const payload = record(post[0]);
+  const compaction = (turnId: string): NormalizedEvent =>
+    eventOf(
+      events(
+        adapt({
+          agent: 'codex',
+          eventName: 'PostCompact',
+          payload: { ...payload, turn_id: turnId },
+          capturedAt: CAPTURED_AT,
+        }),
+      ),
+      'compaction_summary',
+    );
+  const first = compaction(text(payload.turn_id));
+  const second = compaction('01a067f5-0000-7de0-aead-000000000000');
+  assert.equal(first.prompt_id, text(payload.turn_id));
+  // Codex sends no summary and no per-compaction key, so the turn id is what keeps the two apart.
+  assert.notEqual(eventId(first), eventId(second));
+});
+
+test('Claude copies the prompt id onto the compaction, the session start and the session end', () => {
+  const payload = { session_id: 's-1', cwd: '/repo', prompt_id: 'p-1' };
+  const compaction = eventOf(
+    events(
+      adapt({
+        agent: 'claude',
+        eventName: 'PostCompact',
+        payload: { ...payload, compact_summary: 'summary' },
+        capturedAt: CAPTURED_AT,
+      }),
+    ),
+    'compaction_summary',
+  );
+  assert.equal(compaction.prompt_id, 'p-1');
+
+  const ended = eventOf(
+    events(
+      adapt({
+        agent: 'claude',
+        eventName: 'SessionEnd',
+        payload: { ...payload, reason: 'clear' },
+        capturedAt: CAPTURED_AT,
+      }),
+    ),
+    'session_end',
+  );
+  assert.equal(ended.prompt_id, 'p-1');
+
+  const started = eventOf(
+    events(
+      adapt({
+        agent: 'claude',
+        eventName: 'SessionStart',
+        payload: { ...payload, source: 'resume' },
+        capturedAt: CAPTURED_AT,
+      }),
+    ),
+    'session_start',
+  );
+  assert.equal(started.prompt_id, 'p-1');
+});
+
+test('Pi copies the envelope prompt id onto its lifecycle events', () => {
+  const ended = eventOf(
+    events(
+      adapt({
+        agent: 'pi',
+        eventName: 'session_shutdown',
+        payload: piWire('session_shutdown', { type: 'session_shutdown', reason: 'quit' }, { prompt_id: 'turn-4' }),
+        capturedAt: CAPTURED_AT,
+      }),
+    ),
+    'session_end',
+  );
+  assert.equal(ended.prompt_id, 'turn-4');
+});
+
+test('a payload that names another hook is refused', () => {
+  // contracts/agents.md "Normalized events": the kind comes from the fixed --event argument and is
+  // cross-checked against the payload whenever one is parsed.
+  const payload: Json = {
+    session_id: 's-1',
+    cwd: '/repo',
+    hook_event_name: 'PostToolUse',
+    tool_name: 'Read',
+    tool_use_id: 'toolu_1',
+    tool_input: { file_path: '/repo/README.md' },
+    tool_response: { type: 'text', file: { filePath: '/repo/README.md', content: 'body' } },
+  };
+  const mismatched = adapt({ agent: 'claude', eventName: 'Stop', payload, capturedAt: CAPTURED_AT });
+  assert.equal(mismatched.kind, 'unmapped');
+  if (mismatched.kind === 'unmapped') {
+    assert.equal(mismatched.reason, 'payload_invalid');
+    assert.equal(mismatched.metadata.eventName, 'Stop');
+    assert.equal(mismatched.metadata.nativeSessionId, 's-1');
+    assert.equal(mismatched.metadata.toolName, 'Read');
+  }
+
+  // The matching name passes.
+  assert.equal(
+    adapt({ agent: 'claude', eventName: 'PostToolUse', payload, capturedAt: CAPTURED_AT }).kind,
+    'events',
+  );
+
+  // Grok spells the same hook in snake_case, which is the same hook.
+  const grok = adapt({
+    agent: 'grok',
+    eventName: 'PostToolUse',
+    payload: {
+      hookEventName: 'post_tool_use',
+      sessionId: 's-1',
+      cwd: '/repo',
+      toolName: 'read_file',
+      toolUseId: 'call-1',
+      toolInput: { target_file: 'README.md' },
+      toolResult: { FileContent: { content: 'body' } },
+    },
+    capturedAt: CAPTURED_AT,
+  });
+  assert.equal(grok.kind, 'events');
+
+  // A Pi envelope names its own event, and a payload without the field is not judged by it.
+  const pi = adapt({
+    agent: 'pi',
+    eventName: 'input',
+    payload: piWire('agent_settled', { type: 'input', text: 'hello' }),
+    capturedAt: CAPTURED_AT,
+  });
+  assert.equal(pi.kind, 'unmapped');
+  if (pi.kind === 'unmapped') assert.equal(pi.reason, 'payload_invalid');
+  assert.equal(
+    adapt({
+      agent: 'claude',
+      eventName: 'SessionEnd',
+      payload: { session_id: 's-1', cwd: '/repo', reason: 'clear' },
+      capturedAt: CAPTURED_AT,
+    }).kind,
+    'events',
+  );
+});
+
+test('scanPartialPrefix reads a JSON-escaped Windows path', () => {
+  const prefix = JSON.stringify({
+    session_id: 's-1',
+    tool_name: 'Read',
+    tool_input: { file_path: 'C:\\repo\\.env' },
+  });
+  const scanned = scanPartialPrefix('claude', prefix);
+  assert.equal(scanned.nativeSessionId, 's-1');
+  assert.equal(scanned.toolName, 'Read');
+  assert.deepEqual(scanned.paths, ['C:\\repo\\.env']);
 });
