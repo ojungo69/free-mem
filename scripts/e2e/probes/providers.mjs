@@ -15,7 +15,7 @@ import {
 
 const ROW_CLI =
   "`agent-cli` preset: headless JSON output of `claude -p`, `codex exec`, `grok -p` for a summarization prompt";
-const ROW_TRANSPORT = "NIM / OpenRouter / Gemini / Anthropic transport, auth header, model id";
+const ROW_TRANSPORT = "NIM / OpenRouter / Gemini transport, auth header, model id";
 
 const SUMMARIZE =
   "Summarize the following session log into JSON with keys observations (array of {type, title, body}) and summary (string); respond with JSON only, no prose. LOG: user asked to add a retry to fetchUser; assistant edited src/api.ts adding exponential backoff with 3 attempts; tests passed.";
@@ -49,17 +49,6 @@ const PRESETS = {
     model: "gemini-2.5-flash",
     cred: ["OBOETE_GEMINI_API_KEY"],
     headers: (c) => ({ Authorization: "Bearer " + c.OBOETE_GEMINI_API_KEY }),
-    authName: "Authorization",
-    openai: true,
-  },
-  anthropic: {
-    url: "https://api.anthropic.com/v1/chat/completions",
-    model: "claude-haiku-4-5",
-    cred: ["OBOETE_ANTHROPIC_API_KEY"],
-    headers: (c) => ({
-      Authorization: "Bearer " + c.OBOETE_ANTHROPIC_API_KEY,
-      "anthropic-version": "2023-06-01",
-    }),
     authName: "Authorization",
     openai: true,
   },
@@ -369,12 +358,6 @@ export const probes = [
     agent: "providers",
     row: ROW_TRANSPORT,
     run: (ctx) => providerProbe("gemini", ctx),
-  },
-  {
-    id: "provider-anthropic",
-    agent: "providers",
-    row: ROW_TRANSPORT,
-    run: (ctx) => providerProbe("anthropic", ctx),
   },
   {
     id: "provider-workers-ai",
