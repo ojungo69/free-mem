@@ -99,6 +99,33 @@ The scoped rows are directory aggregates produced by the required glob and overl
 
 Written reason to bring to the owner, not an approved exception: the 2.695 MB excess is dominated by `ai`, `zod`, `@ai-sdk/*`, `hono`, `undici`, and `preact`. Plan Complexity Tracking row 1 keeps the heavy observer/viewer packages external and lazily imported because bundling their CommonJS transitives into ESM throws `Dynamic require` and loading them in the engine's hook path would add megabytes to every capture. The owner must either approve that reason as the over-30-MB exception or require a dependency/packaging reduction; this task makes neither decision.
 
+### Re-measurement after reclassifying the bundled packages (commit after 0891b2c)
+
+`preact`, `@secretlint/core`, `@secretlint/secretlint-rule-preset-recommend` and `smol-toml` ride
+inside `dist/oboete.mjs` (scripts/build.mjs bundles the hook-path packages) or only exist at
+viewer build time (`preact` is compiled into the viewer assets by vite, T079), so they are
+devDependencies, not runtime dependencies. `zod` stays: it is a peer dependency of `ai` and the
+provider path needs it at runtime. Same commands as above, run online against the registry
+(no cache seeding), 16 production packages installed:
+
+- Entire production `node_modules`: 29,852 `du -k` blocks = 30,568,448 bytes = 29.152 MB.
+- Installed `node_modules/oboete`: 1,244 `du -k` blocks (unchanged).
+- Result: **pass**, 868 `du -k` blocks = 0.848 MB under the 30 MB target (30,720 blocks).
+
+| Top-level entry | `du -k` blocks | MB |
+|---|---:|---:|
+| `ai` | 8,624 | 8.422 |
+| `zod` | 7,988 | 7.801 |
+| `@ai-sdk` (scope aggregate) | 4,560 | 4.453 |
+| `hono` | 3,688 | 3.602 |
+| `undici` | 2,180 | 2.129 |
+| `oboete` | 1,244 | 1.215 |
+| `workers-ai-provider` | 800 | 0.781 |
+| `@hono` (scope aggregate) | 236 | 0.230 |
+
+The margin is small (0.85 MB); a dependency bump of `ai`, `zod` or `hono` can cross the line,
+which is what the pack-check step of T087 is for.
+
 ## R13 rows
 
 Load averages for the source tables: cold start `1.40 2.43 2.28 2/4249 14`; installed size `1.24 1.68 1.77 1/3752 16`.
@@ -106,6 +133,6 @@ Load averages for the source tables: cold start `1.40 2.43 2.28 2/4249 14`; inst
 | R13 row | Status | Evidence | Consequence from research.md |
 |---|---|---|---|
 | Real bundle cold start on 22.16 and 24.x | pass | v22.23.1 local proxy: 52.7 ms max for `--version`, 183.0 ms max hook; v24.16.0: 59.7 ms max for `--version`, 252.1 ms max hook | Not triggered: “blocked; a split entry point needs a constitution amendment first” |
-| Installed size with dependencies | fail | 32.695 MB / 33,480 `du -k` blocks, 2.695 MB above target | Triggered: “blocked above 30 MB pending a written reason approved by the owner” |
+| Installed size with dependencies | pass (after reclassification; the first measurement at 8e7a0fa failed at 32.695 MB) | 29.152 MB / 29,852 `du -k` blocks, 0.848 MB under target once the bundled packages became devDependencies | Not triggered; the first measurement's written reason is kept above for the record |
 
 ## Fixture replay (T068)
