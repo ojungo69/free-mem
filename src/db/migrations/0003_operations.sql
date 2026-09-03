@@ -38,7 +38,8 @@ CREATE TABLE injection_items (
   decision TEXT CHECK (decision IN ('planned', 'included', 'omitted')),
   reason TEXT CHECK (reason IN (
     'below_threshold', 'budget', 'duplicate_in_conversation', 'stale_path',
-    'stale_commit', 'retired', 'mmr_redundant', 'pinned', 'summary', 'not_delivered'
+    'stale_commit', 'retired', 'mmr_redundant', 'pinned', 'summary', 'not_delivered',
+    'secret_detected', 'directive'
   )),
   rank INTEGER,
   score_bm25 REAL,

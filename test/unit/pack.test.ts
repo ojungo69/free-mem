@@ -652,7 +652,10 @@ test('a memory that trips the secret detector never reaches the pack', async () 
     assert.equal(pack!.text.includes('SECRET-MARKER'), false);
     assert.ok(pack!.text.includes('The ranking is lexical.'));
     const items = whyReport(db, 's_now')[0].items;
-    assert.equal(items.find((item) => item.memoryId === 'm_secret')?.decision, 'omitted');
+    const dropped = items.find((item) => item.memoryId === 'm_secret');
+    assert.equal(dropped?.decision, 'omitted');
+    // `why` says which check dropped it, not the label the item carried before (FR-028).
+    assert.equal(dropped?.reason, 'secret_detected');
   });
 });
 
@@ -673,7 +676,9 @@ test('a memory whose title reads as an instruction is dropped', async () => {
     assert.notEqual(pack, null);
     assert.equal(pack!.text.toLowerCase().includes('ignore previous instructions'), false);
     const items = whyReport(db, 's_now')[0].items;
-    assert.equal(items.find((item) => item.memoryId === 'm_directive')?.decision, 'omitted');
+    const dropped = items.find((item) => item.memoryId === 'm_directive');
+    assert.equal(dropped?.decision, 'omitted');
+    assert.equal(dropped?.reason, 'directive');
   });
 });
 
@@ -739,5 +744,43 @@ test('delivery records the injection time on the memories', async () => {
       db.prepare('SELECT last_injected_at FROM memories WHERE id = ?').get('m_en')?.last_injected_at,
       NOW,
     );
+  });
+});
+
+test('why reports the injections of one turn when a turn is named', async () => {
+  await withDb(async (db) => {
+    insertSession(db, { id: 's_now', conversationId: 'c1', status: 'active' });
+    for (const ordinal of [1, 2]) {
+      db.prepare(
+        'INSERT INTO turns (id, session_id, ordinal, started_at) VALUES (?, ?, ?, ?)',
+      ).run(`t${ordinal}`, 's_now', ordinal, NOW - DAY + ordinal);
+      createInjection(db, {
+        id: `i${ordinal}`,
+        repoId: REPO,
+        sessionId: 's_now',
+        conversationId: 'c1',
+        turnId: `t${ordinal}`,
+        kind: 'prompt',
+        channel: 'claude:UserPromptSubmit',
+        state: 'emitted',
+        epoch: 0,
+        packHash: `hash-${ordinal}`,
+        charBudget: 100,
+        charsUsed: 10,
+        degradedReason: null,
+        createdAt: NOW + ordinal,
+      });
+    }
+
+    assert.deepEqual(
+      whyReport(db, 's_now').map((injection) => injection.id),
+      ['i1', 'i2'],
+    );
+    assert.deepEqual(
+      whyReport(db, 's_now', 2).map((injection) => injection.id),
+      ['i2'],
+    );
+    // A turn that never ran has no injections, and asking for it is not an error (FR-028).
+    assert.deepEqual(whyReport(db, 's_now', 3), []);
   });
 });

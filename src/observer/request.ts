@@ -3,8 +3,6 @@
 // policy" item 6), research.md R10, data-model.md destination_rules, spec FR-015, FR-020, SC-005,
 // SC-006. Security-owned (plan.md "Structure Decision"): no other module assembles a request, and
 // every field here states which rule admitted it.
-import type { OboeteConfig } from '../config.js';
-import { consentMatches } from '../config.js';
 import type { NearbyCandidate } from '../db/queries.js';
 import { toolInputSchema } from '../events.js';
 import { isAllowed, type DestinationRules } from '../privacy/egress.js';
@@ -184,13 +182,4 @@ export function buildObserverRequest(request: ObserverRequestInput): ObserverReq
   // FR-015: 12,000 characters, and the caller records `excerpted` on the batch row.
   const excerpt = excerptInput(built);
   return { input: excerpt.input, excerpted: excerpt.excerpted, dropped };
-}
-
-/**
- * The consent check the worker runs before the reservation and again immediately before the send
- * (contracts/observer.md call policy 6); `llm.ts` passes the result as `consentOk`. A mismatch
- * means no call at all and a batch degraded with `consent_changed`.
- */
-export function consentGate(config: OboeteConfig, env: NodeJS.ProcessEnv = process.env): boolean {
-  return consentMatches(config, env);
 }

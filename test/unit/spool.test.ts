@@ -3,54 +3,71 @@ import { readdirSync, readFileSync, writeFileSync } from 'node:fs';
 import { join } from 'node:path';
 import { test } from 'node:test';
 
-import type { NormalizedEvent } from '../../src/events.js';
 import { ensureDirectories, oboetePaths } from '../../src/paths.js';
-import { listSpool, readSpoolEntry, removeSpoolEntry, spoolEvent } from '../../src/spool.js';
+import {
+  listSpool,
+  quarantineSpoolEntry,
+  readSpoolEntry,
+  removeSpoolEntry,
+  writeSpoolEntry,
+  type SpoolEntry,
+} from '../../src/spool.js';
 import { withTempHome } from '../helpers/home.js';
 
 const CAPTURED_AT = 1_757_000_000_000;
 
-function promptEvent(capturedAt: number, text: string): NormalizedEvent {
+function entry(capturedAt: number, id: string, content = 'the deployment notes'): SpoolEntry {
   return {
-    agent: 'claude',
-    native_session_id: 'session-1',
-    cwd: '/repo',
-    captured_at: capturedAt,
-    kind: 'prompt',
-    text,
-    input_source: 'user',
+    repo: {
+      id: 'a1b2c3d4e5f60718',
+      identity_kind: 'common_dir',
+      normalized_identity: '/tmp/oboete-spool',
+      display_root: '/tmp/oboete-spool',
+    },
+    session: {
+      id: 'session-1',
+      repo_id: 'a1b2c3d4e5f60718',
+      agent: 'claude',
+      native_session_id: 'native-1',
+      conversation_id: 'session-1',
+      model: null,
+      started_at: capturedAt,
+      status: 'active',
+    },
+    row: {
+      id,
+      repo_id: 'a1b2c3d4e5f60718',
+      session_id: 'session-1',
+      turn_id: null,
+      agent: 'claude',
+      kind: 'prompt',
+      content,
+      truncated: 0,
+      payload_json: '{"kind":"prompt"}',
+      content_hash: 'f'.repeat(64),
+      sensitivity: 'local_only',
+      classification_state: 'done',
+      captured_at: capturedAt,
+      expires_at: capturedAt + 1_000,
+    },
   };
 }
 
-const COLUMNS = {
-  repoId: 'a1b2c3d4e5f60718',
-  sensitivity: 'local_only',
-  classificationState: 'done',
-  truncated: 0,
-  contentHash: 'f'.repeat(64),
-} as const;
-
-test('spoolEvent renames into place and leaves no temporary file behind', async () => {
+test('writeSpoolEntry renames into place and leaves no temporary file behind', async () => {
   await withTempHome(async (home) => {
     const paths = oboetePaths(home);
     ensureDirectories(paths);
-    const event = promptEvent(CAPTURED_AT, 'the deployment notes');
+    const written = entry(CAPTURED_AT, 'event-1');
 
-    spoolEvent(paths, { ...event, id: 'event-1' }, COLUMNS);
+    writeSpoolEntry(paths, written);
 
-    const names = readdirSync(paths.spool).filter((name) => name !== 'pi-ack');
+    const names = readdirSync(paths.spool).filter((name) => name.endsWith('.json'));
     assert.deepEqual(names, [`${CAPTURED_AT}-event-1.json`]);
-    const written = JSON.parse(readFileSync(join(paths.spool, names[0] as string), 'utf8')) as Record<
-      string,
-      unknown
-    >;
-    assert.equal(written.id, 'event-1');
-    assert.equal(written.repo_id, COLUMNS.repoId);
-    assert.equal(written.sensitivity, 'local_only');
-    assert.equal(written.classification_state, 'done');
-    assert.equal(written.truncated, 0);
-    assert.equal(written.content_hash, COLUMNS.contentHash);
-    assert.deepEqual(written.event, event);
+    assert.deepEqual(
+      JSON.parse(readFileSync(join(paths.spool, names[0] as string), 'utf8')),
+      written,
+      'the file holds exactly the entry the hook derived',
+    );
   });
 });
 
@@ -63,7 +80,7 @@ test('listSpool returns the entries in name order', async () => {
       [CAPTURED_AT, 'a'],
       [CAPTURED_AT + 1, 'b'],
     ] as const) {
-      spoolEvent(paths, { ...promptEvent(capturedAt, id), id }, COLUMNS);
+      writeSpoolEntry(paths, entry(capturedAt, id));
     }
 
     assert.deepEqual(listSpool(paths), [
@@ -78,16 +95,12 @@ test('readSpoolEntry and removeSpoolEntry round trip one entry', async () => {
   await withTempHome(async (home) => {
     const paths = oboetePaths(home);
     ensureDirectories(paths);
-    const event = promptEvent(CAPTURED_AT, 'a note about the migration');
-    spoolEvent(paths, { ...event, id: 'event-1' }, COLUMNS);
+    const written = entry(CAPTURED_AT, 'event-1', 'a note about the migration');
+    writeSpoolEntry(paths, written);
     const [name] = listSpool(paths);
     assert.ok(name !== undefined);
 
-    const entry = readSpoolEntry(paths, name);
-    assert.notEqual(entry, null);
-    assert.equal(entry?.id, 'event-1');
-    assert.deepEqual(entry?.event, event);
-    assert.equal(entry?.repo_id, COLUMNS.repoId);
+    assert.deepEqual(readSpoolEntry(paths, name), written);
 
     removeSpoolEntry(paths, name);
     assert.deepEqual(listSpool(paths), []);
@@ -100,9 +113,22 @@ test('readSpoolEntry refuses an entry that does not match the schema', async () 
   await withTempHome(async (home) => {
     const paths = oboetePaths(home);
     ensureDirectories(paths);
-    writeFileSync(join(paths.spool, '1-broken.json'), '{"id":"1","event":{"kind":"nonsense"}}');
+    writeFileSync(join(paths.spool, '1-broken.json'), '{"row":{"kind":"nonsense"}}');
 
     assert.equal(readSpoolEntry(paths, '1-broken.json'), null);
     assert.equal(readSpoolEntry(paths, '1-missing.json'), null);
+  });
+});
+
+test('quarantineSpoolEntry moves the file out of the spool', async () => {
+  await withTempHome(async (home) => {
+    const paths = oboetePaths(home);
+    ensureDirectories(paths);
+    writeFileSync(join(paths.spool, '1-broken.json'), '{ not json');
+
+    quarantineSpoolEntry(paths, '1-broken.json');
+
+    assert.deepEqual(listSpool(paths), []);
+    assert.deepEqual(readdirSync(paths.spoolFailed), ['1-broken.json']);
   });
 });

@@ -1,59 +1,78 @@
-// The overflow spool: one sanitized file per event, written to a temporary name and renamed.
-// Sources: research.md R6 ("Spool entries are one sanitized file per event (write-then-rename)"),
-// data-model.md "Spool entry", spec FR-002 and FR-003.
+// The overflow spool: one sanitized file per row the hook could not store, written to a temporary
+// name and renamed. Sources: research.md R6 ("Spool entries are one sanitized file per event
+// (write-then-rename)"), data-model.md "Spool entry", spec FR-002 and FR-003.
 import { randomUUID } from 'node:crypto';
-import { existsSync, readdirSync, readFileSync, renameSync, rmSync, writeFileSync } from 'node:fs';
+import { existsSync, mkdirSync, readdirSync, readFileSync, renameSync, rmSync, writeFileSync } from 'node:fs';
 import { join } from 'node:path';
 import { z } from 'zod';
 
-import { eventSchema, type NormalizedEvent } from './events.js';
+import { AGENTS, EVENT_KINDS } from './events.js';
 import type { OboetePaths } from './paths.js';
 
-/** The columns the hook already decided and the worker must not decide again on recovery. */
-export type SpoolColumns = {
-  repoId: string;
-  sensitivity: string;
-  classificationState: string;
-  truncated: 0 | 1;
-  contentHash: string | null;
-};
+const identifier = z.string().min(1);
+const timestamp = z.int();
 
-// A spool file is read back by the worker, so it is validated like any other input; a file that
-// does not match is not trusted into the database (R4 fails closed on what it cannot classify).
+/**
+ * One spool file: the `raw_events` row capture could not write plus the parent rows it would have
+ * upserted. The parents travel with the row because a hook that could not write `raw_events` could
+ * not write `repos`, `sessions` or `turns` either, and the foreign keys refuse the row without
+ * them. A spool file is read back by the worker, so it is validated like any other input; a file
+ * that does not match is quarantined rather than trusted into the database (R4 fails closed on
+ * what it cannot classify).
+ */
 export const spoolEntrySchema = z.strictObject({
-  id: z.string().min(1),
-  repo_id: z.string().min(1),
-  sensitivity: z.string().min(1),
-  classification_state: z.string().min(1),
-  truncated: z.union([z.literal(0), z.literal(1)]),
-  content_hash: z.string().nullable(),
-  event: eventSchema,
+  repo: z.strictObject({
+    id: identifier,
+    identity_kind: z.enum(['remote', 'common_dir']),
+    normalized_identity: identifier,
+    display_root: z.string().nullable().default(null),
+  }),
+  session: z.strictObject({
+    id: identifier,
+    repo_id: identifier,
+    agent: z.enum(AGENTS),
+    native_session_id: identifier,
+    conversation_id: identifier,
+    model: z.string().nullable().default(null),
+    started_at: timestamp.nullable().default(null),
+    status: z.enum(['active', 'ended']),
+  }),
+  turn: z
+    .strictObject({
+      id: identifier,
+      session_id: identifier,
+      ordinal: z.int(),
+      started_at: timestamp.nullable().default(null),
+      ended_at: timestamp.nullable().default(null),
+    })
+    .optional(),
+  row: z.strictObject({
+    id: identifier,
+    repo_id: identifier,
+    session_id: identifier,
+    turn_id: z.string().nullable().default(null),
+    agent: z.enum(AGENTS),
+    kind: z.enum(EVENT_KINDS),
+    content: z.string().nullable().default(null),
+    truncated: z.int().nullable().default(null),
+    payload_json: z.string().nullable().default(null),
+    content_hash: z.string().nullable().default(null),
+    sensitivity: z.enum(['local_only', 'eligible', 'secret', 'private']),
+    classification_state: z.enum(['pending', 'done', 'partial', 'failed']),
+    captured_at: timestamp,
+    expires_at: timestamp,
+  }),
 });
 
 export type SpoolEntry = z.infer<typeof spoolEntrySchema>;
 
 /**
- * Writes one already redacted event to `spool/<captured_at>-<event id>.json`. The detector has run
+ * Writes one already redacted entry to `spool/<captured_at>-<row id>.json`. The detector has run
  * before this call on every path that reaches it (FR-018), and an event whose detector run failed
- * is never spooled (data-model "Spool entry"), so a spool file never holds unsanitized content.
+ * keeps metadata only, so a spool file never holds unsanitized content.
  */
-export function spoolEvent(
-  paths: OboetePaths,
-  event: NormalizedEvent & { id: string },
-  columns: SpoolColumns,
-): void {
-  const { id, ...normalized } = event;
-  const entry: SpoolEntry = {
-    id,
-    repo_id: columns.repoId,
-    sensitivity: columns.sensitivity,
-    classification_state: columns.classificationState,
-    truncated: columns.truncated,
-    content_hash: columns.contentHash,
-    event: normalized as NormalizedEvent,
-  };
-
-  const target = join(paths.spool, `${event.captured_at}-${id}.json`);
+export function writeSpoolEntry(paths: OboetePaths, entry: SpoolEntry): void {
+  const target = join(paths.spool, `${entry.row.captured_at}-${entry.row.id}.json`);
   // The temporary name carries a fresh uuid so two hooks writing the same event cannot interleave,
   // and it is not `.json`, so a half-written file is never listed as an entry.
   const temporary = `${target}.${randomUUID()}.tmp`;
@@ -84,4 +103,10 @@ export function readSpoolEntry(paths: OboetePaths, name: string): SpoolEntry | n
 /** Removing an entry that is already gone is not an error: recovery must be idempotent (FR-003). */
 export function removeSpoolEntry(paths: OboetePaths, name: string): void {
   rmSync(join(paths.spool, name), { force: true });
+}
+
+/** A file the worker could not read is moved aside instead of being read into the database (R6). */
+export function quarantineSpoolEntry(paths: OboetePaths, name: string): void {
+  mkdirSync(paths.spoolFailed, { recursive: true, mode: 0o700 });
+  renameSync(join(paths.spool, name), join(paths.spoolFailed, name));
 }

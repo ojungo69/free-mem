@@ -11,8 +11,16 @@ import {
   type NormalizedEvent,
   type ToolName,
 } from '../../src/events.js';
-import { adapt, resolveAgent, scanPartialPrefix, type AdapterAgent, type AdapterOutput } from '../../src/agents/index.js';
+import {
+  adapt,
+  resolveAgent,
+  scanPartialPrefix,
+  textFields,
+  type AdapterAgent,
+  type AdapterOutput,
+} from '../../src/agents/index.js';
 import { piEnvelopeSchema } from '../../src/agents/pi.js';
+import { z } from 'zod';
 
 type Json = Record<string, unknown>;
 
@@ -62,10 +70,17 @@ function events(output: AdapterOutput): NormalizedEvent[] {
   return output.events;
 }
 
-function detector(output: AdapterOutput): { text: string; paths: string[] } {
+function detector(output: AdapterOutput): { paths: string[] } {
   assert.equal(output.kind, 'events');
   if (output.kind !== 'events') throw new Error('unreachable');
   return output.contentForDetector;
+}
+
+/** Every string the detector is handed for these events: the one table capture redacts through. */
+function detectorText(output: AdapterOutput): string {
+  return events(output)
+    .flatMap((event) => textFields(event).map((field) => field.read()))
+    .join('\n');
 }
 
 function eventOf<K extends NormalizedEvent['kind']>(
@@ -305,7 +320,7 @@ for (const agent of AGENTS) {
           payload: agent === 'pi' ? piWire(eventName, record(raw)) : record(raw),
           capturedAt: CAPTURED_AT,
         });
-        seen.push(detector(output).text);
+        seen.push(detectorText(output));
       }
       const joined = seen.join('\n');
       for (const needle of expectation.contains) {
@@ -1199,4 +1214,102 @@ test('scanPartialPrefix reads a JSON-escaped Windows path', () => {
   assert.equal(scanned.nativeSessionId, 's-1');
   assert.equal(scanned.toolName, 'Read');
   assert.deepEqual(scanned.paths, ['C:\\repo\\.env']);
+});
+
+// -- the one text table (FR-018) ----------------------------------------------------------------
+
+type JsonSchema = {
+  type?: string;
+  const?: unknown;
+  enum?: unknown[];
+  maxLength?: number;
+  properties?: Record<string, JsonSchema>;
+};
+
+/**
+ * Content strings the detector deliberately never sees, with the reason. Everything else the event
+ * union declares as a capped string has to be named by `textFields`.
+ */
+const UNSCANNED: Record<string, string> = {
+  compaction_key:
+    'the native per-compaction identifier (A16): redacting it would break the epoch key',
+  marker: 'the probe kind is oboete\'s own event; no adapter ever produces one',
+};
+
+/** One sample event per union member, with a recognizable value in every capped string. */
+function sampleOf(schema: JsonSchema, path: string, texts: Map<string, string>): unknown {
+  if (schema.const !== undefined) return schema.const;
+  if (schema.enum !== undefined) return schema.enum[0];
+  switch (schema.type) {
+    case 'string': {
+      // `text` and the capped tool-input strings carry a maximum length; an identifier does not.
+      if (schema.maxLength === undefined) return `identifier-${path}`;
+      const value = `content of ${path}`;
+      texts.set(path, value);
+      return value;
+    }
+    case 'integer':
+    case 'number':
+      return 1;
+    case 'boolean':
+      return true;
+    // The declared paths travel as `contentForDetector.paths`, not as text.
+    case 'array':
+      return [];
+    case 'object': {
+      const sample: Record<string, unknown> = {};
+      for (const [name, property] of Object.entries(schema.properties ?? {})) {
+        sample[name] = sampleOf(property, path === '' ? name : `${path}.${name}`, texts);
+      }
+      return sample;
+    }
+    default:
+      // `z.custom` has no JSON Schema form; the only one in the union is the normalized tool name.
+      return 'other';
+  }
+}
+
+test('textFields names every content string of every event kind (FR-018)', () => {
+  const schema = z.toJSONSchema(eventSchema, { unrepresentable: 'any', io: 'output' }) as {
+    oneOf: JsonSchema[];
+  };
+  assert.equal(schema.oneOf.length, 10, 'every kind of the union is enumerated');
+
+  for (const variant of schema.oneOf) {
+    const texts = new Map<string, string>();
+    const sample = sampleOf(variant, '', texts);
+    const parsed = eventSchema.safeParse(sample);
+    assert.equal(parsed.success, true, `the sample is not an event: ${JSON.stringify(sample)}`);
+    const event = parsed.data as NormalizedEvent;
+
+    const expected = new Set(
+      [...texts].filter(([path]) => !(path.split('.').pop() as string in UNSCANNED)).map(([, value]) => value),
+    );
+    const scanned = new Set(textFields(event).map((field) => field.read()));
+    for (const value of expected) {
+      assert.ok(scanned.has(value), `${event.kind}: ${value} reaches storage unscanned`);
+    }
+    for (const value of scanned) {
+      assert.ok(expected.has(value), `${event.kind}: ${value} is scanned but is not a content string`);
+    }
+  }
+});
+
+test('every text field writes its redacted value back where it came from', () => {
+  const event: NormalizedEvent = {
+    agent: 'claude',
+    native_session_id: 'session-1',
+    cwd: '/repo',
+    captured_at: CAPTURED_AT,
+    kind: 'tool_call',
+    tool_call_id: 'call-1',
+    tool_name_native: 'Bash',
+    tool_name: 'bash',
+    input: { paths: [], command: 'echo one', text: 'two' },
+  };
+
+  for (const field of textFields(event)) field.write(`[REDACTED] ${field.read()}`);
+
+  assert.equal(event.input.command, '[REDACTED] echo one');
+  assert.equal(event.input.text, '[REDACTED] two');
 });

@@ -94,6 +94,17 @@ test('the ancestor cache is keyed by HEAD and is dropped when HEAD moves', { ski
   assert.equal(after.get(second), false);
 });
 
+test('an option-shaped citation is a commit argument, never a git option', { skip }, () => {
+  const { root } = repositoryWithTwoCommits();
+
+  // `--version` would make git print its version and exit 0; read as a commit it is simply not an
+  // ancestor, so the pack marks the citation stale instead of claiming it is current (FR-029).
+  const answers = checkCommits(['--version', '--all'], root, createAncestorCache());
+
+  assert.equal(answers.get('--version'), false);
+  assert.equal(answers.get('--all'), false);
+});
+
 test('a git failure counts as stale, so a citation is never claimed to be fresh', () => {
   const root = temporaryRoot();
   const cache = createAncestorCache();

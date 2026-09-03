@@ -17,6 +17,7 @@ import {
   adapt,
   resolveAgent,
   scanPartialPrefix,
+  textFields,
   type AdapterAgent,
   type AdapterOutput,
 } from './agents/index.js';
@@ -35,8 +36,8 @@ import { appendLog } from './log.js';
 import { ensureDirectories, oboetePaths, resolveHome, type OboetePaths } from './paths.js';
 import { detectInWorker, type DetectorInput, type DetectorResult } from './privacy/detect.js';
 import { resolveRepoIdentity, type RepoIdentity } from './repo-identity.js';
-import { spoolEvent } from './spool.js';
-import { isLeaseFree } from './worker/lease.js';
+import { writeSpoolEntry, type SpoolEntry } from './spool.js';
+import { isLeaseFree, transactionImmediate } from './worker/lease.js';
 
 /** The absolute budget of a capture hook, measured from process start (contracts/agents.md). */
 export const CAPTURE_DEADLINE_MS = 300;
@@ -143,7 +144,11 @@ export type CaptureOutcome = {
 type Diagnostic = { kind: string; agent: AgentName; messageCode: string };
 
 type RowDraft = {
-  id: string;
+  /**
+   * The row id. `turnOrdinal` is R7's turn key for an event that carries no per-turn value of its
+   * own; the direct path reads it from `sessions.turn_count` and the spool path has none.
+   */
+  identify(turnOrdinal?: number): string;
   agent: AgentName;
   nativeSessionId: string;
   kind: EventKind;
@@ -156,64 +161,15 @@ type RowDraft = {
   sensitivity: 'local_only' | 'secret';
   classificationState: 'done' | 'partial' | 'failed';
   truncated: 0 | 1;
-  /** Set only for a detector-clean normalized event, the one shape the spool accepts. */
+  /** Set only for a whole, detector-clean event: the one shape that may open a context epoch (A16). */
   event?: NormalizedEvent;
 };
 
-type TextSlot = {
-  read(): string;
-  write(value: string): void;
-  /** True when the redacted value becomes `raw_events.content` instead of staying in payload_json. */
-  content: boolean;
-};
-
-/**
- * Every string of a normalized event that the detector must see, and where its redacted value goes
- * back. This must cover the same strings `agents/index.ts` collects for `contentForDetector`, or a
- * field would reach storage unscanned (FR-018).
- */
-function textSlots(event: NormalizedEvent): TextSlot[] {
-  switch (event.kind) {
-    case 'prompt':
-    case 'compaction_summary':
-    case 'last_assistant_message':
-      return [{ read: () => event.text, write: (value) => (event.text = value), content: true }];
-    case 'tool_call': {
-      const slots: TextSlot[] = [];
-      if (event.input.command !== undefined) {
-        slots.push({
-          read: () => event.input.command ?? '',
-          write: (value) => (event.input.command = value),
-          content: true,
-        });
-      }
-      if (event.input.text !== undefined) {
-        slots.push({
-          read: () => event.input.text ?? '',
-          write: (value) => (event.input.text = value),
-          content: true,
-        });
-      }
-      return slots;
-    }
-    case 'tool_result':
-      return [{ read: () => event.output, write: (value) => (event.output = value), content: true }];
-    case 'tool_failure':
-      return [{ read: () => event.error, write: (value) => (event.error = value), content: true }];
-    case 'turn_end':
-    case 'session_end':
-      // A lifecycle reason is metadata, so it is scanned like any text but kept in payload_json.
-      return [{ read: () => event.reason, write: (value) => (event.reason = value), content: false }];
-    default:
-      return [];
-  }
-}
-
 /** The stored `raw_events.content` of one event: its content fields, or NULL when it has none. */
 export function contentText(event: NormalizedEvent): string | null {
-  const values = textSlots(event)
-    .filter((slot) => slot.content)
-    .map((slot) => slot.read());
+  const values = textFields(event)
+    .filter((field) => field.content)
+    .map((field) => field.read());
   return values.length === 0 ? null : values.join('\n');
 }
 
@@ -247,8 +203,9 @@ export type CompactionState = { contextEpoch: number; lastCompactionKey: string 
  * The context epoch of a conversation (A12): 0 at the root, +1 per compaction. The authoritative
  * event is one per agent, and the key that distinguishes two compactions is what the R13 probe
  * found ("Compaction identity and order", 2026-09-03): Grok Build's `PostCompact.timestamp`, Pi's
- * `compactionEntry.id`, and on Claude Code and Codex the compaction event's own id (A16, which
- * collapses two byte-identical compactions of one turn). Claude Code is the one agent whose
+ * `compactionEntry.id`, and on Claude Code and Codex the compaction event's own id, which the
+ * caller passes as `eventIdentity` because it is the stored `raw_events.id` of that very row (A16,
+ * which collapses two byte-identical compactions of one turn). Claude Code is the one agent whose
  * `SessionStart source = compact` runs about 24 ms *before* `PostCompact`, so there that hook opens
  * the epoch and `PostCompact` only confirms it. Returns the new state, or null when the event
  * leaves the epoch untouched.
@@ -257,6 +214,7 @@ export function applyCompaction(
   agent: AgentName,
   event: NormalizedEvent,
   state: CompactionState,
+  eventIdentity: string,
 ): CompactionState | null {
   if (agent === 'claude' && event.kind === 'session_start' && event.source === 'compact') {
     if (state.lastCompactionKey === CLAUDE_COMPACT_START_KEY) return null;
@@ -264,7 +222,7 @@ export function applyCompaction(
   }
   if (event.kind !== 'compaction_summary') return null;
 
-  const key = event.compaction_key !== '' ? event.compaction_key : eventId(event);
+  const key = event.compaction_key !== '' ? event.compaction_key : eventIdentity;
   if (state.lastCompactionKey === key) return null;
   // The companion hook already opened this epoch, so PostCompact only records its own key, which
   // is what lets the next SessionStart(compact) open the next epoch.
@@ -292,15 +250,17 @@ function metadataRow(fields: {
 }): RowDraft {
   return {
     // The payload hash keeps two different events of one session apart while a re-delivery of the
-    // same bytes still collapses, the property R7 asks of every event key.
-    id: deterministicId([
-      'v1',
-      fields.agent,
-      fields.nativeSessionId,
-      fields.kind,
-      fields.eventName,
-      fields.payloadHash,
-    ]),
+    // same bytes still collapses, the property R7 asks of every event key. A metadata-only row has
+    // no normalized event, so no turn ordinal enters its id.
+    identify: () =>
+      deterministicId([
+        'v1',
+        fields.agent,
+        fields.nativeSessionId,
+        fields.kind,
+        fields.eventName,
+        fields.payloadHash,
+      ]),
     agent: fields.agent,
     nativeSessionId: fields.nativeSessionId,
     kind: fields.kind,
@@ -323,7 +283,7 @@ function eventRow(
   const payload = payloadJson(event);
   if (pathRuleHit) payload.path_rule = detected.pathRule;
   return {
-    id: eventId(event),
+    identify: (turnOrdinal) => eventId(event, turnOrdinal),
     agent: event.agent,
     nativeSessionId: event.native_session_id,
     kind: event.kind,
@@ -344,9 +304,9 @@ function eventRow(
 function failedEventRow(event: NormalizedEvent, reason: string): RowDraft {
   // The detector did not finish, so no string of this event may be stored: every slot is blanked
   // before payload_json is taken (R4 fails closed on its own failure).
-  for (const slot of textSlots(event)) slot.write('');
+  for (const field of textFields(event)) field.write('');
   return {
-    id: eventId(event),
+    identify: (turnOrdinal) => eventId(event, turnOrdinal),
     agent: event.agent,
     nativeSessionId: event.native_session_id,
     kind: event.kind,
@@ -426,7 +386,12 @@ function readEpoch(db: DatabaseSync, sessionId: string): CompactionState | null 
   };
 }
 
-function advanceEpoch(db: DatabaseSync, session: SessionRow, row: RowDraft): void {
+function advanceEpoch(
+  db: DatabaseSync,
+  session: SessionRow,
+  row: RowDraft,
+  eventIdentity: string,
+): void {
   const event = row.event;
   // Only a whole, detector-clean compaction event may open an epoch: a metadata-only row cannot
   // be shown to distinguish two compactions (A16).
@@ -440,13 +405,22 @@ function advanceEpoch(db: DatabaseSync, session: SessionRow, row: RowDraft): voi
       : readEpoch(db, session.conversationId);
   if (root === null) return;
 
-  const next = applyCompaction(row.agent, event, root);
+  const next = applyCompaction(row.agent, event, root, eventIdentity);
   if (next === null) return;
   db.prepare('UPDATE sessions SET context_epoch = ?, last_compaction_key = ? WHERE id = ?').run(
     next.contextEpoch,
     next.lastCompactionKey,
     session.conversationId,
   );
+}
+
+/**
+ * The turn an event attaches to (R7's turn key): the turn a prompt opens, or the open turn of the
+ * session. A session with no turn yet has none, and the key is then empty (events.ts eventIdKey).
+ */
+function turnOrdinalOf(row: RowDraft, session: SessionRow): number | undefined {
+  if (row.kind === 'prompt') return session.turnCount + 1;
+  return session.turnCount === 0 ? undefined : session.turnCount;
 }
 
 function placeInTurn(db: DatabaseSync, session: SessionRow, row: RowDraft): string | null {
@@ -502,12 +476,15 @@ function storeRows(
   let inserted = 0;
   let trigger = false;
   for (const row of rows) {
+    // The session is read before the id, because the id of an event with no per-turn value of its
+    // own carries the ordinal of the turn it attaches to (R7, events.ts eventIdKey).
+    const session = upsertSession(db, row, identity.id);
+    const id = row.identify(turnOrdinalOf(row, session));
     // R7: the id carries no delivery counter, so a re-delivery is recognized here and changes
     // nothing else either - no second turn, no second epoch.
-    if (seen.get(row.id) !== undefined) continue;
+    if (seen.get(id) !== undefined) continue;
 
-    const session = upsertSession(db, row, identity.id);
-    advanceEpoch(db, session, row);
+    advanceEpoch(db, session, row, id);
     const turnId = placeInTurn(db, session, row);
     if (row.kind === 'session_end') {
       db.prepare(
@@ -521,7 +498,7 @@ function storeRows(
          content_hash, sensitivity, classification_state, captured_at, expires_at, via_spool)
        VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, 0)`,
     ).run(
-      row.id,
+      id,
       identity.id,
       session.id,
       turnId,
@@ -559,29 +536,58 @@ function recordDiagnostic(db: DatabaseSync, diagnostic: Diagnostic, now: number)
   );
 }
 
+/**
+ * The spool file of one row: the row itself plus the parent rows recovery needs, all of them values
+ * this hook derived (data-model.md "Spool entry"). The hook did not read the database, so the
+ * session id is a fresh one and the row carries no turn; recovery resolves both against the rows
+ * that exist by then (worker/batches.ts ensureSessionRows).
+ */
+function spoolEntryFor(identity: RepoIdentity, row: RowDraft): SpoolEntry {
+  const sessionId = randomUUID();
+  return {
+    repo: {
+      id: identity.id,
+      identity_kind: identity.identityKind,
+      normalized_identity: identity.normalizedIdentity,
+      display_root: identity.root,
+    },
+    session: {
+      id: sessionId,
+      repo_id: identity.id,
+      agent: row.agent,
+      native_session_id: row.nativeSessionId,
+      conversation_id: sessionId,
+      model: row.model ?? null,
+      started_at: row.capturedAt,
+      status: 'active',
+    },
+    row: {
+      // R7: the ordinal the hook used, which on this path is none at all; recovery replays this id
+      // and never recomputes it (events.ts eventIdKey).
+      id: row.identify(),
+      repo_id: identity.id,
+      session_id: sessionId,
+      turn_id: null,
+      agent: row.agent,
+      kind: row.kind,
+      content: row.content,
+      truncated: row.truncated,
+      payload_json: JSON.stringify(row.payload),
+      content_hash: row.contentHash,
+      sensitivity: row.sensitivity,
+      classification_state: row.classificationState,
+      captured_at: row.capturedAt,
+      expires_at: row.capturedAt + RAW_EVENT_TTL_MS,
+    },
+  };
+}
+
 function spoolAll(paths: OboetePaths, identity: RepoIdentity, rows: RowDraft[]): CaptureOutcome {
   let spooled = 0;
-  let unspoolable = 0;
   let lost = 0;
   for (const row of rows) {
-    if (row.event === undefined) {
-      // A metadata-only row has no spool representation (data-model "Spool entry"), so it is
-      // counted separately rather than written in a shape the worker cannot validate.
-      unspoolable += 1;
-      continue;
-    }
     try {
-      spoolEvent(
-        paths,
-        { ...row.event, id: row.id },
-        {
-          repoId: identity.id,
-          sensitivity: row.sensitivity,
-          classificationState: row.classificationState,
-          truncated: row.truncated,
-          contentHash: row.contentHash,
-        },
-      );
+      writeSpoolEntry(paths, spoolEntryFor(identity, row));
       spooled += 1;
     } catch {
       lost += 1;
@@ -592,13 +598,6 @@ function spoolAll(paths: OboetePaths, identity: RepoIdentity, rows: RowDraft[]):
     // count to stderr, so the loss is visible without blocking the agent (FR-002).
     process.stderr.write(
       `oboete could not store ${lost} event${lost === 1 ? '' : 's'}: neither the database nor the spool could be written.\n`,
-    );
-  }
-  if (unspoolable > 0) {
-    // The spool may be perfectly writable here, so the message must not send an operator to check
-    // its permissions: a metadata-only row simply has no spool file shape (data-model "Spool entry").
-    process.stderr.write(
-      `oboete could not store ${unspoolable} metadata-only event${unspoolable === 1 ? '' : 's'}: the database was unavailable and a metadata-only row has no spool representation.\n`,
     );
   }
   return { outcome: spooled > 0 ? 'spooled' : 'dropped', rows: spooled };
@@ -636,7 +635,12 @@ function write(
 
     if (opened !== null) {
       try {
-        const stored = storeRows(opened.db, identity, rows, diagnostics, capturedAt);
+        // One read-then-write unit, one transaction (conventions "Database access"): a failure
+        // half way through would otherwise leave rows behind that the spool then writes again
+        // under the id of another turn (R7: the direct path keys by the ordinal it read).
+        const stored = transactionImmediate(opened.db, () =>
+          storeRows(opened.db, identity, rows, diagnostics, capturedAt),
+        );
         if (stored.trigger && remaining() >= SPAWN_MIN_REMAINING_MS && isLeaseFree(opened.db, Date.now())) {
           // R6: a hook spawns the detached worker only when the lease is free or stale. The lease
           // is compared against the real clock, which is the clock its heartbeats are written on.
@@ -757,9 +761,9 @@ export async function captureEvent(deps: CaptureDeps, input: CaptureInput): Prom
     return write(deps, paths, identity, rows, diagnostics, capturedAt);
   }
 
-  const slots = events.flatMap((event) => textSlots(event));
+  const fields = events.flatMap((event) => textFields(event));
   const detected = await runDetector(deps, {
-    fields: slots.map((slot) => slot.read()),
+    fields: fields.map((field) => field.read()),
     paths: adapted.contentForDetector.paths,
     identity,
     secretPaths: rules,
@@ -770,15 +774,15 @@ export async function captureEvent(deps: CaptureDeps, input: CaptureInput): Prom
     return write(deps, paths, identity, rows, diagnostics, capturedAt);
   }
   if (detected.pathRule === null) {
-    if (detected.texts.length !== slots.length) {
+    if (detected.texts.length !== fields.length) {
       // The detector answered a shape this build does not understand, which is a detector failure.
       const rows = events.map((event) => failedEventRow(event, 'detector_error'));
       return write(deps, paths, identity, rows, diagnostics, capturedAt);
     }
-    slots.forEach((slot, index) => slot.write(detected.texts[index] as string));
+    fields.forEach((field, index) => field.write(detected.texts[index] as string));
   } else {
     // R4: a path-rule hit stores metadata only, so no string of the event survives.
-    for (const slot of slots) slot.write('');
+    for (const field of fields) field.write('');
   }
 
   return write(
@@ -918,21 +922,28 @@ function sleep(milliseconds: number): void {
   Atomics.wait(new Int32Array(new SharedArrayBuffer(4)), 0, 0, milliseconds);
 }
 
+/** One chunk of standard input; the seam a test replaces to drive the read bound exactly. */
+export type StdinReader = (target: Buffer, length: number) => number;
+
+const fromStandardInput: StdinReader = (target, length) => readSync(0, target, 0, length, null);
+
 /**
  * Reads at most `STDIN_READ_BOUND` bytes and stops; the rest is never drained, so capture time does
  * not grow with the payload (A7, A14). A pipe with nothing ready yet answers EAGAIN, which is
  * waited out in short steps rather than spun on.
  */
-function readStdinBounded(): StdinRead {
+export function readStdinBounded(read: StdinReader = fromStandardInput): StdinRead {
   const chunks: Buffer[] = [];
   const buffer = Buffer.allocUnsafe(64 * 1_024);
   let total = 0;
   let waits = 0;
 
-  while (total < STDIN_READ_BOUND) {
-    let read: number;
+  // One byte past the bound is read but never stored: a payload of exactly the bound was not cut,
+  // so only a byte beyond it makes the row partial (A7).
+  while (total <= STDIN_READ_BOUND) {
+    let taken: number;
     try {
-      read = readSync(0, buffer, 0, Math.min(buffer.length, STDIN_READ_BOUND - total), null);
+      taken = read(buffer, Math.min(buffer.length, STDIN_READ_BOUND + 1 - total));
     } catch (error) {
       const code = (error as NodeJS.ErrnoException).code;
       if (code === 'EAGAIN' && waits < STDIN_WAIT_LIMIT) {
@@ -942,12 +953,14 @@ function readStdinBounded(): StdinRead {
       }
       break;
     }
-    if (read === 0) break;
-    chunks.push(Buffer.from(buffer.subarray(0, read)));
-    total += read;
+    if (taken === 0) break;
+    chunks.push(Buffer.from(buffer.subarray(0, taken)));
+    total += taken;
   }
-  // A payload of exactly the bound is treated as truncated; the partial row is the safe reading.
-  return { text: Buffer.concat(chunks).toString('utf8'), truncated: total >= STDIN_READ_BOUND };
+  return {
+    text: Buffer.concat(chunks).subarray(0, STDIN_READ_BOUND).toString('utf8'),
+    truncated: total > STDIN_READ_BOUND,
+  };
 }
 
 function defaultRuntime(): CaptureRuntime {
@@ -970,7 +983,7 @@ function defaultRuntime(): CaptureRuntime {
         child.unref();
       },
     },
-    readStdin: readStdinBounded,
+    readStdin: () => readStdinBounded(),
   };
 }
 

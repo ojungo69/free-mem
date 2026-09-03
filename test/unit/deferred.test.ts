@@ -10,6 +10,7 @@ import {
   confirmOnPostToolUse,
   markFailure,
   storePending,
+  type PackValidation,
 } from '../../src/injection/deferred.js';
 import { whyReport } from '../../src/injection/ledger.js';
 import { buildPromptPack, type PromptPackInput } from '../../src/injection/pack.js';
@@ -90,10 +91,22 @@ async function withGrok(
   });
 }
 
-async function pendingPack(db: DatabaseSync, overrides: Partial<PromptPackInput> = {}): Promise<string> {
-  const pack = await buildPromptPack(db, promptInput(overrides));
+async function pendingPack(
+  db: DatabaseSync,
+  overrides: Partial<PromptPackInput> = {},
+  validation?: PackValidation,
+): Promise<string> {
+  const input = promptInput(overrides);
+  const pack = await buildPromptPack(db, input);
   assert.notEqual(pack, null, 'the prompt pack should have been built');
-  return storePending(db, { conversationId: CONVERSATION, epoch: 0, pack: pack!, now: NOW });
+  return storePending(db, {
+    conversationId: CONVERSATION,
+    epoch: 0,
+    pack: pack!,
+    now: NOW,
+    // The hook validates the merged text with the detector and the corpus it has (FR-018, FR-021).
+    validation: validation ?? { detect: input.detect, directives: input.directives },
+  });
 }
 
 function injectionRow(db: DatabaseSync, id: string): Record<string, unknown> {
@@ -370,6 +383,78 @@ test('a memory that both merged packs carry is delivered once and counted once',
     const third = await buildPromptPack(db, promptInput({ prompt: 'retrieval note', now: NOW + 300 }));
     assert.equal(third, null, 'nothing is left to inject once the memory was delivered');
   });
+});
+
+test('a merged pack that trips the secret detector is never stored', async () => {
+  await withGrok(
+    async (db) => {
+      // Neither pack carries the secret on its own: only the two together spell it out, which is
+      // exactly the text no builder ever validated (contracts/agents.md "Pack format").
+      const detect = (text: string): boolean => text.includes('alpha') && text.includes('beta');
+      const validation = { detect, directives: [] };
+
+      const first = await pendingPack(db, { prompt: 'retrieval note', detect }, validation);
+      const second = await pendingPack(
+        db,
+        { prompt: 'lease note', now: NOW + 100, detect },
+        validation,
+      );
+      assert.equal(second, first, 'the live record still holds the conversation pack');
+
+      const text = attachOnPreToolUse(db, {
+        conversationId: CONVERSATION,
+        toolCallId: 'call-1',
+        now: NOW + 200,
+      });
+      assert.ok(text!.includes('alpha'), 'the validated pack is still deliverable');
+      assert.ok(!text!.includes('beta'), 'the merged text was never stored');
+
+      const items = whyReport(db, 's_now').flatMap((injection) => injection.items);
+      assert.deepEqual(
+        items
+          .filter((item) => item.memoryId === 'm_2')
+          .map((item) => `${item.decision}:${item.reason ?? '-'}`),
+        ['omitted:secret_detected'],
+      );
+    },
+    [
+      { id: 'm_1', title: 'Retrieval note one', body: 'The ranking is alpha.' },
+      { id: 'm_2', title: 'Lease note two', body: 'The lease is beta.' },
+    ],
+  );
+});
+
+test('a merged pack that trips the directive corpus is never stored', async () => {
+  await withGrok(
+    async (db) => {
+      const first = await pendingPack(db, { prompt: 'retrieval note' });
+      // The corpus this hook loaded names a phrase the builder of the first pack did not have.
+      const second = await pendingPack(db, { prompt: 'lease note', now: NOW + 100 }, {
+        detect: () => false,
+        directives: ['the lease is fenced'],
+      });
+      assert.equal(second, first);
+
+      const text = attachOnPreToolUse(db, {
+        conversationId: CONVERSATION,
+        toolCallId: 'call-1',
+        now: NOW + 200,
+      });
+      assert.ok(!text!.includes('Lease note two'), 'the merged text was never stored');
+
+      const items = whyReport(db, 's_now').flatMap((injection) => injection.items);
+      assert.deepEqual(
+        items
+          .filter((item) => item.memoryId === 'm_2')
+          .map((item) => `${item.decision}:${item.reason ?? '-'}`),
+        ['omitted:directive'],
+      );
+    },
+    [
+      { id: 'm_1', title: 'Retrieval note one', body: 'The ranking is lexical.' },
+      { id: 'm_2', title: 'Lease note two', body: 'The lease is fenced by its owner token.' },
+    ],
+  );
 });
 
 test('a merged item that no longer fits the budget is recorded as trimmed', async () => {

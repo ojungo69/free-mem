@@ -7,6 +7,7 @@ export type OboetePaths = {
   config: string;
   db: string;
   spool: string;
+  spoolFailed: string;
   piAck: string;
   logs: string;
   hookLog: string;
@@ -30,6 +31,7 @@ export function oboetePaths(home: string): OboetePaths {
     config: join(home, 'config.toml'),
     db: join(home, 'memory.db'),
     spool,
+    spoolFailed: join(spool, 'failed'),
     piAck: join(spool, 'pi-ack'),
     logs,
     hookLog: join(logs, 'hook.log'),
@@ -40,7 +42,7 @@ export function oboetePaths(home: string): OboetePaths {
 
 export function ensureDirectories(paths: OboetePaths): void {
   // The database, the spool and the logs hold captured content, so the tree stays owner-only.
-  for (const directory of [paths.home, paths.spool, paths.piAck, paths.logs]) {
+  for (const directory of [paths.home, paths.spool, paths.spoolFailed, paths.piAck, paths.logs]) {
     mkdirSync(directory, { recursive: true, mode: 0o700 });
   }
 }

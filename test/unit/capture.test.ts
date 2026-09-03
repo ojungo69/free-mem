@@ -23,6 +23,7 @@ import {
   STDIN_READ_BOUND,
   applyCompaction,
   captureEvent,
+  readStdinBounded,
   recognizeInjectedText,
   runCapture,
   runHook,
@@ -33,7 +34,9 @@ import { openDatabase } from '../../src/db/open.js';
 import { eventIdKey, type AgentName, type NormalizedEvent } from '../../src/events.js';
 import { ensureDirectories, oboetePaths, type OboetePaths } from '../../src/paths.js';
 import { detectSync, type DetectorInput } from '../../src/privacy/detect.js';
-import { listSpool, readSpoolEntry } from '../../src/spool.js';
+import { listSpool, readSpoolEntry, spoolEntrySchema } from '../../src/spool.js';
+import { recoverSpool } from '../../src/worker/batches.js';
+import { claimLease } from '../../src/worker/lease.js';
 import { withTempHome } from '../helpers/home.js';
 
 type Json = Record<string, unknown>;
@@ -379,10 +382,14 @@ test('applyCompaction advances the epoch once per compaction on Grok', async () 
   const first = compactionEvent('grok', '2026-09-03T16:01:11.622755654+00:00', '');
   const again = compactionEvent('grok', '2026-09-03T16:04:02.101110000+00:00', '');
 
-  const opened = applyCompaction('grok', first, { contextEpoch: 0, lastCompactionKey: null });
+  const opened = applyCompaction('grok', first, { contextEpoch: 0, lastCompactionKey: null }, 'id-1');
   assert.equal(opened?.contextEpoch, 1);
-  assert.equal(applyCompaction('grok', first, opened as never), null, 'a re-delivery adds no epoch');
-  const second = applyCompaction('grok', again, opened as never);
+  assert.equal(
+    applyCompaction('grok', first, opened as never, 'id-1'),
+    null,
+    'a re-delivery adds no epoch',
+  );
+  const second = applyCompaction('grok', again, opened as never, 'id-2');
   assert.equal(second?.contextEpoch, 2);
 });
 
@@ -397,20 +404,41 @@ test('applyCompaction keys Claude Code and Codex compactions by the event id (A1
   };
   // On Claude Code the SessionStart(compact) hook runs ~24 ms before PostCompact, so it opens the
   // epoch and PostCompact only confirms it (R13 "Compaction identity and order", A16).
-  const opened = applyCompaction('claude', claudeStart, { contextEpoch: 0, lastCompactionKey: null });
+  const opened = applyCompaction(
+    'claude',
+    claudeStart,
+    { contextEpoch: 0, lastCompactionKey: null },
+    'start-1',
+  );
   assert.equal(opened?.contextEpoch, 1);
-  const confirmed = applyCompaction('claude', compactionEvent('claude', '', 'summary text'), opened as never);
+  // A16: without a native per-compaction value the key is the stored id of the PostCompact row.
+  const confirmed = applyCompaction(
+    'claude',
+    compactionEvent('claude', '', 'summary text'),
+    opened as never,
+    'postcompact-1',
+  );
   assert.equal(confirmed?.contextEpoch, 1, 'PostCompact must not advance the epoch a second time');
-  const next = applyCompaction('claude', claudeStart, confirmed as never);
+  const next = applyCompaction('claude', claudeStart, confirmed as never, 'start-2');
   assert.equal(next?.contextEpoch, 2, 'the next compaction opens the next epoch');
 
   const codex = compactionEvent('codex', '', '');
-  const codexOpened = applyCompaction('codex', codex, { contextEpoch: 0, lastCompactionKey: null });
+  const codexOpened = applyCompaction(
+    'codex',
+    codex,
+    { contextEpoch: 0, lastCompactionKey: null },
+    'postcompact-2',
+  );
   assert.equal(codexOpened?.contextEpoch, 1);
-  assert.equal(applyCompaction('codex', codex, codexOpened as never), null);
+  assert.equal(applyCompaction('codex', codex, codexOpened as never, 'postcompact-2'), null);
   // Codex fires SessionStart(compact) after PostCompact, so it only reads the epoch.
   assert.equal(
-    applyCompaction('codex', { ...codex, kind: 'session_start', source: 'compact' } as never, codexOpened as never),
+    applyCompaction(
+      'codex',
+      { ...codex, kind: 'session_start', source: 'compact' } as never,
+      codexOpened as never,
+      'start-3',
+    ),
     null,
   );
 });
@@ -418,10 +446,10 @@ test('applyCompaction keys Claude Code and Codex compactions by the event id (A1
 test('applyCompaction keys Pi compactions by compactionEntry.id', async () => {
   const first = compactionEvent('pi', '480afbf2', 'summary');
   const second = compactionEvent('pi', '4283239e', 'summary');
-  const opened = applyCompaction('pi', first, { contextEpoch: 0, lastCompactionKey: null });
+  const opened = applyCompaction('pi', first, { contextEpoch: 0, lastCompactionKey: null }, 'id-1');
   assert.equal(opened?.contextEpoch, 1);
-  assert.equal(applyCompaction('pi', first, opened as never), null);
-  assert.equal(applyCompaction('pi', second, opened as never)?.contextEpoch, 2);
+  assert.equal(applyCompaction('pi', first, opened as never, 'id-1'), null);
+  assert.equal(applyCompaction('pi', second, opened as never, 'id-2')?.contextEpoch, 2);
 });
 
 test('a Claude compaction advances the epoch of the root session exactly once', async () => {
@@ -599,6 +627,45 @@ test('a cut payload without a session id increments a diagnostics counter only',
   });
 });
 
+test('two Grok session starts of one session get one id per turn ordinal (R7)', async () => {
+  await withCapture(async (context) => {
+    const session = 'grok-session-ordinals';
+    const base = { sessionId: session, cwd: context.repo };
+    const sessionStart = { ...base, hookEventName: 'session_start', source: 'load' };
+    // The event both hooks produce: identical in every field the id is built from except the
+    // ordinal of the turn it attaches to.
+    const event: NormalizedEvent = {
+      agent: 'grok',
+      native_session_id: session,
+      cwd: context.repo,
+      captured_at: NOW,
+      kind: 'session_start',
+      source: 'resume',
+    };
+    const idAt = (ordinal: number): string =>
+      createHash('sha256').update(JSON.stringify(eventIdKey(event, ordinal)), 'utf8').digest('hex');
+
+    for (const ordinal of [1, 2, 3, 4, 5]) {
+      await context.capture('grok', 'UserPromptSubmit', { ...base, prompt: `question ${ordinal}` });
+      if (ordinal === 1 || ordinal === 5) {
+        await context.capture('grok', 'SessionStart', sessionStart);
+      }
+    }
+
+    const rows = context.all(
+      `SELECT id FROM raw_events WHERE kind = 'session_start' ORDER BY id`,
+    ).map((row) => String(row.id));
+    assert.equal(rows.length, 2, 'the two session starts belong to two different turns');
+    assert.deepEqual(rows, [idAt(1), idAt(5)].sort());
+    assert.notEqual(idAt(1), idAt(5));
+    assert.equal(
+      context.all(`SELECT turn_count FROM sessions`)[0]?.turn_count,
+      5,
+      'five prompts opened five turns',
+    );
+  });
+});
+
 test('the event goes to the spool when the database file is missing', async () => {
   await withCapture(
     async (context) => {
@@ -612,8 +679,10 @@ test('the event goes to the spool when the database file is missing', async () =
       assert.equal(names.length, 1);
       assert.equal(names[0], `${NOW}-${expectedToolResultId(payload, context.repo, content)}.json`);
       const entry = readSpoolEntry(context.paths, names[0] as string);
-      assert.equal(entry?.classification_state, 'done');
-      assert.equal(entry?.event.kind, 'tool_result');
+      assert.equal(entry?.row.classification_state, 'done');
+      assert.equal(entry?.row.kind, 'tool_result');
+      assert.equal(entry?.row.content, content);
+      assert.equal(entry?.session.native_session_id, payload.session_id);
     },
     { database: false },
   );
@@ -642,7 +711,114 @@ test('the spool file never holds an unredacted secret', async () => {
   );
 });
 
-test('a metadata-only row that cannot be spooled is not reported as a spool failure', async () => {
+/** Recovers every spool file of `paths` into a fresh database and returns the raw_events rows. */
+function recoverInto(paths: OboetePaths): { inserted: number; failed: number; rows: Json[] } {
+  const opened = openDatabase({ path: paths.db, timeoutMs: 2_000 });
+  try {
+    const token = claimLease(opened.db, { pid: 1, now: NOW });
+    assert.notEqual(token, null, 'the recovery needs the worker lease');
+    const outcome = recoverSpool(opened.db, paths, token as string, NOW);
+    return {
+      inserted: outcome.inserted,
+      failed: outcome.failed,
+      rows: opened.db.prepare('SELECT * FROM raw_events ORDER BY id').all() as Json[],
+    };
+  } finally {
+    opened.db.close();
+  }
+}
+
+test('a partial row travels through the spool and recovers with its redacted prefix', async () => {
+  await withCapture(
+    async (context) => {
+      const line = corpusLine('openai-api-key');
+      const payload = {
+        session_id: 'session-partial-spool',
+        cwd: context.repo,
+        tool_name: 'Write',
+        tool_use_id: 'call-huge',
+        tool_input: {
+          file_path: `${context.repo}/notes.md`,
+          content: `${line.text}\n${'a'.repeat(400_000)}`,
+        },
+      };
+      const prefix = JSON.stringify(payload).slice(0, 300 * 1_024);
+
+      const outcome = await context.capture('claude', 'PreToolUse', payload, {
+        text: prefix,
+        truncated: true,
+      });
+      assert.equal(outcome.outcome, 'spooled', 'a metadata-only row has a spool file too');
+
+      const names = listSpool(context.paths);
+      assert.equal(names.length, 1);
+      const parsed = spoolEntrySchema.safeParse(
+        JSON.parse(readFileSync(join(context.paths.spool, names[0] as string), 'utf8')),
+      );
+      assert.equal(parsed.success, true, `the worker cannot read the spool file: ${parsed.error}`);
+
+      const recovered = recoverInto(context.paths);
+      assert.equal(recovered.failed, 0, 'the worker quarantined the file the hook wrote');
+      assert.equal(recovered.inserted, 1);
+      const row = recovered.rows[0] as Json;
+      // R7: recovery replays the id the hook wrote and never recomputes it.
+      assert.equal(row.id, parsed.data?.row.id);
+      assert.equal(row.classification_state, 'partial');
+      assert.equal(row.truncated, 1);
+      assert.equal(row.via_spool, 1);
+      assert.equal(row.kind, 'tool_call', 'the kind comes from the --event argument');
+      assert.match(row.content as string, /\[REDACTED:/);
+      assert.ok(!(row.content as string).includes(line.secret));
+      assert.ok(!everythingWritten(context.paths).includes(line.secret));
+    },
+    { database: false },
+  );
+});
+
+test('the spool path recovers the row the direct path would have written', async () => {
+  await withCapture(async (direct) => {
+    const content = 'oboete probe repository\nsecond line\n';
+    // The same payload on both paths, so the repository, the session and the content are the same
+    // and only the path into the database differs.
+    const payload = claudePostToolUse(direct.repo, content);
+
+    await direct.capture('claude', 'PostToolUse', payload);
+    const directRow = direct.all('SELECT * FROM raw_events')[0] as Json;
+
+    await withCapture(
+      async (spooled) => {
+        const outcome = await spooled.capture('claude', 'PostToolUse', payload);
+        assert.equal(outcome.outcome, 'spooled');
+
+        const recovered = recoverInto(spooled.paths);
+        assert.equal(recovered.inserted, 1);
+        const spooledRow = recovered.rows[0] as Json;
+
+        // The two rows differ in exactly two columns, both by design: `session_id` is a fresh uuid
+        // per installation (conventions "Identifiers"), and `via_spool` records the path the row
+        // took (data-model.md raw_events).
+        assert.equal(spooledRow.via_spool, 1);
+        assert.equal(directRow.via_spool, 0);
+        assert.notEqual(spooledRow.session_id, directRow.session_id);
+        const columns = Object.keys(directRow).filter(
+          (name) => name !== 'session_id' && name !== 'via_spool',
+        );
+        assert.ok(columns.includes('id') && columns.includes('payload_json'));
+        for (const column of columns) {
+          assert.deepEqual(spooledRow[column], directRow[column], `column ${column}`);
+        }
+
+        const sessions = spooled.all('SELECT native_session_id, agent FROM sessions');
+        assert.equal(sessions.length, 1);
+        assert.equal(sessions[0]?.native_session_id, payload.session_id);
+        assert.equal(spooled.all('SELECT id FROM repos').length, 1);
+      },
+      { database: false },
+    );
+  });
+});
+
+test('a metadata-only row is spooled like any other row', async () => {
   await withCapture(
     async (context) => {
       const payload: Json = {
@@ -660,19 +836,19 @@ test('a metadata-only row that cannot be spooled is not reported as a spool fail
       }) as typeof process.stderr.write;
       try {
         const outcome = await context.capture('claude', 'PreToolUse', payload);
-        assert.equal(outcome.outcome, 'dropped');
+        assert.equal(outcome.outcome, 'spooled');
       } finally {
         process.stderr.write = original;
       }
 
-      const message = written.join('');
-      assert.match(message, /metadata-only/);
-      // The spool is writable here, so the operator must not be sent to check its permissions.
-      assert.ok(
-        !message.includes('neither the database nor the spool'),
-        'the message blames the spool for a row that has no spool shape',
-      );
-      assert.deepEqual(listSpool(context.paths), []);
+      // Nothing was lost, so the hook reports nothing to the agent's stderr.
+      assert.equal(written.join(''), '');
+      const names = listSpool(context.paths);
+      assert.equal(names.length, 1);
+      const entry = readSpoolEntry(context.paths, names[0] as string);
+      assert.equal(entry?.row.classification_state, 'failed');
+      assert.equal(entry?.row.content, null, 'a metadata-only row carries no content');
+      assert.equal(entry?.session.native_session_id, 'sess-unmapped');
     },
     { database: false },
   );
@@ -919,9 +1095,54 @@ test('files written by capture stay owner-only', async () => {
       readStdin: () => ({ text: '{}', truncated: false }),
     });
 
-    for (const file of [context.paths.hookLog]) {
+    for (const file of [context.paths.hookLog, context.paths.spool, context.paths.spoolFailed]) {
       assert.equal(statSync(file).mode & 0o077, 0, `${file} is readable by other users`);
     }
-    assert.equal(readdirSync(context.paths.spool).length, 1, 'only pi-ack lives in an empty spool');
+    assert.deepEqual(
+      readdirSync(context.paths.spool).sort(),
+      ['failed', 'pi-ack'],
+      'only the two directories live in an empty spool',
+    );
   });
+});
+
+test('stdin is read one byte past the bound, and only that byte makes the payload partial', () => {
+  // A source that hands out `available` bytes in chunks, counting what the reader asked for.
+  function source(available: number): { read: (target: Buffer, length: number) => number; asked: () => number } {
+    let sent = 0;
+    let asked = 0;
+    return {
+      read: (target, length) => {
+        asked += length;
+        const count = Math.min(length, available - sent);
+        if (count <= 0) return 0;
+        target.fill(0x61, 0, count);
+        sent += count;
+        return count;
+      },
+      asked: () => asked,
+    };
+  }
+
+  const short = source(10);
+  assert.deepEqual(readStdinBounded(short.read), { text: 'a'.repeat(10), truncated: false });
+
+  // A payload of exactly the bound was not cut: nothing is missing, so the row is complete (A7).
+  const exact = source(STDIN_READ_BOUND);
+  const atBound = readStdinBounded(exact.read);
+  assert.equal(atBound.truncated, false);
+  assert.equal(atBound.text.length, STDIN_READ_BOUND);
+
+  const over = source(STDIN_READ_BOUND + 1);
+  const past = readStdinBounded(over.read);
+  assert.equal(past.truncated, true);
+  assert.equal(past.text.length, STDIN_READ_BOUND, 'the byte past the bound is never stored');
+
+  // A14: capture time does not grow with the payload, so the rest is never drained.
+  const huge = source(64 * 1_024 * 1_024);
+  assert.equal(readStdinBounded(huge.read).truncated, true);
+  assert.ok(
+    huge.asked() <= STDIN_READ_BOUND + 1,
+    `the hook asked for ${huge.asked()} bytes of a 64 MiB payload`,
+  );
 });

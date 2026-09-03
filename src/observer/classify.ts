@@ -6,13 +6,19 @@
 // the sensitivity lattice live here and nowhere else.
 import type { DatabaseSync } from 'node:sqlite';
 
-import { contentHash, materialHash, memoryIdFor } from '../db/identity.js';
+import { contentHash, materialHash, memoryIdFor, normalizeForIdentity } from '../db/identity.js';
 import { memoriesForSession, memoryScope, type NearbyCandidate } from '../db/queries.js';
 import { promoteSensitivity, strictest } from '../privacy/classify.js';
 import type { DetectorResult } from '../privacy/detect.js';
 import type { Sensitivity } from '../privacy/egress.js';
 import { cjkBigrams } from '../retrieval/fts.js';
-import { isSummarizableRow, payloadOf, stripPartial, type RawEventRow } from '../worker/batches.js';
+import {
+  isSummarizableRow,
+  payloadOf,
+  stripPartial,
+  toolPaths,
+  type RawEventRow,
+} from '../worker/batches.js';
 import { assertLease, transactionImmediate } from '../worker/lease.js';
 import {
   MAX_BODY,
@@ -128,10 +134,6 @@ export const DIRECTIVE_PHRASES: readonly string[] = [
   '指示を上書き',
 ];
 
-function normalizeForDirectives(text: string): string {
-  return text.normalize('NFKC').replace(/\s+/gu, ' ').trim().toLowerCase();
-}
-
 /**
  * The matched phrase, or null when the text reads as a record. Case and spacing do not hide a
  * phrase.
@@ -142,9 +144,10 @@ export function rejectsDirectives(
   text: string,
   corpus: readonly string[] = DIRECTIVE_PHRASES,
 ): string | null {
-  const haystack = normalizeForDirectives(text);
+  // The same normalization content identity uses (A13): NFKC, one space, trimmed, lowercased.
+  const haystack = normalizeForIdentity(text);
   for (const phrase of corpus) {
-    const needle = normalizeForDirectives(phrase);
+    const needle = normalizeForIdentity(phrase);
     if (needle !== '' && haystack.includes(needle)) return phrase;
   }
   return null;
@@ -431,13 +434,6 @@ function toolNameOf(row: RawEventRow): string {
   return typeof name === 'string' ? name : '';
 }
 
-function pathsOf(row: RawEventRow): string[] {
-  const input = payloadOf(row)?.input;
-  if (typeof input !== 'object' || input === null) return [];
-  const paths = (input as { paths?: unknown }).paths;
-  return Array.isArray(paths) ? paths.filter((path): path is string => typeof path === 'string') : [];
-}
-
 /** A list line under the trim order: display paths shortened, then cut from the end. */
 function listLine(label: string, items: string[], cap: number): string {
   const kept = items.slice(0, cap);
@@ -532,7 +528,7 @@ export function sessionSummary(
     for (const row of rows) {
       if (row.kind !== 'tool_call') continue;
       const tool = toolNameOf(row);
-      for (const path of pathsOf(row)) {
+      for (const path of toolPaths(row)) {
         const display = shortenDisplayPath(path);
         if (READ_TOOLS.has(tool) && !investigated.includes(display)) investigated.push(display);
         if (WRITE_TOOLS.has(tool)) modified.set(display, (modified.get(display) ?? 0) + 1);

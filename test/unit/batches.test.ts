@@ -346,13 +346,21 @@ test('spool recovery is idempotent and quarantines a file it cannot read', async
     };
     writeFileSync(join(paths.spool, `${NOW - DAY}-spooled-1.json`), JSON.stringify(entry));
     writeFileSync(join(paths.spool, `${NOW - DAY}-broken.json`), '{ not json');
+    // A file that parses but is not an entry is not trusted into the database either (R4).
+    writeFileSync(
+      join(paths.spool, `${NOW - DAY}-shaped.json`),
+      JSON.stringify({ id: 'x', repo_id: 'repo1', event: { kind: 'prompt' } }),
+    );
 
     const first = recoverSpool(db, paths, token, NOW);
     assert.equal(first.inserted, 1);
-    assert.equal(first.failed, 1);
+    assert.equal(first.failed, 2);
     const stored = db.prepare('SELECT via_spool FROM raw_events WHERE id = ?').get('spooled-1');
     assert.equal(Number(stored?.via_spool), 1);
-    assert.deepEqual(readdirSync(join(paths.spool, 'failed')), [`${NOW - DAY}-broken.json`]);
+    assert.deepEqual(readdirSync(paths.spoolFailed).sort(), [
+      `${NOW - DAY}-broken.json`,
+      `${NOW - DAY}-shaped.json`,
+    ]);
 
     // FR-003: the deterministic id makes a second recovery of the same file a no-op.
     writeFileSync(join(paths.spool, `${NOW - DAY}-spooled-1.json`), JSON.stringify(entry));
