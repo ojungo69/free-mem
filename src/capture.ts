@@ -21,7 +21,14 @@ import {
   type AdapterAgent,
   type AdapterOutput,
 } from './agents/index.js';
-import { ConfigError, RepoConfigError, isPaused, loadConfig, loadRepoRules } from './config.js';
+import {
+  ConfigError,
+  RepoConfigError,
+  isPaused,
+  loadConfig,
+  loadRepoRules,
+  type OboeteConfig,
+} from './config.js';
 import { openDatabase } from './db/open.js';
 import {
   contentHash,
@@ -38,9 +45,12 @@ import { detectInWorker, type DetectorInput, type DetectorResult } from './priva
 import { resolveRepoIdentity, type RepoIdentity } from './repo-identity.js';
 import { writeSpoolEntry, type SpoolEntry } from './spool.js';
 import { isLeaseFree, transactionImmediate } from './worker/lease.js';
+import type { HookContext } from './injection/inject.js';
 
 /** The absolute budget of a capture hook, measured from process start (contracts/agents.md). */
 export const CAPTURE_DEADLINE_MS = 300;
+/** Capture's 300 ms plus A2's one-second session-summary wait and delivery margin. */
+export const INJECTION_DEADLINE_MS = 1_300;
 /** Held back first, so a sanitized event always has time to reach the spool. */
 export const SPOOL_RESERVE_MS = 40;
 /** Between the detector's hard cutoff and the spool reserve: building and inserting the rows. */
@@ -92,9 +102,6 @@ const BATCH_TRIGGER_KINDS: ReadonlySet<EventKind> = new Set<EventKind>([
   'last_assistant_message',
 ]);
 
-// The two events that carry a pack back to the agent on stdout (contracts/agents.md).
-const INJECTION_EVENTS: ReadonlySet<string> = new Set(['SessionStart', 'UserPromptSubmit']);
-
 /**
  * FR-021: injected text must be recognized on capture so it is not summarized as new activity.
  * Recognition against `injections.pack_hash` is T065; until then nothing is recognized, which is
@@ -103,14 +110,6 @@ const INJECTION_EVENTS: ReadonlySet<string> = new Set(['SessionStart', 'UserProm
 export function recognizeInjectedText(text: string): boolean {
   void text;
   return false;
-}
-
-/**
- * The pack an injection event answers with. Building it is T046 (retrieval, budget, ledger); until
- * then the hook prints nothing, which contracts/cli.md allows ("pack or nothing").
- */
-function emitInjection(): string {
-  return '';
 }
 
 export type StdinRead = { text: string; truncated: boolean };
@@ -139,6 +138,15 @@ export type CaptureOutcome = {
   outcome: 'paused' | 'not_captured' | 'stored' | 'spooled' | 'dropped';
   rows: number;
   reason?: string;
+  /** Native hook transport written by runHook after capture and logging complete. */
+  stdout?: string;
+};
+
+type InjectionSeed = {
+  eventName: string;
+  event: NormalizedEvent;
+  config: OboeteConfig;
+  secretPaths: string[];
 };
 
 type Diagnostic = { kind: string; agent: AgentName; messageCode: string };
@@ -603,15 +611,110 @@ function spoolAll(paths: OboetePaths, identity: RepoIdentity, rows: RowDraft[]):
   return { outcome: spooled > 0 ? 'spooled' : 'dropped', rows: spooled };
 }
 
-function write(
+const INJECTION_BRANCHES: Readonly<Record<AgentName, ReadonlySet<string>>> = {
+  claude: new Set(['SessionStart', 'UserPromptSubmit']),
+  codex: new Set(['SessionStart', 'UserPromptSubmit']),
+  grok: new Set([
+    'SessionStart',
+    'UserPromptSubmit',
+    'PreToolUse',
+    'PostToolUse',
+    'PostToolUseFailure',
+    'PermissionDenied',
+    'Stop',
+  ]),
+  pi: new Set(),
+  unknown: new Set(),
+};
+
+const INJECTION_DEADLINE_EVENTS: Readonly<Record<AgentName, ReadonlySet<string>>> = {
+  claude: new Set(['SessionStart', 'UserPromptSubmit']),
+  codex: new Set(['SessionStart', 'UserPromptSubmit']),
+  grok: new Set(['SessionStart', 'UserPromptSubmit', 'PreToolUse', 'PostToolUse']),
+  pi: new Set(),
+  unknown: new Set(),
+};
+
+/** The outer hook deadline table; capture-only events retain the 300 ms deadline. */
+export function hookDeadlineMs(agent: AgentName, eventName: string): number {
+  return INJECTION_DEADLINE_EVENTS[agent].has(eventName)
+    ? INJECTION_DEADLINE_MS
+    : CAPTURE_DEADLINE_MS;
+}
+
+function currentTurnId(db: DatabaseSync, sessionId: string): string | null {
+  const row = db
+    .prepare(
+      `SELECT id FROM turns WHERE session_id = ?
+       AND ordinal = (SELECT turn_count FROM sessions WHERE id = ?)`,
+    )
+    .get(sessionId, sessionId);
+  return row === undefined ? null : String(row.id);
+}
+
+async function injectAfterCapture(
+  deps: CaptureDeps,
+  paths: OboetePaths,
+  identity: RepoIdentity,
+  seed: InjectionSeed | undefined,
+  db: DatabaseSync | undefined,
+  sessionCreated = false,
+): Promise<string> {
+  if (seed === undefined || !INJECTION_BRANCHES[seed.event.agent].has(seed.eventName)) return '';
+
+  const session =
+    db === undefined
+      ? undefined
+      : readSession(db, seed.event.agent, seed.event.native_session_id);
+  const conversationId = session?.conversationId ?? seed.event.native_session_id;
+  const root = db === undefined ? null : readEpoch(db, conversationId);
+  const context: HookContext = {
+    agent: seed.event.agent,
+    eventName: seed.eventName,
+    event: seed.event,
+    sessionId: session?.id ?? seed.event.native_session_id,
+    conversationId,
+    turnId: db === undefined || session === undefined ? null : currentTurnId(db, session.id),
+    epoch: root?.contextEpoch ?? session?.contextEpoch ?? 0,
+    repoId: identity.id,
+    repoIdentityDisplay: identity.normalizedIdentity,
+    repoRoot: identity.root,
+    model: seed.event.model,
+    cwd: seed.event.cwd,
+    config: seed.config,
+    paths,
+    db,
+    sessionCreated: session !== undefined && sessionCreated,
+    secretPaths: seed.secretPaths,
+    remainingBudget: () => hookDeadlineMs(seed.event.agent, seed.eventName) - deps.elapsedMs(),
+  };
+  try {
+    return await (await import('./injection/inject.js')).injectForHook(context);
+  } catch (error) {
+    try {
+      appendLog(paths.hookLog, 'error', 'injection failed', {
+        agent: seed.event.agent,
+        event: seed.eventName,
+        reason: error instanceof Error ? error.message.split('\n')[0] : String(error),
+      });
+    } catch {
+      // The hook still exits zero when the diagnostic surface is unavailable (FR-002).
+    }
+    return '';
+  }
+}
+
+async function write(
   deps: CaptureDeps,
   paths: OboetePaths,
   identity: RepoIdentity,
   rows: RowDraft[],
   diagnostics: Diagnostic[],
   capturedAt: number,
-): CaptureOutcome {
-  const remaining = (): number => CAPTURE_DEADLINE_MS - deps.elapsedMs();
+  injection?: InjectionSeed,
+  deadlineMs = CAPTURE_DEADLINE_MS,
+): Promise<CaptureOutcome> {
+  const remaining = (): number => deadlineMs - deps.elapsedMs();
   if (rows.length === 0 && diagnostics.length === 0) return { outcome: 'dropped', rows: 0 };
 
   // contracts/agents.md: below the spool reserve the database is not opened at all.
@@ -635,28 +738,54 @@ function write(
 
     if (opened !== null) {
       try {
+        const sessionExisted =
+          injection === undefined ||
+          readSession(opened.db, injection.event.agent, injection.event.native_session_id) !== undefined;
         // One read-then-write unit, one transaction (conventions "Database access"): a failure
         // half way through would otherwise leave rows behind that the spool then writes again
         // under the id of another turn (R7: the direct path keys by the ordinal it read).
-        const stored = transactionImmediate(opened.db, () =>
-          storeRows(opened.db, identity, rows, diagnostics, capturedAt),
+        let stored: ReturnType<typeof storeRows>;
+        try {
+          stored = transactionImmediate(opened.db, () =>
+            storeRows(opened.db, identity, rows, diagnostics, capturedAt),
+          );
+        } catch {
+          // R1: a storage failure before the transaction commits writes the sanitized event to the
+          // spool. Injection then sees no database and records index_unavailable in the hook log.
+          const outcome = spoolAll(paths, identity, rows);
+          return {
+            ...outcome,
+            stdout: await injectAfterCapture(deps, paths, identity, injection, undefined),
+          };
+        }
+        const stdout = await injectAfterCapture(
+          deps,
+          paths,
+          identity,
+          injection,
+          opened.db,
+          !sessionExisted,
         );
         if (stored.trigger && remaining() >= SPAWN_MIN_REMAINING_MS && isLeaseFree(opened.db, Date.now())) {
           // R6: a hook spawns the detached worker only when the lease is free or stale. The lease
           // is compared against the real clock, which is the clock its heartbeats are written on.
           deps.spawnWorker();
         }
-        return { outcome: rows.length === 0 ? 'dropped' : 'stored', rows: stored.inserted };
-      } catch {
-        // R1: SQLITE_BUSY, SQLITE_LOCKED or any other storage failure after the detector spools
-        // the already sanitized event; the deterministic id makes recovery idempotent (FR-003).
-        return spoolAll(paths, identity, rows);
+        return {
+          outcome: rows.length === 0 ? 'dropped' : 'stored',
+          rows: stored.inserted,
+          stdout,
+        };
       } finally {
         opened.db.close();
       }
     }
   }
-  return spoolAll(paths, identity, rows);
+  const outcome = spoolAll(paths, identity, rows);
+  return {
+    ...outcome,
+    stdout: await injectAfterCapture(deps, paths, identity, injection, undefined),
+  };
 }
 
 /**
@@ -671,6 +800,14 @@ export async function captureEvent(deps: CaptureDeps, input: CaptureInput): Prom
   ensureDirectories(paths);
 
   const capturedAt = deps.now();
+  const deadlineMs = hookDeadlineMs(input.agent, input.eventName);
+  const persist = (
+    identity: RepoIdentity,
+    rows: RowDraft[],
+    entries: Diagnostic[],
+    injection?: InjectionSeed,
+  ): Promise<CaptureOutcome> =>
+    write(deps, paths, identity, rows, entries, capturedAt, injection, deadlineMs);
   const stdin = input.readStdin();
   const diagnostics: Diagnostic[] = (input.priorFailures ?? []).map((code) => ({
     kind: 'pi_child_failed',
@@ -699,7 +836,7 @@ export async function captureEvent(deps: CaptureDeps, input: CaptureInput): Prom
             }),
           ];
     // FR-004: the repository comes from the directory the hook runs in, never from a payload.
-    return write(deps, paths, resolveRepoIdentity(process.cwd()), rows, diagnostics, capturedAt);
+    return persist(resolveRepoIdentity(process.cwd()), rows, diagnostics);
   }
 
   const agent: AdapterAgent = input.agent;
@@ -730,7 +867,7 @@ export async function captureEvent(deps: CaptureDeps, input: CaptureInput): Prom
     const sessionId = adapted.metadata.nativeSessionId;
     if (sessionId === null || kindFromName === undefined) {
       diagnostics.push({ kind: 'unreadable_payload', agent, messageCode: input.eventName || 'none' });
-      return write(deps, paths, resolveRepoIdentity(process.cwd()), [], diagnostics, capturedAt);
+      return persist(resolveRepoIdentity(process.cwd()), [], diagnostics);
     }
     const row = metadataRow({
       agent,
@@ -745,7 +882,7 @@ export async function captureEvent(deps: CaptureDeps, input: CaptureInput): Prom
         tool_name: adapted.metadata.toolName ?? undefined,
       },
     });
-    return write(deps, paths, resolveRepoIdentity(process.cwd()), [row], diagnostics, capturedAt);
+    return persist(resolveRepoIdentity(process.cwd()), [row], diagnostics);
   }
 
   const events = adapted.events;
@@ -754,30 +891,36 @@ export async function captureEvent(deps: CaptureDeps, input: CaptureInput): Prom
   // FR-004: the payload's `cwd` is used as a directory to run git in, never as an identity.
   const identity = resolveRepoIdentity(first.cwd);
 
-  const rules = readRules(paths, identity.root);
-  if (rules === null) {
+  const settings = readSettings(paths, identity.root);
+  if (settings === null) {
     // R4: a malformed configuration is a classification failure, so the event keeps metadata only.
     const rows = events.map((event) => failedEventRow(event, 'config_malformed'));
-    return write(deps, paths, identity, rows, diagnostics, capturedAt);
+    return persist(identity, rows, diagnostics);
   }
+  const injection: InjectionSeed = {
+    eventName: input.eventName,
+    event: events[events.length - 1] as NormalizedEvent,
+    config: settings.config,
+    secretPaths: settings.secretPaths,
+  };
 
   const fields = events.flatMap((event) => textFields(event));
   const detected = await runDetector(deps, {
     fields: fields.map((field) => field.read()),
     paths: adapted.contentForDetector.paths,
     identity,
-    secretPaths: rules,
-  });
+    secretPaths: settings.secretPaths,
+  }, deadlineMs);
 
   if (!detected.ok) {
     const rows = events.map((event) => failedEventRow(event, detected.reason));
-    return write(deps, paths, identity, rows, diagnostics, capturedAt);
+    return persist(identity, rows, diagnostics, injection);
   }
   if (detected.pathRule === null) {
     if (detected.texts.length !== fields.length) {
       // The detector answered a shape this build does not understand, which is a detector failure.
       const rows = events.map((event) => failedEventRow(event, 'detector_error'));
-      return write(deps, paths, identity, rows, diagnostics, capturedAt);
+      return persist(identity, rows, diagnostics, injection);
     }
     fields.forEach((field, index) => field.write(detected.texts[index] as string));
   } else {
@@ -785,13 +928,11 @@ export async function captureEvent(deps: CaptureDeps, input: CaptureInput): Prom
     for (const field of fields) field.write('');
   }
 
-  return write(
-    deps,
-    paths,
+  return persist(
     identity,
     events.map((event) => eventRow(event, detected)),
     diagnostics,
-    capturedAt,
+    injection,
   );
 }
 
@@ -847,8 +988,8 @@ async function captureUnparsed(
     return write(deps, paths, identity, [row], context.diagnostics, context.capturedAt);
   }
 
-  const rules = readRules(paths, identity.root);
-  if (rules === null) {
+  const settings = readSettings(paths, identity.root);
+  if (settings === null) {
     const row = metadataRow({ ...base, payload: { ...metadata, failure_reason: 'config_malformed' } });
     return write(deps, paths, identity, [row], context.diagnostics, context.capturedAt);
   }
@@ -857,7 +998,7 @@ async function captureUnparsed(
     fields: [context.stdin.text],
     paths: scanned.paths,
     identity,
-    secretPaths: rules,
+    secretPaths: settings.secretPaths,
   });
   if (!detected.ok) {
     const row = metadataRow({ ...base, payload: { ...metadata, failure_reason: detected.reason } });
@@ -879,10 +1020,16 @@ async function captureUnparsed(
   return write(deps, paths, identity, [row], context.diagnostics, context.capturedAt);
 }
 
-/** The user configuration and the repository rules, or null when either one is malformed (R4). */
-function readRules(paths: OboetePaths, repoRoot: string): string[] | null {
+type CaptureSettings = { config: OboeteConfig; secretPaths: string[] };
+
+/** The user configuration and repository rules, or null when either one is malformed (R4). */
+function readSettings(paths: OboetePaths, repoRoot: string): CaptureSettings | null {
   try {
-    return [...loadConfig(paths).privacy.secret_paths, ...loadRepoRules(repoRoot).secretPaths];
+    const config = loadConfig(paths);
+    return {
+      config,
+      secretPaths: [...config.privacy.secret_paths, ...loadRepoRules(repoRoot).secretPaths],
+    };
   } catch (error) {
     if (error instanceof ConfigError || error instanceof RepoConfigError) return null;
     throw error;
@@ -892,9 +1039,10 @@ function readRules(paths: OboetePaths, repoRoot: string): string[] | null {
 async function runDetector(
   deps: CaptureDeps,
   input: { fields: string[]; paths: string[]; identity: RepoIdentity; secretPaths: string[] },
+  deadlineMs = CAPTURE_DEADLINE_MS,
 ): Promise<DetectorResult> {
   const cutoff = Math.floor(
-    CAPTURE_DEADLINE_MS - deps.elapsedMs() - SPOOL_RESERVE_MS - ROW_BUILD_MARGIN_MS,
+    deadlineMs - deps.elapsedMs() - SPOOL_RESERVE_MS - ROW_BUILD_MARGIN_MS,
   );
   // Nothing left to run the detector in, and unscanned content is never stored (FR-018).
   if (cutoff <= 0) return { ok: false, reason: 'deadline' };
@@ -1017,10 +1165,7 @@ async function runCaptureCommand(
       rows: outcome.rows,
     });
   }
-  if (INJECTION_EVENTS.has(input.eventName)) {
-    const pack = emitInjection();
-    if (pack !== '') process.stdout.write(pack);
-  }
+  if (outcome.stdout !== undefined && outcome.stdout !== '') process.stdout.write(outcome.stdout);
   return 0;
 }
 

@@ -28,6 +28,7 @@ const commands: Record<string, () => Promise<(argv: string[]) => Promise<number>
   hook: () => import('./capture.js').then((module) => module.runHook),
   capture: () => import('./capture.js').then((module) => module.runCapture),
   observe: () => import('./worker/observe.js').then((module) => module.runObserve),
+  inject: () => import('./injection/inject.js').then((module) => module.runInject),
 };
 
 /**
