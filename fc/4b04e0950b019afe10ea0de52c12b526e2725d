@@ -1,0 +1,21 @@
+test/e2e-hook.test.ts
+  s_fb58e09627940f::t_3cadfa01079ce5 33-37,63,79-86,115,121,143,149,171,178
+test/unit/deferred.test.ts
+  s_fb58e09627940f::t_882ee87a600832 63,327-328,363-364,383,396,399,430,432,463-464
+---
+{
+  "schema_version": "authorship/3.0.0",
+  "git_ai_version": "1.6.16",
+  "base_commit_sha": "fc4b04e0950b019afe10ea0de52c12b526e2725d",
+  "prompts": {},
+  "sessions": {
+    "s_fb58e09627940f": {
+      "agent_id": {
+        "tool": "claude",
+        "id": "85541cda-e22f-45ae-a41f-98db490b90bf",
+        "model": "claude-fable-5-1"
+      },
+      "human_author": "ojungo69 <210335670+ojungo69@users.noreply.github.com>"
+    }
+  }
+}
