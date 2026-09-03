@@ -1,6 +1,8 @@
 import type { DatabaseSync, SQLInputValue, SQLOutputValue } from 'node:sqlite';
 
 import type { Destination, Sensitivity } from '../privacy/egress.js';
+import { searchCandidates } from '../retrieval/query.js';
+import { normalizeBm25, rrfFuse } from '../retrieval/rank.js';
 
 export type ReviewState = 'unreviewed' | 'reviewed' | 'imported';
 export type SummaryState = 'pending' | 'done' | 'no_content';
@@ -244,4 +246,64 @@ export function markInjected(db: DatabaseSync, ids: string[], now: number): void
 // The columns are the ones the migration defines; SQLite gives them back untyped.
 function asMemoryRows(rows: Record<string, SQLOutputValue>[]): MemoryRow[] {
   return rows as unknown as MemoryRow[];
+}
+
+/**
+ * A classification candidate: a memory of the same repository as the batch, tombstones and
+ * superseded rows included (R10, contracts/observer.md "Worker rules after either path").
+ */
+export type NearbyCandidate = {
+  id: string;
+  repo_id: string;
+  type: string;
+  title: string;
+  body: string;
+  content_hash: string;
+  deleted: boolean;
+  sensitivity: Sensitivity;
+};
+
+/**
+ * The top `limit` same-repository memories for the batch text (R10: top 8, tombstones included).
+ * The scope is deliberately the repository alone: `memoryScope` hides tombstoned and superseded
+ * rows, which are exactly the rows the tombstone check and an `update` decision need (FR-035).
+ * Sensitivity travels with each row so `observer/request.ts` can drop what a destination may not
+ * receive; this function never decides egress itself.
+ */
+export function nearbyCandidates(
+  db: DatabaseSync,
+  input: { repoId: string; text: string; limit?: number },
+): NearbyCandidate[] {
+  const limit = input.limit ?? 8;
+  const found = searchCandidates(db, {
+    text: input.text,
+    scope: { where: 'm.repo_id = ?', params: [input.repoId] },
+    limit,
+  });
+  const ranked = rrfFuse(normalizeBm25(normalizeBm25(found.rows, 'scoreTrigram'), 'scoreCjk'))
+    .sort((left, right) => (right.score_rrf ?? 0) - (left.score_rrf ?? 0) || (left.id < right.id ? -1 : 1))
+    .slice(0, limit);
+  if (ranked.length === 0) return [];
+
+  const byId = new Map<string, NearbyCandidate>();
+  const rows = db
+    .prepare(
+      `SELECT m.id, m.repo_id, m.type, m.title, m.body, m.content_hash, m.sensitivity, m.deleted_at
+       FROM memories m WHERE m.id IN (${ranked.map(() => '?').join(', ')})`,
+    )
+    .all(...ranked.map((row) => row.id));
+  for (const row of rows) {
+    byId.set(String(row.id), {
+      id: String(row.id),
+      repo_id: String(row.repo_id),
+      type: String(row.type),
+      title: typeof row.title === 'string' ? row.title : '',
+      body: typeof row.body === 'string' ? row.body : '',
+      content_hash: String(row.content_hash),
+      deleted: row.deleted_at !== null,
+      sensitivity: row.sensitivity as Sensitivity,
+    });
+  }
+  // The search decided the order; the second query only fills the columns it does not return.
+  return ranked.map((row) => byId.get(row.id)).filter((row): row is NearbyCandidate => row !== undefined);
 }
