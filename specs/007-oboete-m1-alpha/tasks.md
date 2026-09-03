@@ -84,7 +84,7 @@ retrieval and the shared pack builder. Every user story depends on this phase.
 
 ### Capture path and privacy boundary
 
-- [ ] T024 [CC] Write red tests first in test/unit/privacy.test.ts: fail-closed (secret corpus test/corpus/secrets.jsonl redacted before any write, `<private>` stripped incl. unclosed tag, path-rule hits stored as metadata only, detector throw and malformed .oboete.toml → classification_state = failed, stdin above 1 MB → metadata-only failed row) and fail-open (eligible content stored whole)
+- [ ] T024 [CC] Write red tests first in test/unit/privacy.test.ts: fail-closed (secret corpus test/corpus/secrets.jsonl redacted before any write, `<private>` stripped incl. unclosed tag, path-rule hits stored as metadata only, detector throw and malformed .oboete.toml → classification_state = failed, stdin above 1 MB → redacted partial row marked truncated, A7) and fail-open (eligible content stored whole)
 - [ ] T025 [CC] Implement src/privacy/detect.ts: private strip, path rules, @secretlint/core lintSource with the statically imported recommend preset, gated entropy, `[REDACTED:<rule>]`, run inside a worker_threads Worker with a hard cutoff
 - [ ] T026 [CC] Implement src/events.ts: zod discriminated union of normalized events, event id derivation (kind in every key, no delivery counter), conversation id rules (resume keeps the root, fork and Grok new start one)
 - [ ] T027 [CC] Implement src/capture.ts: absolute deadline with spool reserve, 1 MB stdin bound, detector before the first write, insert into raw_events or spool file (write-then-rename), busy timeout min(150 ms, remaining − reserve), worker spawn when the lease is free; wire src/cli.ts `hook --agent <selector> --event <name>`, `capture --agent pi --invocation <id>`

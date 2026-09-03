@@ -67,7 +67,7 @@ tables are `STRICT`; FTS5 virtual tables cannot be. Every write from the worker 
 | payload_json | TEXT | normalized fields (zod-validated); no raw passthrough |
 | content_hash | TEXT | |
 | sensitivity | TEXT | `local_only` (default), `eligible`, `secret`, `private` |
-| classification_state | TEXT | `pending`, `done`, `partial` (payload above the 1 MB read bound: redacted read part kept with `truncated = 1`, never promoted, metadata only to the fallback, never to a provider or a pack), `failed` (detector or config failure, or payload above the 1 MB read bound: metadata only with `payload_json.failure_reason`, never summarized or injected) |
+| classification_state | TEXT | `pending`, `done`, `partial` (payload above the 1 MB read bound: redacted read part kept with `truncated = 1`, never promoted, metadata only to the fallback, never to a provider or a pack), `failed` (detector or config failure: metadata only with `payload_json.failure_reason`, never summarized or injected) |
 | captured_at, expires_at | INTEGER | `expires_at` = captured_at + 7 days |
 | batch_id | TEXT | set when claimed |
 | via_spool | INTEGER | |
