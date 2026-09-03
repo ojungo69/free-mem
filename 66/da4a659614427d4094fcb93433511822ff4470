@@ -1,0 +1,85 @@
+src/privacy/classify.ts
+  s_fb58e09627940f::t_a51b777d993c4c 42-45
+  s_fb58e09627940f::t_19f4773275d5df 39-41
+  s_fb58e09627940f::t_cdf594e5ab1cb0 46-48
+  s_038654ba837333::t_5ddcb37bdb27d4 1-38,49
+test/unit/privacy.test.ts
+  s_fb58e09627940f::t_c928c0261b1404 6
+  s_fb58e09627940f::t_b8bdd4f2179488 98,109,118,125,130,136,138,149,165,178,194,223,229,233-234,243,279,287,289-305,333-334,357-358,389-390,428,437,478-479,493
+  s_fb58e09627940f::t_a9f5db27114f54 60,67,69-79,83,97,108,242,278,286,427,492
+  s_fb58e09627940f::t_25db12ffc79a52 96
+  s_fb58e09627940f::t_f952700f3dead7 3-5
+  s_fb58e09627940f::t_835b4c68f88d7b 7-9,57-59
+  s_fb58e09627940f::t_c7aaad5b2b017c 61-66
+  s_fb58e09627940f::t_c46adef6785912 68
+  s_fb58e09627940f::t_fc330b0d66eeed 80-82
+  s_fb58e09627940f::t_e52064b8609f0b 84-86,93-95
+  s_fb58e09627940f::t_bb757d5bccc4ce 99-101,105-107
+  s_fb58e09627940f::t_42459d54c66d96 110-112,115-117
+  s_fb58e09627940f::t_c73d0464f51821 119-124
+  s_fb58e09627940f::t_b3f870316d5a0c 126-129
+  s_fb58e09627940f::t_3c46a4d802a39c 131-135
+  s_fb58e09627940f::t_354ac3948a6991 137
+  s_fb58e09627940f::t_2b6b0da06cde69 139-141,146-148
+  s_fb58e09627940f::t_8afa6a114d42d4 150-152,162-164
+  s_fb58e09627940f::t_dc5e8390d177fa 166-168,175-177
+  s_fb58e09627940f::t_6355058d6f11e9 179-181,191-193
+  s_fb58e09627940f::t_138a6ff0a4396e 195-197,220-222
+  s_fb58e09627940f::t_56dfa416fb619f 224-228
+  s_fb58e09627940f::t_a93f5a89c00365 230-232
+  s_fb58e09627940f::t_2c02bcce12ce25 235-237,239-241
+  s_fb58e09627940f::t_b8b540c8b61c17 244-246,275-277
+  s_fb58e09627940f::t_451f746e6f739a 280-285
+  s_fb58e09627940f::t_def4348f9f2c35 288
+  s_fb58e09627940f::t_d8b37d53377f39 306-308,330-332
+  s_fb58e09627940f::t_7050ed025056a0 335-337,354-356
+  s_fb58e09627940f::t_2626ad78543ddd 359-361,386-388
+  s_fb58e09627940f::t_acc7250f1a80c5 391-393,424-426
+  s_fb58e09627940f::t_1a90fbc298b950 429-431,434-436
+  s_fb58e09627940f::t_af48852945004f 438-440,475-477
+  s_fb58e09627940f::t_fce7b7ed5fde3e 480-482,489-491
+  s_6b298ca4004123::t_78be17a86f0ad3 1-2,10-56,87-92,102-104,113-114,142-145,153-161,169-174,182-190,198-219,238,247-274,309-329,338-353,362-385,394-423,432-433,441-474,483-488
+src/cli.ts
+  s_fb58e09627940f::t_7d96e4d4d7efd4 73-78,86
+  s_fb58e09627940f::t_e5e6e4da8b52c7 2,79-85
+.gitleaks.toml
+  s_fb58e09627940f::t_62c76951f4b063 26-51
+src/privacy/detect.ts
+  s_fb58e09627940f::t_0d0246d6337a9e 1-339
+src/privacy/egress.ts
+  s_fb58e09627940f::t_a50f5a454c914d 1-85
+test/corpus/secrets.jsonl
+  s_fb58e09627940f::t_f4e585b244578b 1-37
+---
+{
+  "schema_version": "authorship/3.0.0",
+  "git_ai_version": "1.6.16",
+  "base_commit_sha": "66da4a659614427d4094fcb93433511822ff4470",
+  "prompts": {},
+  "sessions": {
+    "s_038654ba837333": {
+      "agent_id": {
+        "tool": "codex",
+        "id": "01a06895-2774-70c0-97d5-4bc601b4d4c8",
+        "model": "unknown"
+      },
+      "human_author": "ojungo69 <210335670+ojungo69@users.noreply.github.com>"
+    },
+    "s_6b298ca4004123": {
+      "agent_id": {
+        "tool": "claude",
+        "id": "agent-a35a0e4d550716030",
+        "model": "unknown"
+      },
+      "human_author": "ojungo69 <210335670+ojungo69@users.noreply.github.com>"
+    },
+    "s_fb58e09627940f": {
+      "agent_id": {
+        "tool": "claude",
+        "id": "85541cda-e22f-45ae-a41f-98db490b90bf",
+        "model": "claude-fable-5-1"
+      },
+      "human_author": "ojungo69 <210335670+ojungo69@users.noreply.github.com>"
+    }
+  }
+}
