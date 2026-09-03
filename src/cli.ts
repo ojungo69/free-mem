@@ -27,6 +27,7 @@ const knownCommands = [
 const commands: Record<string, () => Promise<(argv: string[]) => Promise<number>>> = {
   hook: () => import('./capture.js').then((module) => module.runHook),
   capture: () => import('./capture.js').then((module) => module.runCapture),
+  inject: () => import('./injection/inject.js').then((module) => module.runInject),
 };
 
 /**
