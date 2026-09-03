@@ -1,0 +1,83 @@
+specs/007-oboete-m1-alpha/verify-tasks-report.md
+  s_767fcd19c0d8da::t_e6ed3777f8ebe7 1-44
+docs/research/context-windows.md
+  s_767fcd19c0d8da::t_ce513b91d73268 1-65
+docs/research/oboete-contracts-probes.md
+  s_767fcd19c0d8da::t_a3a24ebcd156bb 1-87
+scripts/e2e/dogfood.sh
+  s_767fcd19c0d8da::t_a55cc748d3ee09 1-41
+scripts/e2e/probe-contracts.mjs
+  s_767fcd19c0d8da::t_4ce3cdefe70ee2 1-201
+scripts/e2e/probe-lib/agents.mjs
+  s_767fcd19c0d8da::t_bd7f898f3c4925 1-742
+scripts/e2e/probe-lib/hook.mjs
+  s_767fcd19c0d8da::t_9b3700fdaf3a70 1-109
+scripts/e2e/probe-lib/mcp-dummy.mjs
+  s_767fcd19c0d8da::t_845a68eafeb242 1-73
+scripts/e2e/probe-lib/pi-extension.ts
+  s_767fcd19c0d8da::t_90684bccbdeb1d 1-166
+scripts/e2e/probe-lib/tmux.mjs
+  s_767fcd19c0d8da::t_7812003adcea5f 1-31
+scripts/e2e/probe-lib/trusthash.mjs
+  s_767fcd19c0d8da::t_623bb16c8e90fd 1-44
+scripts/e2e/probes/claude.mjs
+  s_767fcd19c0d8da::t_6ff868daff593a 1-68
+scripts/e2e/probes/codex.mjs
+  s_767fcd19c0d8da::t_e02ab52d3f27e6 1-150
+scripts/e2e/probes/grok.mjs
+  s_767fcd19c0d8da::t_7dab41fe2d6c3a 1-85
+scripts/e2e/probes/pi.mjs
+  s_767fcd19c0d8da::t_06cc0451ad1d00 1-46
+scripts/e2e/probes/providers.mjs
+  s_767fcd19c0d8da::t_e26046dfad9d2d 1-385
+specs/007-oboete-m1-alpha/tasks.md
+  s_767fcd19c0d8da::t_27aeafd0a0fa2b 45-46,50-52
+test/contracts/claude/bash.json
+  s_767fcd19c0d8da::t_d58dca8f9b0d5c 1-52
+test/contracts/claude/edit.json
+  s_767fcd19c0d8da::t_d85dcb3f092d7b 1-69
+test/contracts/claude/read.json
+  s_767fcd19c0d8da::t_e81c0bb7a7bd94 1-53
+test/contracts/claude/write.json
+  s_767fcd19c0d8da::t_13fd8eb5633735 1-53
+test/contracts/codex/apply_patch-add.json
+  s_767fcd19c0d8da::t_a4be00b64439f2 1-39
+test/contracts/codex/apply_patch-update.json
+  s_767fcd19c0d8da::t_904a8d18374116 1-39
+test/contracts/codex/bash-read.json
+  s_767fcd19c0d8da::t_e259c228d50543 1-39
+test/contracts/codex/bash.json
+  s_767fcd19c0d8da::t_eadf1f390ee98e 1-39
+test/contracts/grok/read_file.json
+  s_767fcd19c0d8da::t_a6f87cb6029e0e 1-84
+test/contracts/grok/run_terminal_command.json
+  s_767fcd19c0d8da::t_eb71ebe51a893f 1-116
+test/contracts/grok/search_replace.json
+  s_767fcd19c0d8da::t_30d55685636b8f 1-116
+test/contracts/grok/write.json
+  s_767fcd19c0d8da::t_3f1f03b88d5ae5 1-112
+test/contracts/pi/bash.json
+  s_767fcd19c0d8da::t_0db224afe59cb7 1-33
+test/contracts/pi/edit.json
+  s_767fcd19c0d8da::t_991a1006e2252f 1-50
+test/contracts/pi/read.json
+  s_767fcd19c0d8da::t_bd50f9b00252b0 1-33
+test/contracts/pi/write.json
+  s_767fcd19c0d8da::t_02c91add2dd32d 1-35
+---
+{
+  "schema_version": "authorship/3.0.0",
+  "git_ai_version": "1.6.16",
+  "base_commit_sha": "5446e0c45604cff519d5c7339327023f72aab883",
+  "prompts": {},
+  "sessions": {
+    "s_767fcd19c0d8da": {
+      "agent_id": {
+        "tool": "claude",
+        "id": "bf5a7bc1-9f1a-4019-ba5b-a2aa509f2da2",
+        "model": "claude-fable-5-1"
+      },
+      "human_author": "ojungo69 <210335670+ojungo69@users.noreply.github.com>"
+    }
+  }
+}
