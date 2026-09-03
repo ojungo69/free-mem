@@ -1,0 +1,53 @@
+{
+  "agent": "claude",
+  "agent_version": "2.1.259 (Claude Code)",
+  "captured_at": "2026-09-03T10:45:38.089Z",
+  "native_tool": "Read",
+  "normalized_tool": "read",
+  "events": {
+    "PreToolUse": {
+      "session_id": "b2468ab2-70fd-421f-bbc1-0576b07d2883",
+      "transcript_path": "~/.claude/projects/~-cache-oboete-probes-2026-09-03T10-45-24-152Z-claude-payload-shapes-repo/b2468ab2-70fd-421f-bbc1-0576b07d2883.jsonl",
+      "cwd": "<repo>",
+      "prompt_id": "3c9b711c-c1fb-4804-882b-12d3e5e77fbc",
+      "permission_mode": "bypassPermissions",
+      "effort": {
+        "level": "high"
+      },
+      "hook_event_name": "PreToolUse",
+      "tool_name": "Read",
+      "tool_input": {
+        "file_path": "<repo>/README.md"
+      },
+      "tool_use_id": "toolu_01FzmhXoJicdz8F1u9m54fgv"
+    },
+    "PostToolUse": {
+      "session_id": "b2468ab2-70fd-421f-bbc1-0576b07d2883",
+      "transcript_path": "~/.claude/projects/~-cache-oboete-probes-2026-09-03T10-45-24-152Z-claude-payload-shapes-repo/b2468ab2-70fd-421f-bbc1-0576b07d2883.jsonl",
+      "cwd": "<repo>",
+      "prompt_id": "3c9b711c-c1fb-4804-882b-12d3e5e77fbc",
+      "permission_mode": "bypassPermissions",
+      "effort": {
+        "level": "high"
+      },
+      "hook_event_name": "PostToolUse",
+      "tool_name": "Read",
+      "tool_input": {
+        "file_path": "<repo>/README.md"
+      },
+      "tool_response": {
+        "type": "text",
+        "file": {
+          "filePath": "<repo>/README.md",
+          "content": "oboete probe repository\nsecond line\n",
+          "numLines": 3,
+          "startLine": 1,
+          "totalLines": 3
+        }
+      },
+      "tool_use_id": "toolu_01FzmhXoJicdz8F1u9m54fgv",
+      "duration_ms": 2
+    }
+  },
+  "notes": "tool_input.file_path (absolute); echoed back at tool_response.file.filePath (camelCase)"
+}

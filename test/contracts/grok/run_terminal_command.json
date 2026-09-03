@@ -1,0 +1,116 @@
+{
+  "agent": "grok",
+  "agent_version": "grok 1.0.17 (a549186d9d39) [alpha]",
+  "captured_at": "2026-09-03T10:46:03.032Z",
+  "native_tool": "run_terminal_command",
+  "normalized_tool": "bash",
+  "events": {
+    "PreToolUse": {
+      "hookEventName": "pre_tool_use",
+      "sessionId": "01a066df-fa4d-7eb3-8883-a61e08184226",
+      "cwd": "<repo>",
+      "workspaceRoot": "<repo>/",
+      "timestamp": "2026-09-03T10:46:00.764309318+00:00",
+      "transcriptPath": "~/.cache/oboete-probes/2026-09-03T10-45-48-964Z/grok-payload-shapes/grok-home/sessions/~%2F.cache%2Foboete-probes%2F2026-09-03T10-45-48-964Z%2Fgrok-payload-shapes%2Frepo/01a066df-fa4d-7eb3-8883-a61e08184226/updates.jsonl",
+      "permissionMode": "bypassPermissions",
+      "toolName": "run_terminal_command",
+      "toolUseId": "call-7ea6b6b8-74bb-4fa6-892a-da2f48011dbd-3",
+      "toolInput": {
+        "command": "echo probe-ok",
+        "description": "Echo probe-ok confirmation string"
+      },
+      "toolInputTruncated": false,
+      "hook_event_name": "PreToolUse",
+      "session_id": "01a066df-fa4d-7eb3-8883-a61e08184226",
+      "transcript_path": "~/.cache/oboete-probes/2026-09-03T10-45-48-964Z/grok-payload-shapes/grok-home/sessions/~%2F.cache%2Foboete-probes%2F2026-09-03T10-45-48-964Z%2Fgrok-payload-shapes%2Frepo/01a066df-fa4d-7eb3-8883-a61e08184226/updates.jsonl",
+      "permission_mode": "bypassPermissions",
+      "tool_name": "run_terminal_command",
+      "tool_input": {
+        "command": "echo probe-ok",
+        "description": "Echo probe-ok confirmation string"
+      },
+      "tool_use_id": "call-7ea6b6b8-74bb-4fa6-892a-da2f48011dbd-3"
+    },
+    "PostToolUse": {
+      "hookEventName": "post_tool_use",
+      "sessionId": "01a066df-fa4d-7eb3-8883-a61e08184226",
+      "cwd": "<repo>",
+      "workspaceRoot": "<repo>/",
+      "timestamp": "2026-09-03T10:46:00.803507541+00:00",
+      "transcriptPath": "~/.cache/oboete-probes/2026-09-03T10-45-48-964Z/grok-payload-shapes/grok-home/sessions/~%2F.cache%2Foboete-probes%2F2026-09-03T10-45-48-964Z%2Fgrok-payload-shapes%2Frepo/01a066df-fa4d-7eb3-8883-a61e08184226/updates.jsonl",
+      "permissionMode": "bypassPermissions",
+      "toolName": "run_terminal_command",
+      "toolUseId": "call-7ea6b6b8-74bb-4fa6-892a-da2f48011dbd-3",
+      "toolInput": {
+        "command": "echo probe-ok",
+        "description": "Echo probe-ok confirmation string"
+      },
+      "toolResult": {
+        "type": "Bash",
+        "output": [
+          112,
+          114,
+          111,
+          98,
+          101,
+          45,
+          111,
+          107,
+          10
+        ],
+        "output_for_prompt": "exit: 0\nprobe-ok\n",
+        "exit_code": 0,
+        "command": "echo probe-ok",
+        "truncated": false,
+        "signal": null,
+        "timed_out": false,
+        "description": "Echo probe-ok confirmation string",
+        "current_dir": "<repo>",
+        "output_file": "~/.cache/oboete-probes/2026-09-03T10-45-48-964Z/grok-payload-shapes/grok-home/sessions/~%2F.cache%2Foboete-probes%2F2026-09-03T10-45-48-964Z%2Fgrok-payload-shapes%2Frepo/01a066df-fa4d-7eb3-8883-a61e08184226/terminal/call-7ea6b6b8-74bb-4fa6-892a-da2f48011dbd-3.log",
+        "total_bytes": 9,
+        "was_bare_echo": true
+      },
+      "toolInputTruncated": false,
+      "toolResultTruncated": false,
+      "durationMs": 9,
+      "isBackgrounded": false,
+      "hook_event_name": "PostToolUse",
+      "session_id": "01a066df-fa4d-7eb3-8883-a61e08184226",
+      "transcript_path": "~/.cache/oboete-probes/2026-09-03T10-45-48-964Z/grok-payload-shapes/grok-home/sessions/~%2F.cache%2Foboete-probes%2F2026-09-03T10-45-48-964Z%2Fgrok-payload-shapes%2Frepo/01a066df-fa4d-7eb3-8883-a61e08184226/updates.jsonl",
+      "permission_mode": "bypassPermissions",
+      "tool_name": "run_terminal_command",
+      "tool_input": {
+        "command": "echo probe-ok",
+        "description": "Echo probe-ok confirmation string"
+      },
+      "tool_response": {
+        "type": "Bash",
+        "output": [
+          112,
+          114,
+          111,
+          98,
+          101,
+          45,
+          111,
+          107,
+          10
+        ],
+        "output_for_prompt": "exit: 0\nprobe-ok\n",
+        "exit_code": 0,
+        "command": "echo probe-ok",
+        "truncated": false,
+        "signal": null,
+        "timed_out": false,
+        "description": "Echo probe-ok confirmation string",
+        "current_dir": "<repo>",
+        "output_file": "~/.cache/oboete-probes/2026-09-03T10-45-48-964Z/grok-payload-shapes/grok-home/sessions/~%2F.cache%2Foboete-probes%2F2026-09-03T10-45-48-964Z%2Fgrok-payload-shapes%2Frepo/01a066df-fa4d-7eb3-8883-a61e08184226/terminal/call-7ea6b6b8-74bb-4fa6-892a-da2f48011dbd-3.log",
+        "total_bytes": 9,
+        "was_bare_echo": true
+      },
+      "tool_use_id": "call-7ea6b6b8-74bb-4fa6-892a-da2f48011dbd-3",
+      "duration_ms": 9
+    }
+  },
+  "notes": "toolInput.command; output is a byte array, output_for_prompt is the string"
+}

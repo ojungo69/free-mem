@@ -1,0 +1,69 @@
+{
+  "agent": "claude",
+  "agent_version": "2.1.259 (Claude Code)",
+  "captured_at": "2026-09-03T10:45:38.089Z",
+  "native_tool": "Edit",
+  "normalized_tool": "edit",
+  "events": {
+    "PreToolUse": {
+      "session_id": "b2468ab2-70fd-421f-bbc1-0576b07d2883",
+      "transcript_path": "~/.claude/projects/~-cache-oboete-probes-2026-09-03T10-45-24-152Z-claude-payload-shapes-repo/b2468ab2-70fd-421f-bbc1-0576b07d2883.jsonl",
+      "cwd": "<repo>",
+      "prompt_id": "3c9b711c-c1fb-4804-882b-12d3e5e77fbc",
+      "permission_mode": "bypassPermissions",
+      "effort": {
+        "level": "high"
+      },
+      "hook_event_name": "PreToolUse",
+      "tool_name": "Edit",
+      "tool_input": {
+        "file_path": "<repo>/notes.txt",
+        "old_string": "alpha",
+        "new_string": "beta",
+        "replace_all": false
+      },
+      "tool_use_id": "toolu_01FNbcCa1Hqbed8MCWMgPnFX"
+    },
+    "PostToolUse": {
+      "session_id": "b2468ab2-70fd-421f-bbc1-0576b07d2883",
+      "transcript_path": "~/.claude/projects/~-cache-oboete-probes-2026-09-03T10-45-24-152Z-claude-payload-shapes-repo/b2468ab2-70fd-421f-bbc1-0576b07d2883.jsonl",
+      "cwd": "<repo>",
+      "prompt_id": "3c9b711c-c1fb-4804-882b-12d3e5e77fbc",
+      "permission_mode": "bypassPermissions",
+      "effort": {
+        "level": "high"
+      },
+      "hook_event_name": "PostToolUse",
+      "tool_name": "Edit",
+      "tool_input": {
+        "file_path": "<repo>/notes.txt",
+        "old_string": "alpha",
+        "new_string": "beta",
+        "replace_all": false
+      },
+      "tool_response": {
+        "filePath": "<repo>/notes.txt",
+        "oldString": "alpha",
+        "newString": "beta",
+        "originalFile": "alpha\n",
+        "structuredPatch": [
+          {
+            "oldStart": 1,
+            "oldLines": 1,
+            "newStart": 1,
+            "newLines": 1,
+            "lines": [
+              "-alpha",
+              "+beta"
+            ]
+          }
+        ],
+        "userModified": false,
+        "replaceAll": false
+      },
+      "tool_use_id": "toolu_01FNbcCa1Hqbed8MCWMgPnFX",
+      "duration_ms": 5
+    }
+  },
+  "notes": "tool_input.file_path ; tool_response.filePath"
+}

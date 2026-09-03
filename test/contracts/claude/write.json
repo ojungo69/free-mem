@@ -1,0 +1,53 @@
+{
+  "agent": "claude",
+  "agent_version": "2.1.259 (Claude Code)",
+  "captured_at": "2026-09-03T10:45:38.089Z",
+  "native_tool": "Write",
+  "normalized_tool": "write",
+  "events": {
+    "PreToolUse": {
+      "session_id": "b2468ab2-70fd-421f-bbc1-0576b07d2883",
+      "transcript_path": "~/.claude/projects/~-cache-oboete-probes-2026-09-03T10-45-24-152Z-claude-payload-shapes-repo/b2468ab2-70fd-421f-bbc1-0576b07d2883.jsonl",
+      "cwd": "<repo>",
+      "prompt_id": "3c9b711c-c1fb-4804-882b-12d3e5e77fbc",
+      "permission_mode": "bypassPermissions",
+      "effort": {
+        "level": "high"
+      },
+      "hook_event_name": "PreToolUse",
+      "tool_name": "Write",
+      "tool_input": {
+        "file_path": "<repo>/notes.txt",
+        "content": "alpha\n"
+      },
+      "tool_use_id": "toolu_01NFt4hG9ARBYnH9zsNX8zCs"
+    },
+    "PostToolUse": {
+      "session_id": "b2468ab2-70fd-421f-bbc1-0576b07d2883",
+      "transcript_path": "~/.claude/projects/~-cache-oboete-probes-2026-09-03T10-45-24-152Z-claude-payload-shapes-repo/b2468ab2-70fd-421f-bbc1-0576b07d2883.jsonl",
+      "cwd": "<repo>",
+      "prompt_id": "3c9b711c-c1fb-4804-882b-12d3e5e77fbc",
+      "permission_mode": "bypassPermissions",
+      "effort": {
+        "level": "high"
+      },
+      "hook_event_name": "PostToolUse",
+      "tool_name": "Write",
+      "tool_input": {
+        "file_path": "<repo>/notes.txt",
+        "content": "alpha\n"
+      },
+      "tool_response": {
+        "type": "create",
+        "filePath": "<repo>/notes.txt",
+        "content": "alpha\n",
+        "structuredPatch": [],
+        "originalFile": null,
+        "userModified": false
+      },
+      "tool_use_id": "toolu_01NFt4hG9ARBYnH9zsNX8zCs",
+      "duration_ms": 7
+    }
+  },
+  "notes": "tool_input.file_path ; tool_response.filePath"
+}

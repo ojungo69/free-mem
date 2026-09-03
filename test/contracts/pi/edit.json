@@ -1,0 +1,50 @@
+{
+  "agent": "pi",
+  "agent_version": "0.84.4",
+  "captured_at": "2026-09-03T10:46:38.580Z",
+  "native_tool": "edit",
+  "normalized_tool": "edit",
+  "events": {
+    "tool_call": {
+      "type": "tool_call",
+      "toolName": "edit",
+      "toolCallId": "call_ILreu3YUOm2PA6vlIJeVbw34|fc_07c53f9a965f21eb016a995006de6087d0bbaf7a6a8d2019e8",
+      "input": {
+        "path": "notes.txt",
+        "edits": [
+          {
+            "oldText": "alpha",
+            "newText": "beta"
+          }
+        ]
+      }
+    },
+    "tool_result": {
+      "type": "tool_result",
+      "toolName": "edit",
+      "toolCallId": "call_ILreu3YUOm2PA6vlIJeVbw34|fc_07c53f9a965f21eb016a995006de6087d0bbaf7a6a8d2019e8",
+      "input": {
+        "path": "notes.txt",
+        "edits": [
+          {
+            "oldText": "alpha",
+            "newText": "beta"
+          }
+        ]
+      },
+      "content": [
+        {
+          "type": "text",
+          "text": "Successfully replaced 1 block(s) in notes.txt."
+        }
+      ],
+      "details": {
+        "diff": "-1 alpha\n+1 beta",
+        "patch": "--- notes.txt\n+++ notes.txt\n@@ -1,1 +1,1 @@\n-alpha\n\\ No newline at end of file\n+beta\n\\ No newline at end of file\n",
+        "firstChangedLine": 1
+      },
+      "isError": false
+    }
+  },
+  "notes": "input.path (edits is [{oldText,newText}])"
+}
