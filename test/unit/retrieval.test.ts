@@ -4,7 +4,7 @@ import { test } from 'node:test';
 
 import { openDatabase } from '../../src/db/open.js';
 import { oboetePaths } from '../../src/paths.js';
-import { cjkBigrams, isCjk, segmentQuery } from '../../src/retrieval/fts.js';
+import { buildMatch, cjkBigrams, isCjk, segmentQuery } from '../../src/retrieval/fts.js';
 import { searchCandidates } from '../../src/retrieval/query.js';
 import type { RankRow } from '../../src/retrieval/rank.js';
 import {
@@ -65,15 +65,15 @@ function seedSearchDb(db: DatabaseSync): void {
   insertMemory(db, {
     id: 'm_en_1',
     repoId: 'repo_a',
-    title: 'SQLite busy timeout',
-    body: 'The busy timeout is 5000 ms.',
+    title: 'Busy timeout',
+    body: 'the busy timeout is 150 ms',
     createdAt: 10,
   });
   insertMemory(db, {
     id: 'm_en_2',
     repoId: 'repo_a',
-    title: 'SQLite busy timeout handling',
-    body: 'The busy timeout is 5000 ms.',
+    title: 'SQLite',
+    body: 'SQLite stores application data.',
     createdAt: 11,
   });
   insertMemory(db, {
@@ -103,6 +103,13 @@ function seedSearchDb(db: DatabaseSync): void {
     title: 'トリガー',
     body: '挿入時に索引を更新する実装。',
     createdAt: 22,
+  });
+  insertMemory(db, {
+    id: 'm_ja_4',
+    repoId: 'repo_a',
+    title: '接続文字列',
+    body: '接続文字列は設定ファイルにある。',
+    createdAt: 23,
   });
   insertMemory(db, {
     id: 'm_b_1',
@@ -138,16 +145,36 @@ test('segmentQuery sends latin words of three or more characters to trigram', ()
   });
 });
 
+test('segmentQuery drops natural-language stop words', () => {
+  assert.deepEqual(segmentQuery('What is the SQLite busy timeout?'), {
+    trigram: ['sqlite', 'busy', 'timeout'],
+    cjk: [],
+    like: [],
+  });
+});
+
 test('segmentQuery keeps sqlite as trigram, bigrams the remaining Japanese, and drops の', () => {
   assert.deepEqual(segmentQuery('SQLiteのビジータイムアウト'), {
     trigram: ['sqlite'],
-    cjk: ['ビジ', 'ジー', 'タイ', 'イム', 'アウ', 'ウト'],
+    cjk: ['ビジ', 'ジー', 'ータ', 'タイ', 'イム', 'ムア', 'アウ', 'ウト'],
+    like: [],
+  });
+});
+
+test('segmentQuery drops single-character CJK runs', () => {
+  assert.deepEqual(segmentQuery('接続文字列はどこ？'), {
+    trigram: [],
+    cjk: ['接続', '続文', '文字', '字列', 'どこ'],
     like: [],
   });
 });
 
 test('segmentQuery sends a two-letter word to LIKE only', () => {
   assert.deepEqual(segmentQuery('ok'), { trigram: [], cjk: [], like: ['ok'] });
+});
+
+test('segmentQuery uses only the longest short term as its LIKE fallback', () => {
+  assert.deepEqual(segmentQuery('x db'), { trigram: [], cjk: [], like: ['db'] });
 });
 
 test('segmentQuery counts non-CJK length in code points', () => {
@@ -160,6 +187,16 @@ test('segmentQuery drops particles and leaves every list empty', () => {
     cjk: [],
     like: [],
   });
+});
+
+test('segmentQuery keeps at most 24 terms', () => {
+  const terms = segmentQuery(Array.from({ length: 30 }, (_, index) => `term${index}`).join(' '));
+  assert.equal(terms.trigram.length + terms.cjk.length + terms.like.length, 24);
+});
+
+test('buildMatch OR-joins quoted terms and returns null without terms', () => {
+  assert.equal(buildMatch(['safe', 'NOT', 'say"hi', 'prefix*']), '"safe" OR "NOT" OR "say""hi" OR "prefix*"');
+  assert.equal(buildMatch([]), null);
 });
 
 test('searchCandidates finds English rows of repo A only', async () => {
@@ -185,6 +222,27 @@ test('searchCandidates finds English rows of repo A only', async () => {
   });
 });
 
+test('searchCandidates ranks a natural-language busy-timeout match above SQLite alone', async () => {
+  await withTempHome((home) => {
+    const opened = openDatabase({ path: oboetePaths(home).db, timeoutMs: 1000 });
+    try {
+      seedSearchDb(opened.db);
+      const result = searchCandidates(opened.db, {
+        text: 'What is the SQLite busy timeout?',
+        scope: SCOPE_A,
+      });
+      const busyIndex = result.rows.findIndex((item) => item.id === 'm_en_1');
+      const sqliteIndex = result.rows.findIndex((item) => item.id === 'm_en_2');
+      assert.ok(busyIndex >= 0);
+      assert.ok(sqliteIndex >= 0);
+      assert.ok(busyIndex < sqliteIndex);
+      assert.equal(result.rows[busyIndex]?.body, 'the busy timeout is 150 ms');
+    } finally {
+      opened.db.close();
+    }
+  });
+});
+
 test('searchCandidates finds Japanese rows for a Japanese query', async () => {
   await withTempHome((home) => {
     const opened = openDatabase({ path: oboetePaths(home).db, timeoutMs: 1000 });
@@ -195,6 +253,34 @@ test('searchCandidates finds Japanese rows for a Japanese query', async () => {
       assert.equal(result.usedLike, false);
       assert.deepEqual(ids, ['m_ja_1', 'm_ja_2', 'm_ja_3']);
       assert.ok(result.rows.every((item) => item.scoreCjk !== null && item.viaLike === false));
+    } finally {
+      opened.db.close();
+    }
+  });
+});
+
+test('searchCandidates finds a connection string from a natural Japanese prompt', async () => {
+  await withTempHome((home) => {
+    const opened = openDatabase({ path: oboetePaths(home).db, timeoutMs: 1000 });
+    try {
+      seedSearchDb(opened.db);
+      const result = searchCandidates(opened.db, { text: '接続文字列はどこ？', scope: SCOPE_A });
+      assert.ok(result.rows.some((item) => item.id === 'm_ja_4'));
+      assert.equal(result.terms.cjk.includes('列'), false);
+    } finally {
+      opened.db.close();
+    }
+  });
+});
+
+test('searchCandidates finds English and Japanese rows from a mixed prompt', async () => {
+  await withTempHome((home) => {
+    const opened = openDatabase({ path: oboetePaths(home).db, timeoutMs: 1000 });
+    try {
+      seedSearchDb(opened.db);
+      const result = searchCandidates(opened.db, { text: 'busy timeout 接続', scope: SCOPE_A });
+      assert.ok(result.rows.some((item) => item.id === 'm_en_1'));
+      assert.ok(result.rows.some((item) => item.id === 'm_ja_4'));
     } finally {
       opened.db.close();
     }
@@ -218,28 +304,50 @@ test('searchCandidates uses LIKE for a two-letter query', async () => {
   });
 });
 
-test('searchCandidates returns nothing for a particle-only query', async () => {
+test('searchCandidates does not prepare SQL for a stop-word-and-punctuation-only query', async () => {
   await withTempHome((home) => {
     const opened = openDatabase({ path: oboetePaths(home).db, timeoutMs: 1000 });
     try {
       seedSearchDb(opened.db);
-      const result = searchCandidates(opened.db, { text: 'は が を', scope: SCOPE_A });
+      let prepareCalls = 0;
+      const wrapped = new Proxy(opened.db, {
+        get(target, property) {
+          if (property === 'prepare') {
+            return (...args: Parameters<DatabaseSync['prepare']>) => {
+              prepareCalls += 1;
+              return target.prepare(...args);
+            };
+          }
+          const value = Reflect.get(target, property, target);
+          return typeof value === 'function' ? value.bind(target) : value;
+        },
+      });
+      const result = searchCandidates(wrapped, {
+        text: 'the is what how of to in a an and or は が を に の で と も へ！？',
+        scope: SCOPE_A,
+      });
       assert.equal(result.usedLike, false);
       assert.deepEqual(result.rows, []);
       assert.deepEqual(result.terms, { trigram: [], cjk: [], like: [] });
+      assert.equal(prepareCalls, 0);
     } finally {
       opened.db.close();
     }
   });
 });
 
-test('searchCandidates does not throw on a quote character and a percent sign', async () => {
+test('searchCandidates does not throw on FTS5 syntax', async () => {
   await withTempHome((home) => {
     const opened = openDatabase({ path: oboetePaths(home).db, timeoutMs: 1000 });
     try {
       seedSearchDb(opened.db);
+      const match = buildMatch(['NOT', '"', '*']);
+      assert.ok(match !== null);
       assert.doesNotThrow(() =>
-        searchCandidates(opened.db, { text: 'busy "timeout" 10%', scope: SCOPE_A }),
+        opened.db.prepare('SELECT rowid FROM memories_fts WHERE memories_fts MATCH ?').all(match),
+      );
+      assert.doesNotThrow(() =>
+        searchCandidates(opened.db, { text: 'NOT " *', scope: SCOPE_A }),
       );
     } finally {
       opened.db.close();

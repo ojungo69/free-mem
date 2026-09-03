@@ -103,10 +103,11 @@ export function searchCandidates(db: DatabaseSync, input: SearchInput): SearchRe
   const limit = input.limit ?? DEFAULT_LIMIT;
   const byId = new Map<string, Candidate>();
   let usedLike = false;
+  const trigramMatch = buildMatch(terms.trigram);
+  const cjkMatch = buildMatch(terms.cjk);
 
-  if (terms.trigram.length > 0) {
-    const match = buildMatch(terms.trigram);
-    for (const row of runFts(db, 'memories_fts', match, input.scope, limit)) {
+  if (trigramMatch !== null) {
+    for (const row of runFts(db, 'memories_fts', trigramMatch, input.scope, limit)) {
       mergeRow(byId, row, {
         scoreTrigram: asNumber(row.s),
         scoreCjk: null,
@@ -115,9 +116,8 @@ export function searchCandidates(db: DatabaseSync, input: SearchInput): SearchRe
     }
   }
 
-  if (terms.cjk.length > 0) {
-    const match = buildMatch(terms.cjk);
-    for (const row of runFts(db, 'memories_fts_cjk', match, input.scope, limit)) {
+  if (cjkMatch !== null) {
+    for (const row of runFts(db, 'memories_fts_cjk', cjkMatch, input.scope, limit)) {
       mergeRow(byId, row, {
         scoreTrigram: null,
         scoreCjk: asNumber(row.s),
@@ -126,7 +126,7 @@ export function searchCandidates(db: DatabaseSync, input: SearchInput): SearchRe
     }
   }
 
-  if (terms.trigram.length === 0 && terms.cjk.length === 0 && terms.like.length > 0) {
+  if (trigramMatch === null && cjkMatch === null && terms.like.length > 0) {
     usedLike = true;
     const patterns = terms.like.map(likePattern);
     const likeClause = patterns
