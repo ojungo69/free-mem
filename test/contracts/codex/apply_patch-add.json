@@ -1,14 +1,14 @@
 {
   "agent": "codex",
   "agent_version": "codex-cli 0.153.0",
-  "captured_at": "2026-09-03T10:47:07.640Z",
+  "captured_at": "2026-09-03T11:15:49.402Z",
   "native_tool": "apply_patch",
   "normalized_tool": "write",
   "events": {
     "PreToolUse": {
-      "session_id": "01a066e0-bf46-7053-8875-48533630b857",
-      "turn_id": "01a066e0-bf5b-7312-9f4a-40630dc75d00",
-      "transcript_path": "~/.cache/oboete-probes/2026-09-03T10-46-38-638Z/codex-payload-shapes/codex-home/sessions/2026/09/03/rollout-2026-09-03T19-46-40-01a066e0-bf46-7053-8875-48533630b857.jsonl",
+      "session_id": "01a066f9-dcb3-79f3-8d78-ac4984b99746",
+      "turn_id": "01a066f9-dcc6-7bb2-8067-fa4c22e7c084",
+      "transcript_path": "~/.cache/oboete-probes/2026-09-03T11-14-04-660Z/codex-payload-shapes/codex-home/sessions/2026/09/03/rollout-2026-09-03T20-14-06-01a066f9-dcb3-79f3-8d78-ac4984b99746.jsonl",
       "cwd": "<repo>",
       "hook_event_name": "PreToolUse",
       "model": "gpt-5.6-sol",
@@ -17,12 +17,12 @@
       "tool_input": {
         "command": "*** Begin Patch\n*** Add File: <repo>/notes.txt\n+alpha\n*** End Patch"
       },
-      "tool_use_id": "exec-ca8bd0f8-249b-47b8-8a56-22e92504acd2"
+      "tool_use_id": "exec-940b3db9-abf3-4a37-bc37-a38051df86bd"
     },
     "PostToolUse": {
-      "session_id": "01a066e0-bf46-7053-8875-48533630b857",
-      "turn_id": "01a066e0-bf5b-7312-9f4a-40630dc75d00",
-      "transcript_path": "~/.cache/oboete-probes/2026-09-03T10-46-38-638Z/codex-payload-shapes/codex-home/sessions/2026/09/03/rollout-2026-09-03T19-46-40-01a066e0-bf46-7053-8875-48533630b857.jsonl",
+      "session_id": "01a066f9-dcb3-79f3-8d78-ac4984b99746",
+      "turn_id": "01a066f9-dcc6-7bb2-8067-fa4c22e7c084",
+      "transcript_path": "~/.cache/oboete-probes/2026-09-03T11-14-04-660Z/codex-payload-shapes/codex-home/sessions/2026/09/03/rollout-2026-09-03T20-14-06-01a066f9-dcb3-79f3-8d78-ac4984b99746.jsonl",
       "cwd": "<repo>",
       "hook_event_name": "PostToolUse",
       "model": "gpt-5.6-sol",
@@ -32,7 +32,7 @@
         "command": "*** Begin Patch\n*** Add File: <repo>/notes.txt\n+alpha\n*** End Patch"
       },
       "tool_response": "Exit code: 0\nWall time: 0 seconds\nOutput:\nSuccess. Updated the following files:\nA <repo>/notes.txt\n",
-      "tool_use_id": "exec-ca8bd0f8-249b-47b8-8a56-22e92504acd2"
+      "tool_use_id": "exec-940b3db9-abf3-4a37-bc37-a38051df86bd"
     }
   },
   "notes": "tool_input.command *** Add File: <path>; tool_response is a bare string"
