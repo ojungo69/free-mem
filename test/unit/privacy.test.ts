@@ -393,12 +393,17 @@ test('promotion: the worker promotes only a clean, complete, local-only row', ()
   const clean: DetectorResult = {
     ok: true,
     text: 'note',
+    texts: [],
     redactions: [],
     privateRemoved: 0,
     sensitivity: 'local_only',
     pathRule: null,
   };
-  const hit: DetectorResult = { ...clean, redactions: [{ rule: 'github', count: 1 }], sensitivity: 'secret' };
+  const hit: DetectorResult = {
+    ...clean,
+    redactions: [{ rule: 'github', count: 1 }],
+    sensitivity: 'secret',
+  };
   const failed: DetectorResult = { ok: false, reason: 'detector_error' };
   const cutOff: DetectorResult = { ok: false, reason: 'deadline' };
 
