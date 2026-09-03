@@ -4,6 +4,7 @@ import type { DatabaseSync } from 'node:sqlite';
 
 import {
   PRESET_CATALOG,
+  consentMatches,
   isPaused,
   loadConfig,
   readCredentials,
@@ -32,7 +33,7 @@ import {
 import { fallbackObserve, type FallbackEvent } from '../observer/fallback.js';
 import { summarizeWithProvider, type CallOutcome } from '../observer/llm.js';
 import { resolveModel } from '../observer/providers.js';
-import { consentGate, buildObserverRequest } from '../observer/request.js';
+import { buildObserverRequest } from '../observer/request.js';
 import { recordExhausted, reserveAttempt } from '../observer/reservation.js';
 import { ensureDirectories, oboetePaths, resolveHome, type OboetePaths } from '../paths.js';
 import { detectSync, type DetectorInput, type DetectorResult } from '../privacy/detect.js';
@@ -278,7 +279,7 @@ async function providerCall(
     model,
     agentCli: config.observer.agent_cli,
     credentials: readCredentials(preset, deps.env, config.observer.agent_cli),
-    consentOk: () => consentGate(config, deps.env),
+    consentOk: () => consentMatches(config, deps.env),
     reserve: () => {
       const result = reserveAttempt(db, {
         preset,
@@ -705,7 +706,7 @@ export async function runObserve(argv: string[], overrides: Partial<ObserveDeps>
     const initialProviderReason: DegradedReason | null =
       resolved.preset === 'none' || credentials?.present !== true || resolved.model === ''
         ? 'no_provider'
-        : !consentGate(config, deps.env)
+        : !consentMatches(config, deps.env)
           ? 'consent_changed'
           : null;
     const providerState = new Map<string, DegradedReason | null>();
