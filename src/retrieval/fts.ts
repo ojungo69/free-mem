@@ -19,13 +19,18 @@ const STOP_WORDS = new Set([
   'が',
   'を',
   'に',
-  'の',
   'で',
   'と',
+  'の',
   'も',
   'へ',
+  'や',
+  'か',
+  'ね',
+  'よ',
+  'な',
 ]);
-const MAX_QUERY_TERMS = 24;
+const MAX_QUERY_TERMS = 128;
 
 const wordSegmenter = new Intl.Segmenter(undefined, { granularity: 'word' });
 
@@ -96,13 +101,11 @@ export function segmentQuery(text: string): QueryTerms {
   const trigram: string[] = [];
   const cjk: string[] = [];
   const like: string[] = [];
-  let indexedCount = 0;
   let likeFallback = '';
 
   const pushIndexed = (terms: string[], term: string): void => {
-    if (indexedCount >= MAX_QUERY_TERMS || terms.includes(term)) return;
+    if (terms.includes(term)) return;
     terms.push(term);
-    indexedCount += 1;
   };
   const pushCjkRun = (run: string): void => {
     if (codePointLength(run) < 2) return;
@@ -135,9 +138,25 @@ export function segmentQuery(text: string): QueryTerms {
     }
   }
 
-  if (indexedCount === 0 && likeFallback.length > 0) like.push(likeFallback);
+  if (trigram.length === 0 && cjk.length === 0 && likeFallback.length > 0) {
+    like.push(likeFallback);
+  }
 
-  return { trigram, cjk, like };
+  const indexed = [...trigram, ...cjk];
+  const kept =
+    indexed.length > MAX_QUERY_TERMS
+      ? new Set(
+          indexed
+            .sort((left, right) => codePointLength(right) - codePointLength(left))
+            .slice(0, MAX_QUERY_TERMS),
+        )
+      : null;
+
+  return {
+    trigram: kept === null ? trigram : trigram.filter((term) => kept.has(term)),
+    cjk: kept === null ? cjk : cjk.filter((term) => kept.has(term)),
+    like,
+  };
 }
 
 export function buildMatch(terms: string[]): string | null {

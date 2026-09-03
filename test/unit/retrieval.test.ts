@@ -112,6 +112,13 @@ function seedSearchDb(db: DatabaseSync): void {
     createdAt: 23,
   });
   insertMemory(db, {
+    id: 'm_ja_noise',
+    repoId: 'repo_a',
+    title: '確定かどうかの判断',
+    body: '条件を確認して決める。',
+    createdAt: 24,
+  });
+  insertMemory(db, {
     id: 'm_b_1',
     repoId: 'repo_b',
     title: 'SQLite busy timeout',
@@ -189,9 +196,14 @@ test('segmentQuery drops particles and leaves every list empty', () => {
   });
 });
 
-test('segmentQuery keeps at most 24 terms', () => {
-  const terms = segmentQuery(Array.from({ length: 30 }, (_, index) => `term${index}`).join(' '));
-  assert.equal(terms.trigram.length + terms.cjk.length + terms.like.length, 24);
+test('segmentQuery caps indexed terms at 128 and keeps the longest terms when capped', () => {
+  const query = [
+    ...Array.from({ length: 129 }, (_, index) => `term${index}`),
+    'exceptionallylongdiagnosticterm',
+  ].join(' ');
+  const terms = segmentQuery(query);
+  assert.equal(terms.trigram.length + terms.cjk.length + terms.like.length, 128);
+  assert.ok(terms.trigram.includes('exceptionallylongdiagnosticterm'));
 });
 
 test('buildMatch OR-joins quoted terms and returns null without terms', () => {
@@ -243,6 +255,25 @@ test('searchCandidates ranks a natural-language busy-timeout match above SQLite 
   });
 });
 
+test('searchCandidates keeps relevant terms after a long pasted prefix', async () => {
+  await withTempHome((home) => {
+    const opened = openDatabase({ path: oboetePaths(home).db, timeoutMs: 1000 });
+    try {
+      seedSearchDb(opened.db);
+      const filler = Array.from({ length: 30 }, (_, index) => `filler${index}`).join(' ');
+      const result = searchCandidates(opened.db, {
+        text: `${filler} why does the hook hit the busy timeout?`,
+        scope: SCOPE_A,
+      });
+      assert.ok(result.terms.trigram.includes('busy'));
+      assert.ok(result.terms.trigram.includes('timeout'));
+      assert.ok(result.rows.some((item) => item.id === 'm_en_1'));
+    } finally {
+      opened.db.close();
+    }
+  });
+});
+
 test('searchCandidates finds Japanese rows for a Japanese query', async () => {
   await withTempHome((home) => {
     const opened = openDatabase({ path: oboetePaths(home).db, timeoutMs: 1000 });
@@ -267,6 +298,22 @@ test('searchCandidates finds a connection string from a natural Japanese prompt'
       const result = searchCandidates(opened.db, { text: '接続文字列はどこ？', scope: SCOPE_A });
       assert.ok(result.rows.some((item) => item.id === 'm_ja_4'));
       assert.equal(result.terms.cjk.includes('列'), false);
+    } finally {
+      opened.db.close();
+    }
+  });
+});
+
+test('searchCandidates treats a trailing Japanese particle as a term boundary', async () => {
+  await withTempHome((home) => {
+    const opened = openDatabase({ path: oboetePaths(home).db, timeoutMs: 1000 });
+    try {
+      seedSearchDb(opened.db);
+      const result = searchCandidates(opened.db, { text: '設定か', scope: SCOPE_A });
+      const ids = result.rows.map((item) => item.id);
+      assert.deepEqual(result.terms.cjk, ['設定']);
+      assert.ok(ids.includes('m_ja_4'));
+      assert.equal(ids.includes('m_ja_noise'), false);
     } finally {
       opened.db.close();
     }
