@@ -1,0 +1,27 @@
+docs/research/m1-amendments-2026-09.md
+  s_767fcd19c0d8da::t_164c23b1bc48c2 22,28-30,33-50
+specs/007-oboete-m1-alpha/contracts/agents.md
+  s_767fcd19c0d8da::t_4ee423e08daf7e 65-70,77-79,131-136
+specs/007-oboete-m1-alpha/plan.md
+  s_767fcd19c0d8da::t_ec07522c8304af 109-110
+specs/007-oboete-m1-alpha/spec.md
+  s_767fcd19c0d8da::t_163a756d10a493 314-316
+specs/007-oboete-m1-alpha/tasks.md
+  s_767fcd19c0d8da::t_504a74d1d91c02 47-49
+---
+{
+  "schema_version": "authorship/3.0.0",
+  "git_ai_version": "1.6.16",
+  "base_commit_sha": "edaa5451a9fed386d9b21def1d4650b7bc3fed4e",
+  "prompts": {},
+  "sessions": {
+    "s_767fcd19c0d8da": {
+      "agent_id": {
+        "tool": "claude",
+        "id": "bf5a7bc1-9f1a-4019-ba5b-a2aa509f2da2",
+        "model": "claude-fable-5-1"
+      },
+      "human_author": "ojungo69 <210335670+ojungo69@users.noreply.github.com>"
+    }
+  }
+}
