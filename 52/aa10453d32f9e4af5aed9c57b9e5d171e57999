@@ -1,0 +1,35 @@
+src/injection/budget.ts
+  s_fb58e09627940f::t_314f52c46fdca8 1-131
+src/injection/deferred.ts
+  s_fb58e09627940f::t_0e9320e8e5e1b2 1-387
+src/injection/ledger.ts
+  s_fb58e09627940f::t_0ceef20d1314ec 1-317
+src/injection/pack.ts
+  s_fb58e09627940f::t_9a8614b6f8f29d 1-643
+src/injection/staleness.ts
+  s_fb58e09627940f::t_8b6d2137d7eb80 1-101
+test/unit/budget.test.ts
+  s_fb58e09627940f::t_61f23cde225636 1-151
+test/unit/deferred.test.ts
+  s_fb58e09627940f::t_32bdf0f089e480 1-407
+test/unit/pack.test.ts
+  s_fb58e09627940f::t_8ee8b14f09ac87 1-743
+test/unit/staleness.test.ts
+  s_fb58e09627940f::t_43aa9d2ee46cd3 1-129
+---
+{
+  "schema_version": "authorship/3.0.0",
+  "git_ai_version": "1.6.16",
+  "base_commit_sha": "52aa10453d32f9e4af5aed9c57b9e5d171e57999",
+  "prompts": {},
+  "sessions": {
+    "s_fb58e09627940f": {
+      "agent_id": {
+        "tool": "claude",
+        "id": "85541cda-e22f-45ae-a41f-98db490b90bf",
+        "model": "claude-fable-5-1"
+      },
+      "human_author": "ojungo69 <210335670+ojungo69@users.noreply.github.com>"
+    }
+  }
+}
