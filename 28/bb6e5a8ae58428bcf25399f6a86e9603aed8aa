@@ -1,0 +1,65 @@
+test/unit/spool.test.ts
+  s_fb58e09627940f::t_430f57b2e42fcc 7-14,19,21-52,56,60,62,64,66-70,83,98-99,103,116,122-132
+  s_fb58e09627940f::t_42ca5e9f9e37ca 133-134
+src/spool.ts
+  s_fb58e09627940f::t_c113553aa2b543 1-3,5,9,12-13,15-22,24-64,70,72,74-75,107-111
+  s_fb58e09627940f::t_8192ee6d7746a7 112
+specs/007-oboete-m1-alpha/contracts/agents.md
+  s_fb58e09627940f::t_edde7b6e208861 26,59-65,195,197-199
+specs/007-oboete-m1-alpha/contracts/cli.md
+  s_fb58e09627940f::t_82c63e11f5538b 12
+specs/007-oboete-m1-alpha/data-model.md
+  s_fb58e09627940f::t_69ea9afab43f06 66,70
+src/agents/index.ts
+  s_fb58e09627940f::t_a4b8ee69ae1da4 37-41,216-228,233-251,253,255,258-259,261,265-269,271,278-279,299-300
+src/capture.ts
+  s_fb58e09627940f::t_d3c35b83340a8b 20,39-40,147-151,164,170-172,206-208,217,225,253-263,286,307,309,389-394,408,417-425,479-482,485,487,501,539-584,590,638-643,764,766,777,782,785,925-929,935,941-944,946,956-958,960-963,986
+src/db/migrations/0003_operations.sql
+  s_fb58e09627940f::t_222c1969d2537f 41-42
+src/events.ts
+  s_fb58e09627940f::t_a2b2dd7497d1aa 39,200-207
+src/injection/deferred.ts
+  s_fb58e09627940f::t_88f97d4bdea062 19-26,123-138,143-238,242-244,246-249,251-254,265-271,279-286,288-296,298,301-306,309-314,318-324,327
+src/injection/ledger.ts
+  s_fb58e09627940f::t_c606c481000686 46-50
+src/injection/pack.ts
+  s_fb58e09627940f::t_7f78356a2346ce 84-94,315,408,410,439,453,583,647
+src/injection/staleness.ts
+  s_fb58e09627940f::t_27e4aed4f8d241 81-83
+src/observer/classify.ts
+  s_fb58e09627940f::t_6d0049b917f3c8 9,15-21,147-148,150,531
+src/paths.ts
+  s_fb58e09627940f::t_5c552e76f6b262 10,34,45
+src/worker/batches.ts
+  s_fb58e09627940f::t_b8bc13ffeea524 19-25,170-173,175-178,204-210,214-219,223,231,233,252-253,255,265,277-278,299
+test/unit/agents.test.ts
+  s_fb58e09627940f::t_2ace4e83a67089 14-21,23,73,79-85,323,1218-1315
+test/unit/batches.test.ts
+  s_fb58e09627940f::t_c2b29c493168f0 349-353,357,360-363
+test/unit/capture.test.ts
+  s_fb58e09627940f::t_1ff1c559eb5e08 26,37-39,385,387-392,407-412,414-420,422,426-431,433,436-441,449,451-452,630-668,682-685,714-821,839,844-851,1098,1101-1105,1108-1148
+test/unit/deferred.test.ts
+  s_fb58e09627940f::t_385bdb57a30a49 13,94-100,102-109,388-459
+test/unit/pack.test.ts
+  s_fb58e09627940f::t_bd80ab1a007937 655-658,679-681,749-786
+test/unit/request.test.ts
+  s_fb58e09627940f::t_62f4312ab202dd 5,8,343,349
+test/unit/staleness.test.ts
+  s_fb58e09627940f::t_1a4db744e4ddd4 97-107
+---
+{
+  "schema_version": "authorship/3.0.0",
+  "git_ai_version": "1.6.16",
+  "base_commit_sha": "28bb6e5a8ae58428bcf25399f6a86e9603aed8aa",
+  "prompts": {},
+  "sessions": {
+    "s_fb58e09627940f": {
+      "agent_id": {
+        "tool": "claude",
+        "id": "85541cda-e22f-45ae-a41f-98db490b90bf",
+        "model": "claude-fable-5-1"
+      },
+      "human_author": "ojungo69 <210335670+ojungo69@users.noreply.github.com>"
+    }
+  }
+}
