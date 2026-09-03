@@ -60,7 +60,7 @@ function promptInput(overrides: Partial<PromptPackInput> = {}): PromptPackInput 
     directives: [],
     repoRoot: '/nonexistent-repository-root',
     state: 'pending',
-    prompt: 'retrieval note',
+    prompt: 'retrieval',
     ...overrides,
   };
 }
@@ -324,8 +324,8 @@ test('the attempt record outlives the raw events it came from', async () => {
 test('a second prompt before any tool call merges into the one pending record', async () => {
   await withGrok(
     async (db) => {
-      const first = await pendingPack(db, { prompt: 'retrieval note' });
-      const second = await pendingPack(db, { prompt: 'lease note', now: NOW + 100 });
+      const first = await pendingPack(db, { prompt: 'retrieval' });
+      const second = await pendingPack(db, { prompt: 'lease', now: NOW + 100 });
       assert.equal(second, first, 'one pending record per conversation');
 
       const pending = db
@@ -360,8 +360,8 @@ test('a second prompt before any tool call merges into the one pending record', 
 
 test('a memory that both merged packs carry is delivered once and counted once', async () => {
   await withGrok(async (db) => {
-    const first = await pendingPack(db, { prompt: 'retrieval note' });
-    const second = await pendingPack(db, { prompt: 'retrieval note', now: NOW + 100 });
+    const first = await pendingPack(db, { prompt: 'retrieval' });
+    const second = await pendingPack(db, { prompt: 'retrieval', now: NOW + 100 });
     assert.equal(second, first, 'one pending record per conversation');
 
     const text = attachOnPreToolUse(db, {
@@ -380,7 +380,7 @@ test('a memory that both merged packs carry is delivered once and counted once',
     );
 
     // FR-026: the delivered memory is not offered again in the same conversation and epoch.
-    const third = await buildPromptPack(db, promptInput({ prompt: 'retrieval note', now: NOW + 300 }));
+    const third = await buildPromptPack(db, promptInput({ prompt: 'retrieval', now: NOW + 300 }));
     assert.equal(third, null, 'nothing is left to inject once the memory was delivered');
   });
 });
@@ -393,10 +393,10 @@ test('a merged pack that trips the secret detector is never stored', async () =>
       const detect = (text: string): boolean => text.includes('alpha') && text.includes('beta');
       const validation = { detect, directives: [] };
 
-      const first = await pendingPack(db, { prompt: 'retrieval note', detect }, validation);
+      const first = await pendingPack(db, { prompt: 'retrieval', detect }, validation);
       const second = await pendingPack(
         db,
-        { prompt: 'lease note', now: NOW + 100, detect },
+        { prompt: 'lease', now: NOW + 100, detect },
         validation,
       );
       assert.equal(second, first, 'the live record still holds the conversation pack');
@@ -427,9 +427,9 @@ test('a merged pack that trips the secret detector is never stored', async () =>
 test('a merged pack that trips the directive corpus is never stored', async () => {
   await withGrok(
     async (db) => {
-      const first = await pendingPack(db, { prompt: 'retrieval note' });
+      const first = await pendingPack(db, { prompt: 'retrieval' });
       // The corpus this hook loaded names a phrase the builder of the first pack did not have.
-      const second = await pendingPack(db, { prompt: 'lease note', now: NOW + 100 }, {
+      const second = await pendingPack(db, { prompt: 'lease', now: NOW + 100 }, {
         detect: () => false,
         directives: ['the lease is fenced'],
       });
@@ -460,8 +460,8 @@ test('a merged pack that trips the directive corpus is never stored', async () =
 test('a merged item that no longer fits the budget is recorded as trimmed', async () => {
   await withGrok(
     async (db) => {
-      const first = await pendingPack(db, { prompt: 'retrieval note', channelCap: 200 });
-      const second = await pendingPack(db, { prompt: 'lease note', channelCap: 200, now: NOW + 100 });
+      const first = await pendingPack(db, { prompt: 'retrieval', channelCap: 200 });
+      const second = await pendingPack(db, { prompt: 'lease', channelCap: 200, now: NOW + 100 });
       assert.equal(second, first);
 
       const text = attachOnPreToolUse(db, {
