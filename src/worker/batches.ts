@@ -4,13 +4,9 @@
 // amendments A7 and A11. Security-owned (plan.md "Structure Decision"): this module decides which
 // rows may be handed to which summarizer, so every branch names the rule it applies.
 import { randomUUID } from 'node:crypto';
-import { mkdirSync, readdirSync, readFileSync, renameSync, unlinkSync } from 'node:fs';
-import { join } from 'node:path';
 import type { DatabaseSync, SQLOutputValue } from 'node:sqlite';
-import { z } from 'zod';
 
 import type { ProviderPreset } from '../config.js';
-import { AGENTS, EVENT_KINDS } from '../events.js';
 import type { OboetePaths } from '../paths.js';
 import { promoteSensitivity, strictest } from '../privacy/classify.js';
 import type { DetectorResult } from '../privacy/detect.js';
@@ -20,6 +16,13 @@ import {
   type DestinationRules,
   type Sensitivity,
 } from '../privacy/egress.js';
+import {
+  listSpool,
+  quarantineSpoolEntry,
+  readSpoolEntry,
+  removeSpoolEntry,
+  type SpoolEntry,
+} from '../spool.js';
 import { assertLease, transactionImmediate } from './lease.js';
 
 /** R6: a `running` batch of a worker that died is reclaimed only after this long. */
@@ -163,76 +166,16 @@ export function isSummarizableRow(row: RawEventRow): boolean {
 // Spool recovery (FR-003, R6)
 // ---------------------------------------------------------------------------
 
-const identifier = z.string().min(1);
-const timestamp = z.int();
-
 /**
- * One spool file: the row capture could not write plus the parent rows it would have upserted.
- * The parents travel with the row because a hook that could not write `raw_events` could not write
- * `repos`, `sessions` or `turns` either, and the foreign keys refuse the row without them.
+ * The parent rows of one spool entry. The hook could not read the database, so its `sessions.id`
+ * is a fresh uuid; the row that already exists for (agent, native_session_id) is the parent the
+ * foreign key needs (0001_core.sql UNIQUE), and the same holds for (session, ordinal) on `turns`.
+ * Returns the ids the recovered `raw_events` row must carry.
  */
-export const spoolEntrySchema = z.strictObject({
-  repo: z.strictObject({
-    id: identifier,
-    identity_kind: z.enum(['remote', 'common_dir']),
-    normalized_identity: identifier,
-    display_root: z.string().nullable().default(null),
-  }),
-  session: z.strictObject({
-    id: identifier,
-    repo_id: identifier,
-    agent: z.enum(AGENTS),
-    native_session_id: identifier,
-    conversation_id: identifier,
-    model: z.string().nullable().default(null),
-    started_at: timestamp.nullable().default(null),
-    status: z.enum(['active', 'ended']),
-  }),
-  turn: z
-    .strictObject({
-      id: identifier,
-      session_id: identifier,
-      ordinal: z.int(),
-      started_at: timestamp.nullable().default(null),
-      ended_at: timestamp.nullable().default(null),
-    })
-    .optional(),
-  row: z.strictObject({
-    id: identifier,
-    repo_id: identifier,
-    session_id: identifier,
-    turn_id: z.string().nullable().default(null),
-    agent: z.enum(AGENTS),
-    kind: z.enum(EVENT_KINDS),
-    content: z.string().nullable().default(null),
-    truncated: z.int().nullable().default(null),
-    payload_json: z.string().nullable().default(null),
-    content_hash: z.string().nullable().default(null),
-    sensitivity: z.enum(['local_only', 'eligible', 'secret', 'private']),
-    classification_state: z.enum(['pending', 'done', 'partial', 'failed']),
-    captured_at: timestamp,
-    expires_at: timestamp,
-  }),
-});
-
-export type SpoolEntry = z.infer<typeof spoolEntrySchema>;
-
-function readSpoolEntry(file: string): SpoolEntry | null {
-  try {
-    const parsed = spoolEntrySchema.safeParse(JSON.parse(readFileSync(file, 'utf8')));
-    return parsed.success ? parsed.data : null;
-  } catch {
-    return null;
-  }
-}
-
-function quarantine(spool: string, name: string): void {
-  const directory = join(spool, 'failed');
-  mkdirSync(directory, { recursive: true, mode: 0o700 });
-  renameSync(join(spool, name), join(directory, name));
-}
-
-function ensureSessionRows(db: DatabaseSync, entry: SpoolEntry): void {
+function ensureSessionRows(
+  db: DatabaseSync,
+  entry: SpoolEntry,
+): { sessionId: string; turnId: string | null } {
   db.prepare(
     `INSERT OR IGNORE INTO repos (id, identity_kind, normalized_identity, display_root, created_at, last_seen_at)
      VALUES (?, ?, ?, ?, ?, ?)`,
@@ -258,14 +201,26 @@ function ensureSessionRows(db: DatabaseSync, entry: SpoolEntry): void {
     entry.session.started_at,
     entry.session.status,
   );
+  const sessionId = String(
+    db
+      .prepare('SELECT id FROM sessions WHERE agent = ? AND native_session_id = ?')
+      .get(entry.session.agent, entry.session.native_session_id)?.id,
+  );
+
+  let turnId = entry.row.turn_id;
   if (entry.turn !== undefined) {
     db.prepare(
       'INSERT OR IGNORE INTO turns (id, session_id, ordinal, started_at, ended_at) VALUES (?, ?, ?, ?, ?)',
-    ).run(entry.turn.id, entry.turn.session_id, entry.turn.ordinal, entry.turn.started_at, entry.turn.ended_at);
+    ).run(entry.turn.id, sessionId, entry.turn.ordinal, entry.turn.started_at, entry.turn.ended_at);
+    turnId = String(
+      db
+        .prepare('SELECT id FROM turns WHERE session_id = ? AND ordinal = ?')
+        .get(sessionId, entry.turn.ordinal)?.id,
+    );
     // The trigger rules read `turn_count`, so a recovered turn has to move it (FR-010).
     db.prepare('UPDATE sessions SET turn_count = MAX(turn_count, ?) WHERE id = ?').run(
       entry.turn.ordinal,
-      entry.session.id,
+      sessionId,
     );
   }
   if (entry.row.kind === 'session_end') {
@@ -273,8 +228,9 @@ function ensureSessionRows(db: DatabaseSync, entry: SpoolEntry): void {
     db.prepare(
       `UPDATE sessions SET status = 'ended', ended_at = COALESCE(ended_at, ?),
          summary_state = COALESCE(summary_state, 'pending') WHERE id = ?`,
-    ).run(entry.row.captured_at, entry.session.id);
+    ).run(entry.row.captured_at, sessionId);
   }
+  return { sessionId, turnId };
 }
 
 /**
@@ -293,21 +249,10 @@ export function recoverSpool(
   let skipped = 0;
   let failed = 0;
 
-  let names: string[];
-  try {
-    names = readdirSync(paths.spool, { withFileTypes: true })
-      .filter((item) => item.isFile() && item.name.endsWith('.json'))
-      .map((item) => item.name)
-      .sort();
-  } catch {
-    // No spool directory yet: nothing to recover, and creating one is capture's business.
-    return { inserted, skipped, failed };
-  }
-
-  for (const name of names) {
-    const entry = readSpoolEntry(join(paths.spool, name));
+  for (const name of listSpool(paths)) {
+    const entry = readSpoolEntry(paths, name);
     if (entry === null) {
-      quarantine(paths.spool, name);
+      quarantineSpoolEntry(paths, name);
       failed += 1;
       continue;
     }
@@ -317,7 +262,7 @@ export function recoverSpool(
         db.exec('ROLLBACK');
         return 'lease_lost';
       }
-      ensureSessionRows(db, entry);
+      const parents = ensureSessionRows(db, entry);
       const changes = Number(
         db
           .prepare(
@@ -329,8 +274,8 @@ export function recoverSpool(
           .run(
             entry.row.id,
             entry.row.repo_id,
-            entry.row.session_id,
-            entry.row.turn_id,
+            parents.sessionId,
+            parents.turnId,
             entry.row.agent,
             entry.row.kind,
             entry.row.content,
@@ -351,7 +296,7 @@ export function recoverSpool(
     else skipped += 1;
     // The file goes only after its row is committed, so a crash repeats the recovery instead of
     // losing the event.
-    unlinkSync(join(paths.spool, name));
+    removeSpoolEntry(paths, name);
   }
 
   return { inserted, skipped, failed };

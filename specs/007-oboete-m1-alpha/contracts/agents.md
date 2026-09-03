@@ -23,7 +23,7 @@ from the fixed selector below, never from the payload), `native_session_id`, `co
 | compaction_summary | `text` |
 | last_assistant_message | `text` |
 
-Size cap (R4, A7): the hook reads at most 1 MB from stdin and stops; the part that was read goes
+Size cap (R4, A7 with the A14 bound): the hook reads at most 256 KiB from stdin and stops; the part that was read goes
 through the detector and is stored as a `partial` row (`classification_state = partial`,
 `truncated = 1`, kind from the `--event` argument, session id and tool paths from a bounded scan
 of the read bytes for the top-level `session_id` and path fields; when no session id is
@@ -56,10 +56,13 @@ used only to label it for diagnosis.
 `raw_events.id` uses the most specific stable key available (R7), and every form includes the
 event kind: tool events use (kind, `tool_call_id`), so a `tool_call` and its `tool_result` never
 share an id; prompts use (kind, `prompt_id`) where the agent supplies one; everything else uses
-(turn ordinal, kind, content hash). No per-delivery counter is used, so a re-delivered event
-always collapses and the hook needs no database read to compute the id. Accepted limit: two
-byte-identical events of the last form inside one turn collapse to one row; a repeated identical
-prompt in a later turn does not.
+(turn ordinal, kind, content hash). No per-delivery counter is used. The turn ordinal comes from
+`sessions.turn_count`, the one database read the hook makes before computing the id; on the spool
+path that read is unavailable, so the entry keeps the ordinal-less id and recovery replays it as
+stored. Accepted limits: two byte-identical events of the last form inside one turn collapse to
+one row; a repeated identical prompt in a later turn does not; a re-delivered prompt that carries
+no `prompt_id` opens the next turn and gets a second row (collapsing two identical prompts of one
+session would be the more frequent loss).
 
 `conversation_id` is the oboete id of the root session. Claude Code `resume` (same `session_id`),
 Codex `resume`, Pi `resume` (`PI_SESSION_ID` continues and `session_start.reason` stays `startup`,
@@ -189,9 +192,11 @@ spool).
   spool reserve); when the remaining budget after the detector is below the reserve the database
   is not opened and the sanitized event goes straight to the spool; a storage failure after the
   detector → spool. A wall-time test combines a slow detector with a busy database. The full detector
-  must finish a 1 MB payload inside the cutoff on Node 22.16 (R13 probe); if it cannot, no
+  must finish the read bound inside the cutoff on Node 22.16 (R13 probe); if it cannot, no
   smaller bound is introduced silently: the capture lane is blocked and the measured bound goes
-  to the owner as A14. Tests assert process wall time per event kind (worst-case 1 MB input and a
+  to the owner as A14. Measured on 2026-09-04: a secret-dense 1 MB payload takes 406-665 ms, above
+  the 240 ms cutoff, so A14 set the read bound to 256 KiB, which keeps that worst case near
+  100-170 ms. Tests assert process wall time per event kind (worst-case input at the read bound and a
   detector that never returns) and 100% in-deadline exits under every fault; the replay p99 is an
   additional SC-002 measurement, not the guarantee.
 - Injection hooks (`SessionStart`, `UserPromptSubmit`, Grok delivery hooks, Pi inject child):

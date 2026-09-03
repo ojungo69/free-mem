@@ -81,6 +81,17 @@ const STALE_NOTES: Record<'stale_path' | 'stale_commit', string> = {
 /** True when the finished text contains a secret. The caller supplies privacy/detect.ts (FR-018). */
 export type SecretDetector = (text: string) => boolean | Promise<boolean>;
 
+/** FR-021: a text that reads as an instruction to the agent is dropped, not framed harder. */
+export function hasDirective(text: string, directives: readonly string[]): boolean {
+  const haystack = text.toLowerCase();
+  return directives.some((phrase) => phrase !== '' && haystack.includes(phrase.toLowerCase()));
+}
+
+/** The control characters `canonicalLine` removed; a finished pack must not carry one back. */
+export function hasControlCharacter(text: string): boolean {
+  return /[\p{Cc}\p{Cf}]/u.test(text.replace(/\n/g, ''));
+}
+
 export type PackChannelInput = {
   agent: AgentName;
   repoId: string;
@@ -301,7 +312,7 @@ type Assembly = {
   omitted: LedgerItem[];
   degraded: DegradedReason | null;
   budgetChars: number;
-  directivesLowered: string[];
+  directives: readonly string[];
 };
 
 function omittedItem(memoryId: string, reason: ItemReason): LedgerItem {
@@ -393,11 +404,10 @@ async function assemble(
   }
 
   // FR-021: an item that reads as an instruction to the agent is dropped, not framed harder.
-  const lowered = assembly.directivesLowered;
   for (const item of items) {
-    const text = item.lines.join('\n').toLowerCase();
-    if (lowered.some((phrase) => text.includes(phrase))) {
+    if (hasDirective(item.lines.join('\n'), assembly.directives)) {
       item.decision = 'omitted';
+      item.reason = 'directive';
       item.lines = [];
     }
   }
@@ -426,6 +436,7 @@ async function assemble(
     for (const item of kept) {
       if (await input.detect(item.lines.join('\n'))) {
         item.decision = 'omitted';
+        item.reason = 'secret_detected';
         item.lines = [];
       }
     }
@@ -439,7 +450,7 @@ async function assemble(
   }
 
   // Canonicalization removed them all; this is the assertion that nothing added one back.
-  if (/[\p{Cc}\p{Cf}]/u.test(text.replace(/\n/g, ''))) {
+  if (hasControlCharacter(text)) {
     return recordOmitted(db, input, assembly, items, 'index_unavailable');
   }
 
@@ -569,7 +580,7 @@ export async function buildSessionStartPack(
     omitted,
     degraded,
     budgetChars: budget.chars,
-    directivesLowered: input.directives.map((phrase) => phrase.toLowerCase()),
+    directives: input.directives,
   });
 }
 
@@ -633,7 +644,7 @@ export async function buildPromptPack(
     omitted,
     degraded: budget.windowUnknown ? 'window_unknown' : null,
     budgetChars: budget.chars,
-    directivesLowered: input.directives.map((phrase) => phrase.toLowerCase()),
+    directives: input.directives,
   });
 }
 

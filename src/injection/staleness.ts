@@ -78,7 +78,9 @@ export function checkCommits(
       result.set(commit, cached);
       continue;
     }
-    const answer = git(repoRoot, ['merge-base', '--is-ancestor', commit, 'HEAD']);
+    // FR-004: a citation is a value, never an option. `--end-of-options` (git 2.24) makes git read
+    // the commit as an operand even when a provider wrote something option-shaped into it.
+    const answer = git(repoRoot, ['merge-base', '--is-ancestor', '--end-of-options', commit, 'HEAD']);
     const ancestor = answer !== null && answer.status === 0;
     cache.ancestors.set(commit, ancestor);
     result.set(commit, ancestor);

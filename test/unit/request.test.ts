@@ -2,10 +2,10 @@ import assert from 'node:assert/strict';
 import type { DatabaseSync } from 'node:sqlite';
 import { test } from 'node:test';
 
-import { configSchema, consentHash, consentTuple } from '../../src/config.js';
+import { configSchema, consentHash, consentMatches, consentTuple } from '../../src/config.js';
 import { openDatabase } from '../../src/db/open.js';
 import { nearbyCandidates } from '../../src/db/queries.js';
-import { buildObserverRequest, consentGate } from '../../src/observer/request.js';
+import { buildObserverRequest } from '../../src/observer/request.js';
 import { oboetePaths } from '../../src/paths.js';
 import { loadDestinationRules } from '../../src/privacy/egress.js';
 import { cjkBigrams } from '../../src/retrieval/fts.js';
@@ -340,11 +340,11 @@ test('the consent gate refuses a stored hash that no longer describes the config
     observer: { preset: 'workers-ai' },
     consent: { hash: consentHash(consentTuple(live, env)), accepted_at: NOW },
   });
-  assert.equal(consentGate(accepted, env), true);
+  assert.equal(consentMatches(accepted, env), true);
 
   const changed = configSchema.parse({
     observer: { preset: 'openrouter' },
     consent: { hash: consentHash(consentTuple(live, env)), accepted_at: NOW },
   });
-  assert.equal(consentGate(changed, env), false);
+  assert.equal(consentMatches(changed, env), false);
 });

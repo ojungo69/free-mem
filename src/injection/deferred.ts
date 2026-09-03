@@ -16,7 +16,14 @@ import {
   type ItemReason,
   type WhyAttempt,
 } from './ledger.js';
-import { renderPack, type BuiltPack } from './pack.js';
+import {
+  hasControlCharacter,
+  hasDirective,
+  renderPack,
+  type BuiltPack,
+  type PackItem,
+  type SecretDetector,
+} from './pack.js';
 
 /**
  * The rendered pack of the pending record. `injections` stores the hash, not the text, so the text
@@ -113,24 +120,138 @@ function omitItem(
   ).run(reason, injectionId, item.memoryId, item.rawEventId);
 }
 
+function omitPlanned(db: DatabaseSync, injectionId: string, reason: ItemReason | null): void {
+  db.prepare(
+    `UPDATE injection_items SET decision = 'omitted', reason = ?
+     WHERE injection_id = ? AND decision = 'planned'`,
+  ).run(reason, injectionId);
+}
+
+/** The merged-away pack keeps every row it planned, so its omissions stay in `why` (FR-028). */
+function reparentItems(db: DatabaseSync, injectionId: string, liveId: string): void {
+  db.prepare('UPDATE injection_items SET injection_id = ? WHERE injection_id = ?').run(
+    liveId,
+    injectionId,
+  );
+  db.prepare('DELETE FROM injections WHERE id = ?').run(injectionId);
+}
+
 function blockCost(lines: readonly string[]): number {
   return lines.join('\n').length + 1;
 }
 
+type PendingBlock = PendingPack['blocks'][number];
+
+/** The merge rule 1 describes, computed without writing anything. */
+type MergePlan = {
+  liveId: string;
+  repositoryLine: string;
+  degraded: DegradedReason | null;
+  blocks: PendingBlock[];
+  text: string;
+  omissions: { item: PackItem; reason: ItemReason }[];
+};
+
+/** The checks contracts/agents.md requires of a finished pack ("Pack format (all agents)"). */
+export type PackValidation = { detect: SecretDetector; directives: readonly string[] };
+
+type Rejection = 'secret_detected' | 'directive' | 'control_characters';
+
+async function packRejection(
+  text: string,
+  validation: PackValidation,
+): Promise<Rejection | null> {
+  if (await validation.detect(text)) return 'secret_detected';
+  if (hasDirective(text, validation.directives)) return 'directive';
+  if (hasControlCharacter(text)) return 'control_characters';
+  return null;
+}
+
+/**
+ * `null` when the conversation has no live record, which is the case where the built pack simply
+ * becomes the pending one. Reads only, so the caller can validate the text it would store before
+ * the transaction that stores it.
+ */
+function planMerge(db: DatabaseSync, input: StorePendingInput): MergePlan | null {
+  const live = liveRecord(db, input.conversationId, input.pack.injectionId);
+  if (live === null) return null;
+
+  const liveId = String(live.id);
+  const previous = readPending(db, input.conversationId) ?? {
+    injectionId: liveId,
+    repositoryLine: input.pack.repositoryLine,
+    degraded: input.pack.degraded,
+    blocks: [],
+    text: '',
+  };
+  const degraded = previous.degraded ?? input.pack.degraded;
+  const budget = Number(live.char_budget ?? input.pack.charBudget);
+
+  const blocks = [...previous.blocks];
+  const known = new Set(
+    blocks.map((block) => block.memoryId).filter((id): id is string => id !== null),
+  );
+  let used = renderPack({
+    repositoryLine: previous.repositoryLine,
+    blocks: blocks.map((block) => block.lines),
+    degraded,
+  }).length;
+
+  const omissions: { item: PackItem; reason: ItemReason }[] = [];
+  for (const item of input.pack.items.filter((entry) => entry.decision === 'planned')) {
+    if (item.memoryId !== null && known.has(item.memoryId)) {
+      omissions.push({ item, reason: 'duplicate_in_conversation' });
+      continue;
+    }
+    const cost = blockCost(item.lines);
+    if (used + cost > budget) {
+      omissions.push({ item, reason: 'budget' });
+      continue;
+    }
+    used += cost;
+    blocks.push({ memoryId: item.memoryId, rawEventId: item.rawEventId, lines: item.lines });
+    if (item.memoryId !== null) known.add(item.memoryId);
+  }
+
+  return {
+    liveId,
+    repositoryLine: previous.repositoryLine,
+    degraded,
+    blocks,
+    omissions,
+    text: renderPack({
+      repositoryLine: previous.repositoryLine,
+      blocks: blocks.map((block) => block.lines),
+      degraded,
+    }),
+  };
+}
+
+export type StorePendingInput = {
+  conversationId: string;
+  epoch: number;
+  pack: BuiltPack;
+  now: number;
+  /** contracts/agents.md: the finished pack is validated as a whole before it is emitted. */
+  validation: PackValidation;
+};
+
 /**
  * Rule 1: the built pack becomes the conversation's pending record. An existing live record is not
  * replaced: its planned items stay, the new ones are added under the same budget, and the merged
- * record gets a new `pack_hash`. Returns the id of the record that now holds the pack.
+ * record gets a new `pack_hash`. The merged text is a text no builder ever validated, so it passes
+ * the whole-pack checks before it is stored; a hit stores nothing and the live record keeps the
+ * text it already passed. Returns the id of the record that now holds the pack.
  */
-export function storePending(
-  db: DatabaseSync,
-  input: { conversationId: string; epoch: number; pack: BuiltPack; now: number },
-): string {
-  return transactionImmediate(db, () => {
-    const planned = input.pack.items.filter((item) => item.decision === 'planned');
-    const live = liveRecord(db, input.conversationId, input.pack.injectionId);
+export async function storePending(db: DatabaseSync, input: StorePendingInput): Promise<string> {
+  const validated = planMerge(db, input);
+  const rejection =
+    validated === null ? null : await packRejection(validated.text, input.validation);
 
-    if (live === null) {
+  return transactionImmediate(db, () => {
+    const plan = planMerge(db, input);
+    if (plan === null) {
+      // No live record: this is the pack pack.ts validated as a whole when it built it.
       db.prepare(`UPDATE injections SET state = 'pending' WHERE id = ?`).run(
         input.pack.injectionId,
       );
@@ -141,11 +262,13 @@ export function storePending(
           injectionId: input.pack.injectionId,
           repositoryLine: input.pack.repositoryLine,
           degraded: input.pack.degraded,
-          blocks: planned.map((item) => ({
-            memoryId: item.memoryId,
-            rawEventId: item.rawEventId,
-            lines: item.lines,
-          })),
+          blocks: input.pack.items
+            .filter((item) => item.decision === 'planned')
+            .map((item) => ({
+              memoryId: item.memoryId,
+              rawEventId: item.rawEventId,
+              lines: item.lines,
+            })),
           text: input.pack.text,
         },
         input.now,
@@ -153,66 +276,55 @@ export function storePending(
       return input.pack.injectionId;
     }
 
-    const liveId = String(live.id);
-    const previous = readPending(db, input.conversationId) ?? {
-      injectionId: liveId,
-      repositoryLine: input.pack.repositoryLine,
-      degraded: input.pack.degraded,
-      blocks: [],
-      text: '',
-    };
-    const degraded = previous.degraded ?? input.pack.degraded;
-    const budget = Number(live.char_budget ?? input.pack.charBudget);
+    if (validated === null || plan.text !== validated.text) {
+      // Another hook changed the record between the check and this transaction, so the text that
+      // would be stored is not the text that was validated. Nothing is merged and the memories stay
+      // injectable for the next turn (FR-026, rule 5).
+      omitPlanned(db, input.pack.injectionId, 'not_delivered');
+      reparentItems(db, input.pack.injectionId, plan.liveId);
+      return plan.liveId;
+    }
 
-    const blocks = [...previous.blocks];
-    const known = new Set(
-      blocks.map((block) => block.memoryId).filter((id): id is string => id !== null),
-    );
-    let used = renderPack({
-      repositoryLine: previous.repositoryLine,
-      blocks: blocks.map((block) => block.lines),
-      degraded,
-    }).length;
+    if (rejection !== null) {
+      omitPlanned(db, input.pack.injectionId, rejection === 'control_characters' ? null : rejection);
+      reparentItems(db, input.pack.injectionId, plan.liveId);
+      if (rejection === 'control_characters') {
+        // A control character in a stored pack means the stored text itself cannot be trusted, and
+        // that is the one case pack.ts answers by emitting nothing at all (index_unavailable).
+        omitPlanned(db, plan.liveId, 'not_delivered');
+        omitInjection(db, plan.liveId, 'index_unavailable');
+        clearPending(db, input.conversationId);
+      }
+      return plan.liveId;
+    }
 
     // The omissions are written on the new pack's own rows, so the live record's planned row for
     // the same memory keeps standing: it is the copy that is rendered and delivered (FR-026).
-    for (const item of planned) {
-      if (item.memoryId !== null && known.has(item.memoryId)) {
-        omitItem(db, input.pack.injectionId, item, 'duplicate_in_conversation');
-        continue;
-      }
-      const cost = blockCost(item.lines);
-      if (used + cost > budget) {
-        omitItem(db, input.pack.injectionId, item, 'budget');
-        continue;
-      }
-      used += cost;
-      blocks.push({ memoryId: item.memoryId, rawEventId: item.rawEventId, lines: item.lines });
-      if (item.memoryId !== null) known.add(item.memoryId);
+    for (const omission of plan.omissions) {
+      omitItem(db, input.pack.injectionId, omission.item, omission.reason);
     }
-
-    // The ledger keeps every row of the merged-away pack, so its omissions stay in `why`.
-    db.prepare('UPDATE injection_items SET injection_id = ? WHERE injection_id = ?').run(
-      liveId,
-      input.pack.injectionId,
-    );
-    db.prepare('DELETE FROM injections WHERE id = ?').run(input.pack.injectionId);
-
-    const text = renderPack({
-      repositoryLine: previous.repositoryLine,
-      blocks: blocks.map((block) => block.lines),
-      degraded,
-    });
+    reparentItems(db, input.pack.injectionId, plan.liveId);
     db.prepare(
       'UPDATE injections SET pack_hash = ?, chars_used = ?, degraded_reason = ? WHERE id = ?',
-    ).run(createHash('sha256').update(text, 'utf8').digest('hex'), text.length, degraded, liveId);
+    ).run(
+      createHash('sha256').update(plan.text, 'utf8').digest('hex'),
+      plan.text.length,
+      plan.degraded,
+      plan.liveId,
+    );
     writePending(
       db,
       input.conversationId,
-      { injectionId: liveId, repositoryLine: previous.repositoryLine, degraded, blocks, text },
+      {
+        injectionId: plan.liveId,
+        repositoryLine: plan.repositoryLine,
+        degraded: plan.degraded,
+        blocks: plan.blocks,
+        text: plan.text,
+      },
       input.now,
     );
-    return liveId;
+    return plan.liveId;
   });
 }
 

@@ -34,8 +34,11 @@ export type AdapterInput = {
   capturedAt: number;
 };
 
-/** Exactly the text and paths the privacy detector scans before the first write (FR-018, R4). */
-export type DetectorContent = { text: string; paths: string[] };
+/**
+ * Exactly the paths the privacy detector scans before the first write (FR-018, R4). The strings it
+ * scans come from `textFields` per event, so each one is redacted back into its own field.
+ */
+export type DetectorContent = { paths: string[] };
 
 export type UnmappedReason = 'unmapped_payload' | 'event_not_captured' | 'payload_invalid';
 
@@ -210,45 +213,70 @@ export function metadataOnly(
   };
 }
 
-function eventContent(event: NormalizedEvent): { texts: string[]; paths: string[] } {
+export type TextField = {
+  read(): string;
+  write(value: string): void;
+  /** True when the redacted value becomes `raw_events.content` instead of staying in payload_json. */
+  content: boolean;
+};
+
+/**
+ * Every string of a normalized event that the detector must see, and where its redacted value goes
+ * back. This table is the single source: the capture hook redacts field by field through it and
+ * nothing else decides what is scanned, so a field cannot reach storage unscanned (FR-018).
+ */
+export function textFields(event: NormalizedEvent): TextField[] {
   switch (event.kind) {
     case 'prompt':
     case 'compaction_summary':
     case 'last_assistant_message':
-      return { texts: [event.text], paths: [] };
-    case 'tool_call':
-      return {
-        texts: [event.input.command, event.input.text].filter((value) => value !== undefined),
-        paths: event.input.paths,
-      };
+      return [{ read: () => event.text, write: (value) => (event.text = value), content: true }];
+    case 'tool_call': {
+      const fields: TextField[] = [];
+      if (event.input.command !== undefined) {
+        fields.push({
+          read: () => event.input.command ?? '',
+          write: (value) => (event.input.command = value),
+          content: true,
+        });
+      }
+      if (event.input.text !== undefined) {
+        fields.push({
+          read: () => event.input.text ?? '',
+          write: (value) => (event.input.text = value),
+          content: true,
+        });
+      }
+      return fields;
+    }
     case 'tool_result':
-      return { texts: [event.output], paths: [] };
+      return [{ read: () => event.output, write: (value) => (event.output = value), content: true }];
     case 'tool_failure':
-      return { texts: [event.error], paths: [] };
+      return [{ read: () => event.error, write: (value) => (event.error = value), content: true }];
     case 'turn_end':
     case 'session_end':
-      // The reason is a short payload string, so it is scanned like any other stored text.
-      return { texts: [event.reason], paths: [] };
+      // A lifecycle reason is metadata, so it is scanned like any text but kept in payload_json.
+      return [{ read: () => event.reason, write: (value) => (event.reason = value), content: false }];
     default:
-      return { texts: [], paths: [] };
+      return [];
   }
 }
 
+/** The paths an event names itself; the detector matches them against the repository rules (R4). */
+function eventPaths(event: NormalizedEvent): readonly string[] {
+  return event.kind === 'tool_call' ? event.input.paths : [];
+}
+
 /**
- * Wraps the events an adapter produced with the content the detector must see first (FR-018).
+ * Wraps the events an adapter produced with the paths the detector must see first (FR-018).
  * `namedPaths` are paths the adapter read from the payload that no event field carries, such as the
  * file a tool result is the body of: without them a repository path rule could never classify that
  * row (FR-017, R4).
  */
 export function toEvents(events: NormalizedEvent[], namedPaths: string[] = []): AdapterOutput {
-  const texts: string[] = [];
   const paths: (string | undefined)[] = [...namedPaths];
-  for (const event of events) {
-    const content = eventContent(event);
-    texts.push(...content.texts);
-    paths.push(...content.paths);
-  }
-  return { kind: 'events', events, contentForDetector: { text: texts.join('\n'), paths: capPaths(paths) } };
+  for (const event of events) paths.push(...eventPaths(event));
+  return { kind: 'events', events, contentForDetector: { paths: capPaths(paths) } };
 }
 
 /**
@@ -268,8 +296,8 @@ export function resolveAgent(selector: string | undefined, env: NodeJS.ProcessEn
 }
 
 /**
- * The bounded scan of a payload prefix that was cut at the 1 MB stdin bound (A7): the session id,
- * the tool name and the path fields, and nothing else of the text.
+ * The bounded scan of a payload prefix that was cut at the stdin read bound (A7, 256 KiB per A14):
+ * the session id, the tool name and the path fields, and nothing else of the text.
  */
 export function scanPartialPrefix(
   agent: AdapterAgent,

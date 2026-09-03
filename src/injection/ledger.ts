@@ -43,7 +43,11 @@ export type ItemReason =
   | 'mmr_redundant'
   | 'pinned'
   | 'summary'
-  | 'not_delivered';
+  | 'not_delivered'
+  /** The finished text carried a secret, so the item that carried it was dropped (FR-018). */
+  | 'secret_detected'
+  /** The item read as an instruction to the agent rather than as a record (FR-021). */
+  | 'directive';
 
 export type NewInjection = {
   id?: string;

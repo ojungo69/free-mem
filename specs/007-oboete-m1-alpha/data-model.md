@@ -63,11 +63,11 @@ tables are `STRICT`; FTS5 virtual tables cannot be. Every write from the worker 
 | agent | TEXT | |
 | kind | TEXT | `session_start`, `prompt`, `tool_call`, `tool_result`, `tool_failure`, `turn_end`, `session_end`, `compaction_summary`, `last_assistant_message`, `probe` |
 | content | TEXT | stored after `<private>` removal and redaction; NULL for path-rule hits and for `classification_state = failed`; the redacted read part for `partial` rows |
-| truncated | INTEGER | 1 when the payload exceeded the 1 MB read bound (A7) |
+| truncated | INTEGER | 1 when the payload exceeded the 256 KiB read bound (A7, A14) |
 | payload_json | TEXT | normalized fields (zod-validated); no raw passthrough |
 | content_hash | TEXT | |
 | sensitivity | TEXT | `local_only` (default), `eligible`, `secret`, `private` |
-| classification_state | TEXT | `pending`, `done`, `partial` (payload above the 1 MB read bound: redacted read part kept with `truncated = 1`, never promoted, metadata only to the fallback, never to a provider or a pack), `failed` (detector or config failure: metadata only with `payload_json.failure_reason`, never summarized or injected) |
+| classification_state | TEXT | `pending`, `done`, `partial` (payload above the 256 KiB read bound: redacted read part kept with `truncated = 1`, never promoted, metadata only to the fallback, never to a provider or a pack), `failed` (detector or config failure: metadata only with `payload_json.failure_reason`, never summarized or injected) |
 | captured_at, expires_at | INTEGER | `expires_at` = captured_at + 7 days |
 | batch_id | TEXT | set when claimed |
 | via_spool | INTEGER | |

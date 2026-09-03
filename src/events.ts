@@ -36,7 +36,7 @@ export const TOOL_NAMES = ['read', 'write', 'edit', 'bash', 'grep', 'glob', 'tas
 /** A tool served over MCP, normalized to `mcp:<server>/<tool>` (contracts/agents.md). */
 export const MCP_TOOL_NAME_PATTERN = /^mcp:[^/]+\/[^/]+$/;
 
-/** The 1 MB stdin read bound of the capture hook (spec A7, contracts/agents.md "Size cap"). */
+/** The cap on one stored text. The hook's stdin read bound is smaller (A14, src/capture.ts). */
 export const MAX_TEXT = 1_048_576;
 /** A rendered tool input stays short: it is summarizer and pack material, not a transcript. */
 export const MAX_TOOL_INPUT_TEXT = 20_000;
@@ -197,8 +197,14 @@ export function eventContentHash(event: NormalizedEvent): string {
  * `sessions.turn_count`, the one read that contracts/agents.md's "no database read" does not
  * cover, and a spooled event has to be replayed with the ordinal it had when it was captured, or
  * the direct path and the spool path give one event two ids and the re-delivery stops collapsing.
- * Accepted limit: two byte-identical events of the last form collapse to one row - inside one
- * turn when either key exists, session-wide when neither does.
+ * Accepted limits of the last form, all of them re-deliveries that do not collapse or events that
+ * do: two byte-identical events collapse to one row inside one turn when either key exists and
+ * session-wide when neither does; an event captured on the spool path (no ordinal, key '') that is
+ * re-delivered later on the direct path (ordinal known) gets a second id, which is reachable for a
+ * lifecycle event of an agent that supplies no `prompt_id`, Grok Build's `SessionStart` among them;
+ * and a prompt with no `prompt_id` that is re-delivered opens the next turn, so it gets the next
+ * ordinal and a second row. The alternative - no ordinal on a prompt - collapses two identical
+ * prompts of one session ("continue" twice) into one row, which is the more frequent loss.
  */
 export function eventIdKey(event: NormalizedEvent, turnOrdinal?: number): string[] {
   const base = ['v1', event.agent, event.native_session_id, event.kind];
