@@ -1,0 +1,108 @@
+scripts/e2e/probe-contracts.mjs
+  s_fc2620bf36ec37::t_07320f7c55b1aa 109-136,206-211,214,233-238
+  s_fc2620bf36ec37::t_ceb6aab3bdbde0 7
+docs/research/oboete-contracts-probes.md
+  s_767fcd19c0d8da::t_03ac9df503849d 88-272
+specs/007-oboete-m1-alpha/tasks.md
+  s_767fcd19c0d8da::t_3ec2f664715b7b 53
+test/contracts/claude/bash-failure.json
+  s_767fcd19c0d8da::t_439e55e56e3e91 4,9-10,12,23,26-27,29,40,43
+test/contracts/claude/bash.json
+  s_767fcd19c0d8da::t_3ba87404e251d7 4,9-10,12,23,26-27,29,47-48
+test/contracts/claude/edit.json
+  s_767fcd19c0d8da::t_553b6f329df070 4,9-10,12,25,28-29,31,64
+test/contracts/claude/read-failure.json
+  s_767fcd19c0d8da::t_20805a595a39ba 4,9-10,12,22,25-26,28,38,41
+test/contracts/claude/read.json
+  s_767fcd19c0d8da::t_28d328ee5c58af 4,9-10,12,22,25-26,28,48-49
+test/contracts/claude/write.json
+  s_767fcd19c0d8da::t_796bb809a0a79b 4,9-10,12,23,26-27,29,48-49
+test/contracts/codex/apply_patch-add.json
+  s_767fcd19c0d8da::t_7ef1079aad19a2 4,9-11,18,20,23-25,32,34-35
+test/contracts/codex/apply_patch-update.json
+  s_767fcd19c0d8da::t_6621a0df5ff143 4,9-11,18,20,23-25,32,34-35
+test/contracts/codex/bash-read.json
+  s_767fcd19c0d8da::t_e5a746ce73abfb 4,9-11,20,23-25,35
+test/contracts/codex/bash.json
+  s_767fcd19c0d8da::t_87e597bc7f95ac 4,9-11,20,23-25,35
+test/contracts/codex/mcp-frames.json
+  s_767fcd19c0d8da::t_e7a49cc4ef89c8 4,19,25,31,37,43,49,55
+test/contracts/codex/postcompact.json
+  s_767fcd19c0d8da::t_d2424aea41e59b 4,12-14,23-25,35,39,52,55-56,70,73-74,87,90-91,104,108,124-126,133-135,144-146,153-155,165,169,182,185-186,200,203-204,217,220-221,234,237-238,251,254-255
+test/contracts/codex/rollout-flush.json
+  s_767fcd19c0d8da::t_f0e4cc314097ab 4,8,10,14,16,20,22,26,28
+test/contracts/codex/session-start-compact.json
+  s_767fcd19c0d8da::t_399c5434dcbdc8 4,11,15,28,31-32,47-48
+test/contracts/grok/mcp-search.json
+  s_767fcd19c0d8da::t_37dd625b1f0875 9,12-13,16,23-24,31,33
+test/contracts/grok/permission-denied.json
+  s_767fcd19c0d8da::t_1e88c08f30782e 7-11,14,17,21-22,27,29
+test/contracts/grok/postcompact.json
+  s_767fcd19c0d8da::t_7dd4361d67a34e 5,8-9,13-14,19,22-23,27-28,33-37,41-42
+test/contracts/grok/posttooluse-failure.json
+  s_767fcd19c0d8da::t_374b2cfef68bca 6,9-10,13,16,33,35,40,43-44,49,66,68,71-72
+test/contracts/grok/read_file.json
+  s_767fcd19c0d8da::t_fbaa6141f95afd 4,10,13-14,17,23-24,30,34,37-38,41,61-62,79
+test/contracts/grok/run_terminal_command.json
+  s_767fcd19c0d8da::t_102a27196571a4 4,10,13-14,17,24-25,32,36,39-40,43,69,78-79,107,111
+test/contracts/grok/search_replace.json
+  s_767fcd19c0d8da::t_005e41509f0092 4,10,13-14,17,25-26,34,38,41-42,45,79-80,111
+test/contracts/grok/session-start-resume.json
+  s_767fcd19c0d8da::t_80f979edb59eb9 5,8,12,17,20-21,25-26,31,34-35,39-40
+test/contracts/grok/stop-end-turn.json
+  s_767fcd19c0d8da::t_8719d36f336521 5,8-10,18-19,24,27-28,33-34,39,42-43,47-48
+test/contracts/grok/write.json
+  s_767fcd19c0d8da::t_4333f728cb498f 4,10,13-14,17,24-25,32,36,39-40,43,73,76-77,107-108
+test/contracts/pi/bash.json
+  s_767fcd19c0d8da::t_192ff197b78bad 4,11,19
+test/contracts/pi/compaction.json
+  s_767fcd19c0d8da::t_47cd7c095cf72a 4,10,21,29,33,59-60,65,74,93,95,101-103,108-110,115-117,122-124,129-131,154,165,189,201,208-209,213,224-225,228-229,231-232,235,239-240,245,254,258-259,274,276,282-284,289-291,300,305-307,314,318,344-345,351-353,356,365,370-372,377-381,391,395,398,401,408-410,415-417,422-424,429-431,454,468-472,482,486,489,492,505-510,518-519,522-523,525-526,529
+test/contracts/pi/edit.json
+  s_767fcd19c0d8da::t_eb3493b5908904 4,11,25
+test/contracts/pi/oboete_probe.json
+  s_767fcd19c0d8da::t_331145b9ab2e01 4,10,16
+test/contracts/pi/read.json
+  s_767fcd19c0d8da::t_e2bdf7da765222 4,11,19
+test/contracts/pi/write.json
+  s_767fcd19c0d8da::t_073594fc3398e7 4,11,20
+scripts/e2e/probe-lib/agents.mjs
+  s_767fcd19c0d8da::t_bb227917e83f3b 5,19-26,62-101,230,291,316-317,339,373,377,398,477-478,488,511-512,517,532,537-543,608,611-612,614,623-628,634,637,689-752
+scripts/e2e/probe-lib/mcp-frames.mjs
+  s_767fcd19c0d8da::t_b70dd135327401 1-28
+scripts/e2e/probe-lib/redact.test.mjs
+  s_767fcd19c0d8da::t_32348a50ec8b98 1-15
+scripts/e2e/probe-lib/tmux.mjs
+  s_767fcd19c0d8da::t_6a5379246ad929 3-13,18-21,23,27,30,43
+scripts/e2e/probes/claude.mjs
+  s_767fcd19c0d8da::t_f90c7c5d8187ed 4,9,12,21-22,97-99,101-102,106-118,122,125-127,129,153-158,234,461,473,477,494,506-507,509,514
+scripts/e2e/probes/codex.mjs
+  s_767fcd19c0d8da::t_f724242ae59cf5 4,11,17-18,25,28-29,181-186,192-194,223,228,234,247-252,262,264,267-272,274-277,280-282,381-383,427-429,499,516-518,541,553-555,738-739
+scripts/e2e/probes/grok.mjs
+  s_767fcd19c0d8da::t_95c3d5b5edf83e 3,7,9,11,15-16,19-20,24,27,118,122-130,148,151,153,166,173,175-179,187-225,233,235,314,362,370,375-379,381,383-384,389,400,408,414,433,436,441,448-453,471,482,485,487-489,494,499,506-518,520,536,544,547-549,553,561,566,574,601-606,639,645-677,680,683-686,688-690,694-695,697-707,715-716,718,727,745-750,755-756
+scripts/e2e/probes/pi.mjs
+  s_767fcd19c0d8da::t_9b7188ca91f7df 4-14,95,102-103,123-136,139-144,146-151,153,155,157-160,168-171,276-277,279,282,287,307,357-358,451-456,458-464,469-478,510
+---
+{
+  "schema_version": "authorship/3.0.0",
+  "git_ai_version": "1.6.16",
+  "base_commit_sha": "40fc48a20e1f8e0c4d8360ddb333d939eaab0614",
+  "prompts": {},
+  "sessions": {
+    "s_767fcd19c0d8da": {
+      "agent_id": {
+        "tool": "claude",
+        "id": "bf5a7bc1-9f1a-4019-ba5b-a2aa509f2da2",
+        "model": "claude-fable-5-1"
+      },
+      "human_author": "ojungo69 <210335670+ojungo69@users.noreply.github.com>"
+    },
+    "s_fc2620bf36ec37": {
+      "agent_id": {
+        "tool": "codex",
+        "id": "01a067e0-7e5c-7c73-b008-8c3dde3e4e64",
+        "model": "gpt-5.6-sol"
+      },
+      "human_author": "ojungo69 <210335670+ojungo69@users.noreply.github.com>"
+    }
+  }
+}
