@@ -1,0 +1,21 @@
+package.json
+  s_fb58e09627940f::t_a11138c6f376d4 24
+test/e2e-hook.test.ts
+  s_fb58e09627940f::t_b287c5340a0a88 33-35,106,133,160
+---
+{
+  "schema_version": "authorship/3.0.0",
+  "git_ai_version": "1.6.16",
+  "base_commit_sha": "7210c22b7598f3ceab5f9e95333a372fcd8d1a37",
+  "prompts": {},
+  "sessions": {
+    "s_fb58e09627940f": {
+      "agent_id": {
+        "tool": "claude",
+        "id": "85541cda-e22f-45ae-a41f-98db490b90bf",
+        "model": "claude-fable-5-1"
+      },
+      "human_author": "ojungo69 <210335670+ojungo69@users.noreply.github.com>"
+    }
+  }
+}
