@@ -1,0 +1,33 @@
+docs/research/m1-amendments-2026-09.md
+  s_c3a3aca6da7be1::t_2516913020df42 45
+specs/007-oboete-m1-alpha/contracts/observer.md
+  s_c3a3aca6da7be1::t_30ee0d947217b1 90,93-97
+src/db/queries.ts
+  s_c3a3aca6da7be1::t_2bc326a9de34d9 147,150,153-154,158-162,165,168-169,348-350,354-358
+src/memories-cli.ts
+  s_c3a3aca6da7be1::t_4640285c6d8514 353-354,399-400
+src/observer/classify.ts
+  s_c3a3aca6da7be1::t_051a4ed803cf43 422,425,448-452,460-462,468-477,480
+test/unit/classify.test.ts
+  s_c3a3aca6da7be1::t_55a7751dd36eb1 732-817
+test/unit/cli-memories.test.ts
+  s_c3a3aca6da7be1::t_a72071d9d44715 329-376
+test/unit/queries.test.ts
+  s_c3a3aca6da7be1::t_3afe91d94ee304 15,17,297-339,434-449
+---
+{
+  "schema_version": "authorship/3.0.0",
+  "git_ai_version": "1.6.16",
+  "base_commit_sha": "4bfa1728c27610f516c2219880c2a2cd6bc8fde0",
+  "prompts": {},
+  "sessions": {
+    "s_c3a3aca6da7be1": {
+      "agent_id": {
+        "tool": "claude",
+        "id": "7392a577-3272-4376-9b89-f4c55b10c247",
+        "model": "claude-opus-5"
+      },
+      "human_author": "ojungo69 <210335670+ojungo69@users.noreply.github.com>"
+    }
+  }
+}
