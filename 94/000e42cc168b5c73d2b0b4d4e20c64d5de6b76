@@ -1,0 +1,29 @@
+scripts/e2e/probe-contracts.mjs
+  s_d9e42b4587fc81::t_b3c089c33f45ca 65-71
+src/config.ts
+  s_d9e42b4587fc81::t_d431d4b09117c0 7,124-135,137,166
+src/paths.ts
+  s_d9e42b4587fc81::t_eb39bd73e7081b 3,21-26
+src/privacy/detect.ts
+  s_d9e42b4587fc81::t_30e5985dbb24fc 198-214
+src/setup/managed-block.ts
+  s_d9e42b4587fc81::t_5455f9c4aee0c2 220-222
+test/unit/config.test.ts
+  s_d9e42b4587fc81::t_74696fbe24bb11 3,58-72,133-155
+---
+{
+  "schema_version": "authorship/3.0.0",
+  "git_ai_version": "1.6.16",
+  "base_commit_sha": "94000e42cc168b5c73d2b0b4d4e20c64d5de6b76",
+  "prompts": {},
+  "sessions": {
+    "s_d9e42b4587fc81": {
+      "agent_id": {
+        "tool": "claude",
+        "id": "c71a1c70-4032-4f69-bbf0-857b7e13b519",
+        "model": "claude-opus-5"
+      },
+      "human_author": "ojungo69 <210335670+ojungo69@users.noreply.github.com>"
+    }
+  }
+}
