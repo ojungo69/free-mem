@@ -7,6 +7,8 @@ import { childEnv } from "./agents.mjs";
 function withCredentialsInEnvironment(fn) {
   const credentials = {
     OBOETE_CF_API_TOKEN: "cf-token",
+    // The one credential variable whose name ends in neither _API_KEY nor _API_TOKEN, so it is the
+    // one a narrowed rule would drop first; it names the Cloudflare account the developer pays for.
     OBOETE_CF_ACCOUNT_ID: "cf-account",
     OBOETE_OPENROUTER_API_KEY: "openrouter-key",
   };
@@ -57,17 +59,3 @@ test("childEnv drops a credential passed to it explicitly unless credentials wer
   assert.equal(childEnv({ OBOETE_NIM_API_KEY: "nim-key" }, { credentials: true }).OBOETE_NIM_API_KEY, "nim-key");
 });
 
-// The account id carries no key material but names the Cloudflare account the developer pays for,
-// and it is the one credential variable whose name does not end in _API_KEY or _API_TOKEN, so it is
-// the one a narrowed rule would drop first.
-test("the Cloudflare account id is a credential the agent CLI never sees", () => {
-  const previous = process.env.OBOETE_CF_ACCOUNT_ID;
-  process.env.OBOETE_CF_ACCOUNT_ID = "cf-account";
-  try {
-    assert.equal(childEnv({}).OBOETE_CF_ACCOUNT_ID, undefined);
-    assert.equal(childEnv({}, { credentials: true }).OBOETE_CF_ACCOUNT_ID, "cf-account");
-  } finally {
-    if (previous === undefined) delete process.env.OBOETE_CF_ACCOUNT_ID;
-    else process.env.OBOETE_CF_ACCOUNT_ID = previous;
-  }
-});

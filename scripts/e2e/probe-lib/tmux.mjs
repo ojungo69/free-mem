@@ -25,8 +25,24 @@ export function tmux(args, opts = {}) {
   });
 }
 
+/**
+ * A pane also inherits the environment of a server that was already running, which the filter
+ * above cannot reach: that server was started by whoever ran the first probe. Panes read the
+ * server's global environment, so the credentials are removed from it before a session is created.
+ */
+function scrubServerEnvironment() {
+  const shown = tmux(["show-environment", "-g"]);
+  // No server yet: the next tmux command starts one from the filtered environment above.
+  if (shown.status !== 0) return;
+  for (const line of (shown.stdout || "").split("\n")) {
+    const name = (line.startsWith("-") ? line.slice(1) : line.split("=")[0]).trim();
+    if (name && isCredentialVariable(name)) tmux(["set-environment", "-g", "-u", name]);
+  }
+}
+
 export function tmuxSession({ name, command, cwd, env } = {}) {
   if (!name) throw new Error("tmuxSession: name required");
+  scrubServerEnvironment();
   const args = ["new-session", "-d", "-s", name, "-x", "200", "-y", "50"];
   if (cwd) args.push("-c", cwd);
   const extraEnv = withoutCredentials(env || {});
