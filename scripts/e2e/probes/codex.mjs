@@ -212,7 +212,7 @@ async function withTui(dir, { home, repo, extra = [], run }) {
   const name = "obc-" + Date.now().toString(36) + "-" + Math.random().toString(36).slice(2, 6);
   let tui;
   try {
-    tui = tmuxSession({ name, command: tuiCmd(home, extra), cwd: repo });
+    tui = tmuxSession({ name, command: tuiCmd(home, extra), cwd: repo, env: childEnv({ TERM: "xterm-256color" }) });
     return await run(tui, name);
   } finally {
     try {

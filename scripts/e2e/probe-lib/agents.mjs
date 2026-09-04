@@ -120,8 +120,10 @@ export function isCredentialVariable(name) {
 
 /**
  * The environment a probe hands to a child. FR-016: a probe runs from the developer's shell, and
- * oboete's provider credentials are the developer's, so no launcher passes them on. Only a caller
- * that runs `oboete` itself asks for them with `{ credentials: true }`.
+ * oboete's provider credentials are the developer's, so a child that is an agent CLI never receives
+ * them. Only a caller that runs `oboete` itself asks for them with `{ credentials: true }`. A pane
+ * takes its environment from the tmux server rather than from its caller, so `probe-lib/tmux.mjs`
+ * applies the same rule where that server is started.
  */
 export function childEnv(extra = {}, { credentials = false } = {}) {
   const env = { ...process.env, PATH: agentPath(), ...extra };
