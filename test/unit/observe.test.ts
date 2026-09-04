@@ -1,5 +1,5 @@
 import assert from 'node:assert/strict';
-import { existsSync, mkdirSync, readFileSync, writeFileSync } from 'node:fs';
+import { existsSync, mkdirSync, readFileSync, rmSync, writeFileSync } from 'node:fs';
 import { join } from 'node:path';
 import type { DatabaseSync } from 'node:sqlite';
 import { test } from 'node:test';
@@ -200,11 +200,11 @@ function workersResponse(output: ObserverOutput): Response {
   );
 }
 
-function catalogResponse(): Response {
+function catalogResponse(page = 1): Response {
   return new Response(
     JSON.stringify({
       success: true,
-      result: [{ name: PRESET_CATALOG['workers-ai'].defaultModel, properties: [] }],
+      result: page === 1 ? [{ name: PRESET_CATALOG['workers-ai'].defaultModel, properties: [] }] : [],
       errors: [],
       messages: [],
     }),
@@ -314,7 +314,7 @@ test('Workers AI applies eligible rows and keeps local-only text out of the outb
     const fetchImpl: typeof fetch = async (input, init) => {
       if (String(input).includes('/models/search')) {
         catalogCalls += 1;
-        return catalogResponse();
+        return catalogResponse(Number(new URL(String(input)).searchParams.get('page') ?? '1'));
       }
       providerCalls += 1;
       providerBody = String(init?.body ?? '');
@@ -322,7 +322,7 @@ test('Workers AI applies eligible rows and keeps local-only text out of the outb
     };
 
     assert.equal(await runObserveForFixture(fixture, { fetch: fetchImpl }), 0);
-    assert.equal(catalogCalls, 1);
+    assert.equal(catalogCalls, 2);
     assert.equal(providerCalls, 1);
     assert.equal(providerBody.includes(localText), false);
     fixture.withDb((db) => {
@@ -341,6 +341,41 @@ test('Workers AI applies eligible rows and keeps local-only text out of the outb
       );
       assert.equal(db.prepare('SELECT calls FROM provider_usage').get()?.calls, 1);
     });
+  });
+});
+
+test('a heartbeat failure stays contained when its log file is unavailable', async () => {
+  await withFixture(async (fixture) => {
+    fixture.env = cleanEnv(fixture.home, { OBOETE_OPENROUTER_API_KEY: 'worker-test-key' });
+    writeConfig(fixture, 'openrouter', fixture.env);
+    const prompt = 'Keep heartbeat failures away from the worker loop.';
+    await captureEndedSession(fixture, { sessionId: 'heartbeat-session', prompts: [prompt] });
+    const sourceId = eventId(fixture, prompt);
+    let failHeartbeat = false;
+    let failedHeartbeatCalls = 0;
+
+    const status = await runObserveForFixture(fixture, {
+      heartbeatMs: 1,
+      now: () => {
+        if (failHeartbeat) {
+          failedHeartbeatCalls += 1;
+          throw new Error('heartbeat clock failed');
+        }
+        return NOW;
+      },
+      fetch: async () => openAiResponse(providerOutput(sourceId)),
+      applyHook: async () => {
+        rmSync(fixture.paths.observeLog);
+        mkdirSync(fixture.paths.observeLog);
+        failHeartbeat = true;
+        await new Promise((resolve) => setTimeout(resolve, 20));
+        failHeartbeat = false;
+        rmSync(fixture.paths.observeLog, { recursive: true });
+      },
+    });
+
+    assert.ok(failedHeartbeatCalls > 0, 'the heartbeat failure path did not run');
+    assert.equal(status, 0);
   });
 });
 

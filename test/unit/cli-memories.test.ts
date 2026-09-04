@@ -145,7 +145,7 @@ test('search returns a ranked repository hit and explains an empty lexical resul
     assert.equal(parsed.memories[0].id, hit);
     assert.equal(parsed.memories[0].type, 'decision');
     assert.match(parsed.memories[0].body, /150 milliseconds/);
-    assert.equal(typeof parsed.memories[0].score, 'number');
+    assert.equal(parsed.memories[0].score, 0.5, 'the reported score is the MMR value that ordered the hit');
     assert.ok(parsed.memories[0].reasons.length > 0);
 
     const empty = await run(runSearch, ['meteor zebra quartz'], repo);

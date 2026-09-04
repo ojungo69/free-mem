@@ -927,7 +927,7 @@ export async function captureEvent(deps: CaptureDeps, input: CaptureInput): Prom
       diagnostics,
       kindFromName,
       payloadHash,
-    });
+    }, deadlineMs);
   }
 
   const adapted: AdapterOutput = adapt({ agent, eventName: input.eventName, payload, capturedAt });
@@ -1024,11 +1024,12 @@ async function captureUnparsed(
     kindFromName: EventKind | undefined;
     payloadHash: string;
   },
+  deadlineMs: number,
 ): Promise<CaptureOutcome> {
   const { paths } = input;
   const scanned = scanPartialPrefix(context.agent, context.stdin.text);
   // FR-004: the repository is derived from where the hook runs, because the payload is unreadable.
-  const identity = resolveRepoIdentity(process.cwd(), gitOptions(deps, CAPTURE_DEADLINE_MS));
+  const identity = resolveRepoIdentity(process.cwd(), gitOptions(deps, deadlineMs));
 
   if (scanned.nativeSessionId === null || context.kindFromName === undefined) {
     // A7: without a recoverable session id nothing is stored and a counter is incremented.
@@ -1037,7 +1038,7 @@ async function captureUnparsed(
       agent: context.agent,
       messageCode: input.eventName || 'none',
     });
-    return write(deps, paths, identity, [], context.diagnostics, context.capturedAt);
+    return write(deps, paths, identity, [], context.diagnostics, context.capturedAt, undefined, deadlineMs);
   }
 
   const base = {
@@ -1056,13 +1057,13 @@ async function captureUnparsed(
 
   if (!context.stdin.truncated) {
     const row = metadataRow({ ...base, payload: { ...metadata, failure_reason: 'payload_invalid' } });
-    return write(deps, paths, identity, [row], context.diagnostics, context.capturedAt);
+    return write(deps, paths, identity, [row], context.diagnostics, context.capturedAt, undefined, deadlineMs);
   }
 
   const settings = readSettings(paths, identity.root);
   if (settings === null) {
     const row = metadataRow({ ...base, payload: { ...metadata, failure_reason: 'config_malformed' } });
-    return write(deps, paths, identity, [row], context.diagnostics, context.capturedAt);
+    return write(deps, paths, identity, [row], context.diagnostics, context.capturedAt, undefined, deadlineMs);
   }
 
   const detected = await runDetector(deps, {
@@ -1070,10 +1071,10 @@ async function captureUnparsed(
     paths: scanned.paths,
     identity,
     secretPaths: settings.secretPaths,
-  });
+  }, deadlineMs);
   if (!detected.ok) {
     const row = metadataRow({ ...base, payload: { ...metadata, failure_reason: detected.reason } });
-    return write(deps, paths, identity, [row], context.diagnostics, context.capturedAt);
+    return write(deps, paths, identity, [row], context.diagnostics, context.capturedAt, undefined, deadlineMs);
   }
 
   const prefix = detected.pathRule === null ? (detected.texts[0] ?? '') : null;
@@ -1088,7 +1089,7 @@ async function captureUnparsed(
   });
   row.content = prefix;
   row.contentHash = prefix === null ? null : contentHash(prefix);
-  return write(deps, paths, identity, [row], context.diagnostics, context.capturedAt);
+  return write(deps, paths, identity, [row], context.diagnostics, context.capturedAt, undefined, deadlineMs);
 }
 
 type CaptureSettings = { config: OboeteConfig; secretPaths: string[] };

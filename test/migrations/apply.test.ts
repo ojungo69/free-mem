@@ -145,6 +145,84 @@ test('previous version upgrades to 3 and keeps version-1 applied_at', (t) => {
   assert.equal(hits[0]?.title, 'pterodactyl memory title');
 });
 
+test('memories keeps its FTS rowids and id foreign key stable across VACUUM', (t) => {
+  const dir = fs.mkdtempSync(path.join(os.tmpdir(), 'oboete-mig-'));
+  t.after(() => {
+    fs.rmSync(dir, { recursive: true, force: true });
+  });
+
+  const opened = openDatabase({ path: path.join(dir, 'memory.db'), timeoutMs: 1000 });
+  t.after(() => closeQuietly(opened.db));
+  const db = opened.db;
+  const columns = db.prepare('PRAGMA table_info(memories)').all();
+  assert.deepEqual(
+    columns.slice(0, 2).map((row) => ({
+      name: row.name,
+      type: row.type,
+      notnull: row.notnull,
+      pk: row.pk,
+    })),
+    [
+      { name: 'rid', type: 'INTEGER', notnull: 0, pk: 1 },
+      { name: 'id', type: 'TEXT', notnull: 1, pk: 0 },
+    ],
+  );
+
+  db.prepare(
+    `INSERT INTO repos (id, identity_kind, normalized_identity, created_at, last_seen_at)
+     VALUES ('r_vacuum', 'common_dir', '/tmp/oboete-vacuum', 1, 1)`,
+  ).run();
+  const insert = db.prepare(
+    `INSERT INTO memories
+       (id, repo_id, type, title, body, cjk_bigrams, content_hash, sensitivity)
+     VALUES (?, 'r_vacuum', 'decision', ?, ?, ?, ?, 'eligible')`,
+  );
+  insert.run('m_deleted', 'deleted prefix', 'deleted prefix', '削除', 'hash_deleted');
+  insert.run('m_target', 'alpha target', 'alpha target', '記憶 憶検 検索', 'hash_target');
+  insert.run('m_survivor', 'beta survivor', 'beta survivor', '保持', 'hash_survivor');
+  assert.throws(() =>
+    insert.run('m_target', 'duplicate id', 'duplicate id', '重複', 'hash_duplicate'),
+  );
+  db.prepare("INSERT INTO memory_sources (memory_id, source_agent) VALUES ('m_target', 'codex')").run();
+
+  const stableIds = (): Record<string, unknown>[] =>
+    db
+      .prepare(
+        `SELECT id, rid AS rid_value, rowid AS rowid_value FROM memories
+         WHERE id <> 'm_deleted' ORDER BY id`,
+      )
+      .all()
+      .map((row) => ({ ...row }));
+  const before = stableIds();
+  db.prepare("DELETE FROM memories WHERE id = 'm_deleted'").run();
+  db.exec('VACUUM');
+
+  assert.deepEqual(stableIds(), before);
+  assert.deepEqual(
+    db
+      .prepare(
+        `SELECT m.id, m.title FROM memories_fts f
+         JOIN memories m ON m.rowid = f.rowid WHERE memories_fts MATCH 'alpha'`,
+      )
+      .all()
+      .map((row) => ({ ...row })),
+    [{ id: 'm_target', title: 'alpha target' }],
+  );
+  assert.deepEqual(
+    db
+      .prepare(
+        `SELECT m.id, m.title FROM memories_fts_cjk f
+         JOIN memories m ON m.rowid = f.rowid WHERE memories_fts_cjk MATCH '記憶'`,
+      )
+      .all()
+      .map((row) => ({ ...row })),
+    [{ id: 'm_target', title: 'alpha target' }],
+  );
+  assert.deepEqual(db.prepare('PRAGMA foreign_key_check').all(), []);
+  db.prepare("DELETE FROM memories WHERE id = 'm_target'").run();
+  assert.equal(db.prepare('SELECT COUNT(*) AS n FROM memory_sources').get()?.n, 0);
+});
+
 test('hook role does not migrate and does not create a missing file', (t) => {
   const dir = fs.mkdtempSync(path.join(os.tmpdir(), 'oboete-mig-'));
   const dbPath = path.join(dir, 'memory.db');

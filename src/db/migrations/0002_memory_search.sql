@@ -1,7 +1,8 @@
 -- memories, memory_sources, memories_fts, memories_fts_cjk, destination_rules
 
 CREATE TABLE memories (
-  id TEXT PRIMARY KEY,
+  rid INTEGER PRIMARY KEY,
+  id TEXT NOT NULL UNIQUE,
   repo_id TEXT NOT NULL REFERENCES repos(id),
   type TEXT NOT NULL CHECK (type IN (
     'bugfix', 'feature', 'refactor', 'change', 'discovery', 'decision',

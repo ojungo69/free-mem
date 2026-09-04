@@ -4,18 +4,29 @@ import { runtimeStateGet, runtimeStateSet } from '../worker/purge.js';
 
 const CACHE_KEY = 'workers_ai_catalog';
 const CACHE_MS = 24 * 60 * 60 * 1000;
-type CatalogValue = { models: string[]; freeDefaultAvailable: boolean; paidPlan: boolean; fetchedAt: number };
+type CatalogValue = {
+  models: string[];
+  defaultModelPresent: boolean;
+  hasPaidOnlyModels: boolean;
+  fetchedAt: number;
+};
 type CachedCatalog = CatalogValue & { accountId: string };
 export type WorkersAiCatalog = CatalogValue & { fromCache: boolean };
 
 function result(row: CachedCatalog, fromCache: boolean): WorkersAiCatalog {
-  return { models: row.models, freeDefaultAvailable: row.freeDefaultAvailable, paidPlan: row.paidPlan, fetchedAt: row.fetchedAt, fromCache };
+  return {
+    models: row.models,
+    defaultModelPresent: row.defaultModelPresent,
+    hasPaidOnlyModels: row.hasPaidOnlyModels,
+    fetchedAt: row.fetchedAt,
+    fromCache,
+  };
 }
 function cachedCatalog(db: DatabaseSync): CachedCatalog | null {
   try {
     const row = JSON.parse(runtimeStateGet(db, CACHE_KEY) ?? 'null') as Partial<CachedCatalog> | null;
     return row !== null && Array.isArray(row.models) && row.models.every((model) => typeof model === 'string')
-      && typeof row.freeDefaultAvailable === 'boolean' && typeof row.paidPlan === 'boolean'
+      && typeof row.defaultModelPresent === 'boolean' && typeof row.hasPaidOnlyModels === 'boolean'
       && typeof row.fetchedAt === 'number' && typeof row.accountId === 'string' ? row as CachedCatalog : null;
   } catch {
     return null;
@@ -50,25 +61,31 @@ export async function refreshWorkersAiCatalog(
     return result(usableCached, true);
   }
   try {
-    const response = await fetchImpl(
-      `https://api.cloudflare.com/client/v4/accounts/${encodeURIComponent(accountId)}/ai/models/search?per_page=100`,
-      { headers: { Authorization: `Bearer ${token}` }, signal: AbortSignal.timeout(10_000) },
-    );
-    if (!response.ok) throw new Error(`catalog HTTP ${response.status}`);
-    const body: unknown = await response.json();
-    if (typeof body !== 'object' || body === null || (body as { success?: unknown }).success !== true) {
-      throw new Error('catalog response unsuccessful');
+    const rows: unknown[] = [];
+    const signal = AbortSignal.timeout(10_000);
+    for (let page = 1; ; page += 1) {
+      const response = await fetchImpl(
+        `https://api.cloudflare.com/client/v4/accounts/${encodeURIComponent(accountId)}/ai/models/search?per_page=100&page=${page}`,
+        { headers: { Authorization: `Bearer ${token}` }, signal },
+      );
+      if (!response.ok) throw new Error(`catalog HTTP ${response.status}`);
+      const body: unknown = await response.json();
+      if (typeof body !== 'object' || body === null || (body as { success?: unknown }).success !== true) {
+        throw new Error('catalog response unsuccessful');
+      }
+      const pageRows = (body as { result?: unknown }).result;
+      if (!Array.isArray(pageRows)) throw new Error('catalog result missing');
+      rows.push(...pageRows);
+      if (pageRows.length === 0) break;
     }
-    const rows = (body as { result?: unknown }).result;
-    if (!Array.isArray(rows)) throw new Error('catalog result missing');
     const models = rows.flatMap((model) => typeof model === 'object' && model !== null
       && typeof (model as { name?: unknown }).name === 'string'
       ? [(model as { name: string }).name] : []);
     const value: CachedCatalog = {
       accountId,
       models,
-      freeDefaultAvailable: models.includes(PRESET_CATALOG['workers-ai'].defaultModel),
-      paidPlan: rows.some(paidOnly),
+      defaultModelPresent: models.includes(PRESET_CATALOG['workers-ai'].defaultModel),
+      hasPaidOnlyModels: rows.some(paidOnly),
       fetchedAt: now,
     };
     runtimeStateSet(db, CACHE_KEY, JSON.stringify(value), now);

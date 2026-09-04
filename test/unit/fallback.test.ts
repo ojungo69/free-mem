@@ -218,6 +218,31 @@ test('text boundary helpers preserve the selected input text', () => {
   assert.equal(firstParagraph('line one\nline two\n\nnext'), 'line one\nline two');
 });
 
+test('a fallback decision derives its title and body from trimmed text', () => {
+  const result = fallbackObserve({
+    repoId: REPO_ID,
+    events: [
+      event(
+        {
+          id: 'leading-whitespace-decision',
+          kind: 'last_assistant_message',
+          turn_index: 0,
+          text: '\n \t Keep the stable row id. The FTS lookup depends on it.\n\nTrailing notes.',
+        },
+        'codex',
+      ),
+    ],
+    nearby: [],
+  });
+
+  assert.equal(result.observations[0]?.title, 'Keep the stable row id.');
+  assert.equal(
+    result.observations[0]?.body,
+    'Keep the stable row id. The FTS lookup depends on it.',
+  );
+  observerOutputSchema.parse({ observations: result.observations });
+});
+
 test('a 60-call change keeps 40 record lines and reports 20 omitted calls', () => {
   const events = Array.from({ length: 60 }, (_, index) =>
     event(
