@@ -41,6 +41,17 @@ await build({
 });
 chmodSync(join(root, 'dist/oboete.mjs'), 0o755);
 
+// The Pi extension is a second entry point rather than an export of the engine: it is imported into
+// Pi's own process (src/pi-extension.ts, FR-007), so it must carry nothing of the hook path with it
+// and the hook path must not carry it. Its only import is `node:child_process`; the loader written
+// by src/setup/write-pi.ts imports `piExtension` from this file next to the engine bundle.
+await build({
+  ...common,
+  entryPoints: [join(root, 'src/pi-extension.ts')],
+  outfile: join(root, 'dist/pi-extension.mjs'),
+  external: EXTERNAL,
+});
+
 // Viewer assets (src/viewer/app, Vite) are embedded here from T079 on.
 
 const tests = [];
