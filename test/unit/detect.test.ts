@@ -5,7 +5,7 @@ import {
   readFileSync,
   writeFileSync,
 } from 'node:fs';
-import { join } from 'node:path';
+import { basename, join } from 'node:path';
 import { test } from 'node:test';
 
 import {
@@ -21,7 +21,9 @@ function fakeVersionSpawn(
   return (command, args, options) => {
     calls.push(`${command} ${args.join(' ')}`);
     assert.equal(options.timeout, 2_000);
-    const stdout = versions[command] ?? '';
+    // The CLI is spawned by the absolute path detection resolved, never by the bare name.
+    assert.ok(command.startsWith('/'), command);
+    const stdout = versions[basename(command)] ?? '';
     return {
       pid: 1,
       output: [null, stdout, ''],
@@ -69,6 +71,7 @@ test('detectAgents finds PATH CLIs or agent homes and only reports native memory
       {
         agent: 'claude',
         installed: true,
+        cliPath: join(bin, 'claude'),
         version: '2.1.258',
         configPath: join(userHome, '.claude', 'settings.json'),
         trust: 'n/a',
@@ -77,14 +80,18 @@ test('detectAgents finds PATH CLIs or agent homes and only reports native memory
       {
         agent: 'codex',
         installed: true,
+        cliPath: join(bin, 'codex'),
         version: 'codex-cli 0.152.1',
         configPath: join(userHome, '.codex', 'hooks.json'),
         trust: 'absent',
         nativeMemory: 'codex_memories',
       },
       {
+        // The Grok home is left over from an uninstalled CLI: there is configuration to manage
+        // but nothing to probe (FR-031).
         agent: 'grok',
         installed: true,
+        cliPath: null,
         configPath: join(userHome, '.grok', 'hooks', 'oboete.json'),
         trust: 'wired',
         nativeMemory: 'grok_native_memory',
@@ -92,12 +99,16 @@ test('detectAgents finds PATH CLIs or agent homes and only reports native memory
       {
         agent: 'pi',
         installed: false,
+        cliPath: null,
         configPath: join(userHome, '.pi', 'agent', 'extensions', 'oboete.js'),
         trust: 'absent',
         nativeMemory: null,
       },
     ]);
-    assert.deepEqual(calls, ['claude --version', 'codex --version']);
+    assert.deepEqual(calls, [
+      `${join(bin, 'claude')} --version`,
+      `${join(bin, 'codex')} --version`,
+    ]);
     for (const directory of [claudeMemory, codexMemory, grokMemory]) {
       assert.equal(readFileSync(join(directory, 'sentinel'), 'utf8'), 'native memory stays unchanged\n');
     }
@@ -192,5 +203,40 @@ test('malformed Codex files are reported as untrusted without reading a memory s
     assert.equal(codex?.installed, true);
     assert.equal(codex?.trust, 'untrusted');
     assert.equal(codex?.nativeMemory, null);
+  });
+});
+
+test('an empty or relative PATH entry never resolves a CLI from the working directory', async () => {
+  await withTempHome(async (home) => {
+    const userHome = join(home, 'user');
+    const workingDirectory = join(home, 'work');
+    const relative = join(workingDirectory, 'node_modules', '.bin');
+    mkdirSync(relative, { recursive: true });
+    executable(workingDirectory, 'claude');
+    executable(relative, 'codex');
+
+    const calls: string[] = [];
+    const previous = process.cwd();
+    process.chdir(workingDirectory);
+    let results;
+    try {
+      results = await detectAgents(
+        { HOME: userHome, PATH: `:${join('node_modules', '.bin')}` },
+        fakeVersionSpawn({ claude: '2.1.258\n', codex: 'codex-cli 0.152.1\n' }, calls),
+      );
+    } finally {
+      process.chdir(previous);
+    }
+
+    assert.deepEqual(
+      results.map((agent) => [agent.agent, agent.installed, agent.cliPath]),
+      [
+        ['claude', false, null],
+        ['codex', false, null],
+        ['grok', false, null],
+        ['pi', false, null],
+      ],
+    );
+    assert.deepEqual(calls, [], 'a script in the working directory is never executed');
   });
 });

@@ -1,4 +1,4 @@
-import type { spawn } from 'node:child_process';
+import type { ChildProcess, spawn } from 'node:child_process';
 import { randomUUID } from 'node:crypto';
 import { once } from 'node:events';
 import { mkdtempSync, rmSync } from 'node:fs';
@@ -10,8 +10,10 @@ import type { DatabaseSync } from 'node:sqlite';
 import type { AgentDetection, SetupAgent } from './detect.js';
 
 const PROBE_DEADLINE_MS = 90_000;
+const PROBE_POLL_INTERVAL_MS = 200;
 
-export type ProbeTarget = Pick<AgentDetection, 'agent' | 'installed' | 'configPath'>;
+/** Only the CLI path decides whether a probe can run: a leftover home has nothing to verify. */
+export type ProbeTarget = Pick<AgentDetection, 'agent' | 'cliPath' | 'configPath'>;
 export type ProbeStatus = 'pass' | 'fail' | 'timeout' | 'not_installed';
 export type ProbeResult = {
   agent: SetupAgent;
@@ -23,54 +25,70 @@ export type ProbeResult = {
 export type ProbeDeps = {
   spawn: typeof spawn;
   lookupProbe(agent: SetupAgent, marker: string): boolean | Promise<boolean>;
-  cwd: string;
   env: NodeJS.ProcessEnv;
   now?: () => number;
 };
 
 type Invocation = {
-  command: SetupAgent;
+  command: string;
   args: string[];
   env: NodeJS.ProcessEnv;
-  cleanup?: () => void;
+  cwd: string;
 };
 
 type ProcessOutcome =
   | { kind: 'closed'; code: number | null }
   | { kind: 'error'; error: unknown };
 
-function invocation(target: ProbeTarget, marker: string, deps: ProbeDeps): Invocation {
-  const env = { ...deps.env };
+// The rule of isCredentialVariable in src/log.ts; the merge step lifts it to one shared export.
+function isCredentialVariable(name: string): boolean {
+  if (name === 'OBOETE_CF_ACCOUNT_ID') return true;
+  return name.startsWith('OBOETE_') && (name.endsWith('_API_KEY') || name.endsWith('_API_TOKEN'));
+}
+
+/** FR-016: oboete's provider credentials stay on oboete's own request path, never on the agent's. */
+function childEnvironment(env: NodeJS.ProcessEnv): NodeJS.ProcessEnv {
+  return Object.fromEntries(Object.entries(env).filter(([name]) => !isCredentialVariable(name)));
+}
+
+/**
+ * The probe only needs one turn with no tool, so it runs with the agent's own guardrails on and in
+ * a throwaway working directory instead of the developer's tree (FR-031). Codex has no approval
+ * flag on `exec` (codex-cli 0.153.2), so the sandbox is the guardrail pinned here.
+ */
+function invocation(
+  target: ProbeTarget,
+  cliPath: string,
+  marker: string,
+  deps: ProbeDeps,
+): Invocation {
+  const env = childEnvironment(deps.env);
+  const cwd = mkdtempSync(join(tmpdir(), `oboete-probe-${target.agent}-`));
   const message = `oboete wiring probe ${marker}. Reply with exactly OK and do not use tools.`;
   switch (target.agent) {
     case 'claude':
       return {
-        command: 'claude',
-        args: [
-          '-p',
-          message,
-          '--settings',
-          target.configPath,
-          '--dangerously-skip-permissions',
-          '--output-format',
-          'json',
-        ],
+        command: cliPath,
+        args: ['-p', message, '--settings', target.configPath, '--output-format', 'json'],
         env,
+        cwd,
       };
     case 'codex':
       env.CODEX_HOME = dirname(target.configPath);
       return {
-        command: 'codex',
+        command: cliPath,
         args: [
           'exec',
-          '--dangerously-bypass-approvals-and-sandbox',
+          '--sandbox',
+          'read-only',
           '--skip-git-repo-check',
           '--json',
           '-C',
-          deps.cwd,
+          cwd,
           message,
         ],
         env,
+        cwd,
       };
     case 'grok':
       env.GROK_HOME = dirname(dirname(target.configPath));
@@ -79,89 +97,109 @@ function invocation(target: ProbeTarget, marker: string, deps: ProbeDeps): Invoc
       env.GROK_CURSOR_HOOKS_ENABLED = '0';
       env.GROK_CURSOR_MCPS_ENABLED = '0';
       return {
-        command: 'grok',
-        args: [
-          '-p',
-          message,
-          '--always-approve',
-          '--output-format',
-          'json',
-          '--cwd',
-          deps.cwd,
-        ],
+        command: cliPath,
+        args: ['-p', message, '--output-format', 'json', '--cwd', cwd],
         env,
+        cwd,
       };
-    case 'pi': {
+    case 'pi':
       env.PI_CODING_AGENT_DIR = dirname(dirname(target.configPath));
-      const sessionDir = mkdtempSync(join(tmpdir(), 'oboete-probe-pi-'));
       return {
-        command: 'pi',
-        args: ['-p', message, '--mode', 'json', '--session-dir', sessionDir],
+        command: cliPath,
+        args: ['-p', message, '--mode', 'json', '--session-dir', cwd],
         env,
-        cleanup: () => rmSync(sessionDir, { recursive: true, force: true }),
+        cwd,
       };
+  }
+}
+
+/**
+ * An agent CLI starts MCP servers and hook processes, so the deadline has to reach its whole
+ * group; where there are no process groups the single process is the fallback.
+ */
+function killProcessGroup(child: ChildProcess): void {
+  try {
+    if (child.pid === undefined) child.kill();
+    else process.kill(-child.pid, 'SIGTERM');
+  } catch {
+    try {
+      child.kill();
+    } catch {
+      // The agent CLI already exited: there is nothing left to stop.
     }
   }
 }
 
 async function runProcess(
   spawnFn: typeof spawn,
-  child: Invocation,
-  cwd: string,
+  invoked: Invocation,
   signal: AbortSignal,
 ): Promise<ProcessOutcome> {
-  let process: ReturnType<typeof spawn> | undefined;
+  let child: ChildProcess | undefined;
+  const onAbort = (): void => {
+    if (child !== undefined) killProcessGroup(child);
+  };
   try {
-    process = spawnFn(child.command, child.args, {
-      cwd,
-      env: child.env,
+    child = spawnFn(invoked.command, invoked.args, {
+      cwd: invoked.cwd,
+      detached: true,
+      env: invoked.env,
       signal,
       stdio: 'ignore',
     });
-    const [code] = await once(process, 'close', { signal });
+    signal.addEventListener('abort', onAbort, { once: true });
+    if (signal.aborted) onAbort();
+    const [code] = await once(child, 'close', { signal });
     return { kind: 'closed', code: typeof code === 'number' ? code : null };
   } catch (error) {
-    if (signal.aborted) {
-      try {
-        process?.kill();
-      } catch {
-        // The shared deadline owns the result even when the process already exited.
-      }
-    }
     return { kind: 'error', error };
+  } finally {
+    signal.removeEventListener('abort', onAbort);
   }
-}
-
-function timedOut(error: unknown, signal: AbortSignal): boolean {
-  if (signal.aborted) return true;
-  if (typeof error !== 'object' || error === null || !('name' in error)) return false;
-  return error.name === 'AbortError' || error.name === 'TimeoutError';
 }
 
 function elapsed(now: () => number, started: number): number {
   return Math.max(0, Math.round(now() - started));
 }
 
+/** Resolves true when the interval passed, false when the shared deadline ended the wait. */
+function waitBeforeRetry(signal: AbortSignal): Promise<boolean> {
+  return new Promise((resolve) => {
+    const onAbort = (): void => {
+      clearTimeout(timer);
+      resolve(false);
+    };
+    const timer = setTimeout(() => {
+      signal.removeEventListener('abort', onAbort);
+      resolve(true);
+    }, PROBE_POLL_INTERVAL_MS);
+    signal.addEventListener('abort', onAbort, { once: true });
+  });
+}
+
+/**
+ * The marker can reach storage after the CLI exits (Codex runs its async handler then, Pi captures
+ * in a detached child), so a clean run keeps looking until the shared deadline (R12).
+ */
 async function lookupBeforeDeadline(
   deps: ProbeDeps,
   agent: SetupAgent,
   marker: string,
   signal: AbortSignal,
+  retry: boolean,
 ): Promise<'found' | 'missing' | 'timeout' | 'error'> {
-  if (signal.aborted) return 'timeout';
-  let onAbort: () => void = () => undefined;
-  const aborted = new Promise<'timeout'>((resolve) => {
-    onAbort = () => resolve('timeout');
-    signal.addEventListener('abort', onAbort, { once: true });
-    if (signal.aborted) onAbort();
-  });
-  const lookup = Promise.resolve()
-    .then(() => deps.lookupProbe(agent, marker))
-    .then((found) => (found ? ('found' as const) : ('missing' as const)))
-    .catch(() => 'error' as const);
-  const result = await Promise.race([lookup, aborted]);
-  signal.removeEventListener('abort', onAbort);
-  return result;
+  for (;;) {
+    if (signal.aborted) return 'timeout';
+    let found: boolean;
+    try {
+      found = await deps.lookupProbe(agent, marker);
+    } catch {
+      return 'error';
+    }
+    if (found) return 'found';
+    if (!retry) return 'missing';
+    if (!(await waitBeforeRetry(signal))) return 'timeout';
+  }
 }
 
 async function runProbe(
@@ -171,7 +209,8 @@ async function runProbe(
 ): Promise<ProbeResult> {
   const now = deps.now ?? (() => performance.now());
   const started = now();
-  if (!target.installed) {
+  const cliPath = target.cliPath;
+  if (cliPath === null) {
     return {
       agent: target.agent,
       status: 'not_installed',
@@ -183,7 +222,7 @@ async function runProbe(
   const marker = `oboete-probe:${randomUUID()}`;
   let child: Invocation;
   try {
-    child = invocation(target, marker, deps);
+    child = invocation(target, cliPath, marker, deps);
   } catch {
     return {
       agent: target.agent,
@@ -194,8 +233,10 @@ async function runProbe(
   }
 
   try {
-    const outcome = await runProcess(deps.spawn, child, deps.cwd, signal);
-    const lookup = await lookupBeforeDeadline(deps, target.agent, marker, signal);
+    const outcome = await runProcess(deps.spawn, child, signal);
+    // A run that failed has nothing left to land, so only a clean exit is waited out.
+    const cleanExit = outcome.kind === 'closed' && outcome.code === 0;
+    const lookup = await lookupBeforeDeadline(deps, target.agent, marker, signal, cleanExit);
     if (lookup === 'found') {
       return {
         agent: target.agent,
@@ -212,12 +253,16 @@ async function runProbe(
         reason: 'probe_lookup_failed',
       };
     }
-
-    if (
-      lookup === 'timeout' ||
-      signal.aborted ||
-      (outcome.kind === 'error' && timedOut(outcome.error, signal))
-    ) {
+    if (outcome.kind === 'closed') {
+      return {
+        agent: target.agent,
+        status: 'fail',
+        elapsedMs: elapsed(now, started),
+        reason:
+          outcome.code === 0 ? 'probe_event_missing' : `agent_exit_${outcome.code ?? 'signal'}`,
+      };
+    }
+    if (lookup === 'timeout' || signal.aborted) {
       return {
         agent: target.agent,
         status: 'timeout',
@@ -225,25 +270,17 @@ async function runProbe(
         reason: 'deadline_exceeded',
       };
     }
-    if (outcome.kind === 'error') {
-      return {
-        agent: target.agent,
-        status: 'fail',
-        elapsedMs: elapsed(now, started),
-        reason: 'spawn_failed',
-      };
-    }
     return {
       agent: target.agent,
       status: 'fail',
       elapsedMs: elapsed(now, started),
-      reason: outcome.code === 0 ? 'probe_event_missing' : `agent_exit_${outcome.code ?? 'signal'}`,
+      reason: 'spawn_failed',
     };
   } finally {
     try {
-      child.cleanup?.();
+      rmSync(child.cwd, { recursive: true, force: true });
     } catch {
-      // Probe status is about hook wiring; temporary-session cleanup cannot change that result.
+      // Probe status is about hook wiring; a leftover temporary directory cannot change it.
     }
   }
 }
@@ -263,13 +300,9 @@ export function probeEventStored(db: DatabaseSync, agent: SetupAgent, marker: st
     db
       .prepare(
         `SELECT 1 AS present FROM raw_events
-         WHERE agent = ? AND (
-           (kind = 'prompt' AND instr(content, ?) > 0) OR
-           (kind = 'probe' AND CASE WHEN json_valid(payload_json)
-              THEN json_extract(payload_json, '$.marker') END = ?)
-         )
+         WHERE agent = ? AND kind = 'prompt' AND instr(content, ?) > 0
          LIMIT 1`,
       )
-      .get(agent, marker, marker) !== undefined
+      .get(agent, marker) !== undefined
   );
 }

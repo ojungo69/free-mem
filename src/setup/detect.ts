@@ -9,7 +9,7 @@ import {
   statSync,
 } from 'node:fs';
 import { homedir } from 'node:os';
-import { delimiter, join, resolve } from 'node:path';
+import { delimiter, isAbsolute, join, resolve } from 'node:path';
 import { parse as parseToml } from 'smol-toml';
 import { z } from 'zod';
 
@@ -33,7 +33,10 @@ export type NativeMemory =
 
 export type AgentDetection = {
   agent: SetupAgent;
+  /** The agent home exists or its CLI is on PATH: there is configuration to manage (FR-031). */
   installed: boolean;
+  /** Absolute path of the CLI when it is on PATH, else null: only then can a probe run. */
+  cliPath: string | null;
   version?: string;
   configPath: string;
   trust: AgentTrust;
@@ -93,7 +96,7 @@ function isExecutable(file: string): boolean {
   }
 }
 
-function resolvesOnPath(command: string, env: NodeJS.ProcessEnv): boolean {
+function resolveOnPath(command: string, env: NodeJS.ProcessEnv): string | null {
   const pathValue = env.PATH ?? env.Path ?? env.path ?? '';
   const suffixes =
     process.platform === 'win32'
@@ -103,12 +106,16 @@ function resolvesOnPath(command: string, env: NodeJS.ProcessEnv): boolean {
           .map((suffix) => suffix.toLowerCase())
       : [''];
   for (const entry of pathValue.split(delimiter)) {
-    const directory = entry.replace(/^"|"$/g, '') || '.';
+    const directory = entry.replace(/^"|"$/g, '');
+    // An empty or relative entry would resolve against the current working directory, so a script
+    // in the repository could be reported as the agent CLI and then executed.
+    if (!isAbsolute(directory)) continue;
     for (const suffix of suffixes) {
-      if (isExecutable(resolve(directory, `${command}${suffix}`))) return true;
+      const file = join(directory, `${command}${suffix}`);
+      if (isExecutable(file)) return file;
     }
   }
-  return false;
+  return null;
 }
 
 function firstLine(value: string): string | undefined {
@@ -117,11 +124,11 @@ function firstLine(value: string): string | undefined {
 }
 
 function readVersion(
-  command: string,
+  cliPath: string,
   env: NodeJS.ProcessEnv,
   spawnFn: VersionSpawn,
 ): string | undefined {
-  const result = spawnFn(command, ['--version'], {
+  const result = spawnFn(cliPath, ['--version'], {
     encoding: 'utf8',
     env,
     timeout: VERSION_PROBE_TIMEOUT_MS,
@@ -269,13 +276,14 @@ export function detectAgents(
     },
   ];
 
-  const onPath = agents.map(({ cli }) => resolvesOnPath(cli, env));
-  const versions = agents.map(({ cli }, index) =>
-    onPath[index] ? readVersion(cli, env, spawnFn) : undefined,
+  const cliPaths = agents.map(({ cli }) => resolveOnPath(cli, env));
+  const versions = cliPaths.map((cliPath) =>
+    cliPath === null ? undefined : readVersion(cliPath, env, spawnFn),
   );
   return agents.map((entry, index) => ({
     agent: entry.agent,
-    installed: onPath[index] === true || existsSync(entry.home),
+    installed: cliPaths[index] !== null || existsSync(entry.home),
+    cliPath: cliPaths[index] ?? null,
     ...(versions[index] === undefined ? {} : { version: versions[index] }),
     configPath: entry.configPath,
     trust: entry.trust,
