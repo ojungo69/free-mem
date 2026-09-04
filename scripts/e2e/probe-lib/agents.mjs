@@ -109,6 +109,15 @@ export function agentPath(env = process.env) {
   ].join(path.delimiter);
 }
 
+/**
+ * The oboete credential variables of contracts/cli.md. The engine states the same rule in
+ * src/log.ts `isCredentialVariable`; this is the harness's one copy of it, not a fourth.
+ */
+export function isCredentialVariable(name) {
+  if (name === "OBOETE_CF_ACCOUNT_ID") return true;
+  return name.startsWith("OBOETE_") && (name.endsWith("_API_KEY") || name.endsWith("_API_TOKEN"));
+}
+
 export function childEnv(extra = {}) {
   return { ...process.env, PATH: agentPath(), ...extra };
 }

@@ -12,6 +12,7 @@ import {
   copyMode,
   finalText,
   gitInit,
+  isCredentialVariable,
   redactValue,
   runTimed,
   shellQuote,
@@ -198,6 +199,7 @@ export function createReport({
   noCredentials,
   timeoutMs,
   daily = false,
+  requestedPairs,
   results,
 }) {
   const passed = results.filter((result) => result.status === "pass").length;
@@ -209,9 +211,14 @@ export function createReport({
     no_credentials: noCredentials,
     daily,
     timeout_seconds: timeoutMs / 1000,
-    requested_pairs: results.length,
+    requested_pairs: requestedPairs,
     total_pairs: TOTAL_PAIRS,
-    summary: `${passed} of ${TOTAL_PAIRS} pairs pass`,
+    // SC-001 is the twelve-pair run, so only a twelve-pair run may report against twelve; a
+    // shorter run says so, because this line is what --daily writes into the evidence file.
+    summary:
+      requestedPairs === TOTAL_PAIRS
+        ? `${passed} of ${TOTAL_PAIRS} pairs pass`
+        : `${passed} of ${requestedPairs} requested pairs pass (partial run; SC-001 needs all ${TOTAL_PAIRS})`,
     pairs: results.map((result) => ({
       agents: { seed: result.from, receive: result.to },
       elapsed_ms: result.elapsedMs,
@@ -251,6 +258,35 @@ export function resolveSourceHomes(env, home) {
   return homes;
 }
 
+/**
+ * A Codex trust key is `<absolute hooks.json path>:<snake_case event>:<group>:<handler>` and the
+ * hash covers the handler group alone (src/setup/codex-trust.ts), so the copy of the developer's
+ * config.toml keeps the trust setup wrote once each key names the copy of hooks.json. Without this
+ * every copied row still names the original path, no row can ever match, and Codex skips the oboete
+ * hooks in silence (FR-031). That is what --dangerously-bypass-hook-trust used to hide, and hiding
+ * it meant the dogfood run could not see a trust regression at all.
+ */
+export function retargetCodexTrust(configText, sourceHooksPath, destinationHooksPath) {
+  // A TOML basic string takes the escapes JSON produces, which is how setup wrote the key.
+  const from = JSON.stringify(sourceHooksPath).slice(1, -1);
+  const to = JSON.stringify(destinationHooksPath).slice(1, -1);
+  let rows = 0;
+  const retargeted = configText.replace(
+    /^([ \t]*\[hooks\.state\.")(.*)("\][ \t]*)$/gmu,
+    (line, head, key, tail) => {
+      if (!key.startsWith(`${from}:`)) return line;
+      rows += 1;
+      return `${head}${to}${key.slice(from.length)}${tail}`;
+    },
+  );
+  if (rows === 0) {
+    throw new PreconditionError(
+      `no Codex trust row names ${sourceHooksPath}; run oboete setup in the isolated account`,
+    );
+  }
+  return retargeted;
+}
+
 function copySetupFile(source, destination, required = false) {
   if (!fs.existsSync(source)) {
     if (required) throw new PreconditionError(`missing setup file: ${source}`);
@@ -288,11 +324,19 @@ function prepareAgent(agent, directory, homes, prompt, repo) {
       for (const file of ["auth.json", "config.toml", "hooks.json"]) {
         copySetupFile(path.join(homes.codex, file), path.join(config, file), file !== "auth.json");
       }
+      const configToml = path.join(config, "config.toml");
+      fs.writeFileSync(
+        configToml,
+        retargetCodexTrust(
+          fs.readFileSync(configToml, "utf8"),
+          path.join(homes.codex, "hooks.json"),
+          path.join(config, "hooks.json"),
+        ),
+      );
       return {
         argv: [
           "codex",
           "exec",
-          "--dangerously-bypass-hook-trust",
           "--dangerously-bypass-approvals-and-sandbox",
           "--skip-git-repo-check",
           "--json",
@@ -337,17 +381,9 @@ function prepareAgent(agent, directory, homes, prompt, repo) {
   }
 }
 
-function providerSafeEnv(makeEnv, extra, noCredentials) {
-  const env = makeEnv(extra);
-  if (!noCredentials) return env;
-  for (const name of Object.keys(env)) {
-    if (
-      name === "OBOETE_CF_ACCOUNT_ID" ||
-      (name.startsWith("OBOETE_") && (name.endsWith("_API_KEY") || name.endsWith("_API_TOKEN")))
-    ) {
-      delete env[name];
-    }
-  }
+/** FR-016: only `oboete observe` needs the provider credentials, so nothing else is handed them. */
+function withoutCredentials(env) {
+  for (const name of Object.keys(env)) if (isCredentialVariable(name)) delete env[name];
   return env;
 }
 
@@ -358,11 +394,8 @@ async function launchAgent(agent, directory, repo, prompt, options, homes, depen
   const stderrPath = path.join(directory, "stderr.txt");
   const proc = await dependencies.runTimed(prepared.argv, {
     cwd: repo,
-    env: providerSafeEnv(
-      dependencies.childEnv,
-      { OBOETE_HOME: oboeteHome, ...prepared.env },
-      options.noCredentials,
-    ),
+    // An agent CLI runs the developer's shell tools; oboete's provider credentials stay out of it.
+    env: withoutCredentials(dependencies.childEnv({ OBOETE_HOME: oboeteHome, ...prepared.env })),
     stdoutPath,
     stderrPath,
     timeoutMs: options.timeoutMs,
@@ -455,7 +488,8 @@ async function runPair(pair, context) {
 
     const oboeteHome = path.join(pairDir, "oboete-home");
     prepareOboeteHome(oboeteHome, homes.oboete);
-    const env = providerSafeEnv(dependencies.childEnv, { OBOETE_HOME: oboeteHome }, options.noCredentials);
+    const env = dependencies.childEnv({ OBOETE_HOME: oboeteHome });
+    if (options.noCredentials) withoutCredentials(env);
 
     dependencies.log(`[${pair.from}:${pair.to}] seed`);
     const seeded = await launchAgent(
@@ -590,6 +624,7 @@ export async function runHarness(options, overrides = {}) {
       noCredentials: options.noCredentials,
       daily: options.daily,
       timeoutMs: options.timeoutMs,
+      requestedPairs: options.pairs.length,
       results,
     });
   for (const pair of options.pairs) {
