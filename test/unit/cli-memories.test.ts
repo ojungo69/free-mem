@@ -374,6 +374,39 @@ test('pin and delete answer for a hidden memory exactly as they answer for a mis
   });
 });
 
+test('a destination_rules row that allows secret still hides the row from search, get and pin', async () => {
+  await withFixture(async ({ home, repo, identity }) => {
+    const opened = openDatabase({ path: oboetePaths(home).db, timeoutMs: 1000 });
+    insertRepo(opened.db, identity);
+    const secret = insertMemory(opened.db, {
+      repoId: identity.id,
+      title: 'SQLite busy timeout',
+      body: 'The developer may not read this one.',
+      sensitivity: 'secret',
+    });
+    // FR-020: a restored or tampered database that flips the rule is the threat; the reader's scope
+    // excludes secret whatever the table says (src/db/queries.ts memoryScope).
+    opened.db.prepare('UPDATE destination_rules SET allowed = 1 WHERE sensitivity = ?').run('secret');
+    opened.db.close();
+
+    const found = await run(runSearch, ['sqlite busy timeout', '--json'], repo);
+    assert.equal(found.status, 0);
+    assert.deepEqual((JSON.parse(found.stdout) as { memories: unknown[] }).memories, []);
+    assert.doesNotMatch(found.stdout, /may not read this one/);
+
+    for (const command of [runGet, runPin, runDelete]) {
+      const hidden = await run(command, [secret, '--json'], repo);
+      assert.equal(hidden.status, 1);
+      assert.equal(hidden.stdout, `${JSON.stringify({ error: 'memory_not_found', id: secret })}\n`);
+    }
+
+    const checked = openDatabase({ path: oboetePaths(home).db, timeoutMs: 1000 });
+    const row = checked.db.prepare('SELECT pinned_at, deleted_at FROM memories WHERE id = ?').get(secret);
+    checked.db.close();
+    assert.deepEqual({ ...row }, { pinned_at: null, deleted_at: null });
+  });
+});
+
 test('delete keeps a tombstone and observer writes cannot recreate it under another type', async () => {
   await withFixture(async ({ home, repo, identity }) => {
     const title = 'Stable memory identity';

@@ -301,12 +301,17 @@ function recordingDependencies(home) {
       fs.mkdirSync(repo, { recursive: true });
       return repo;
     },
-    childEnv: (extra = {}) => ({
+    // The double follows the real childEnv (probe-lib/agents.mjs): credentials only on request.
+    childEnv: (extra = {}, { credentials = false } = {}) => ({
       PATH: "/usr/bin",
       HOME: home,
-      OBOETE_NIM_API_KEY: "nim-secret",
-      OBOETE_CF_API_TOKEN: "cf-secret",
-      OBOETE_CF_ACCOUNT_ID: "cf-account",
+      ...(credentials
+        ? {
+            OBOETE_NIM_API_KEY: "nim-secret",
+            OBOETE_CF_API_TOKEN: "cf-secret",
+            OBOETE_CF_ACCOUNT_ID: "cf-account",
+          }
+        : {}),
       ...extra,
     }),
     runTimed: async (argv, options) => {

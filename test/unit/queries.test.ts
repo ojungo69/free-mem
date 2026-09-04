@@ -268,6 +268,28 @@ test('a destination with no allowed sensitivity left matches nothing', async () 
   });
 });
 
+test('a destination_rules row that allows secret never widens the scope', async () => {
+  await withSeededDatabase((db) => {
+    // FR-020: the table may narrow the readable set, never widen it past the hard rule, so a
+    // restored or tampered database cannot open secret rows to a reader. src/privacy/egress.ts
+    // isAllowed refuses secret the same way on the observer path.
+    db.prepare('UPDATE destination_rules SET allowed = 1 WHERE sensitivity = ?').run('secret');
+    const scope = memoryScope(db, { repoId: REPO_A, destination: 'injection' });
+    const secret = 'm_a_secret_unreviewed_active';
+
+    for (const destination of ['injection', 'local_observer', 'remote_observer'] as const) {
+      assert.deepEqual(idsInScope(db, destination), seedIdsIn(destination));
+    }
+    assert.equal(getMemory(db, secret, scope), null);
+    assert.equal(setPinned(db, { id: secret, scope, pinnedAt: 4242, pinOrder: 7 }), false);
+    assert.equal(tombstone(db, { id: secret, scope, deletedAt: 5555 }), false);
+    assert.deepEqual(
+      { ...db.prepare('SELECT pinned_at, deleted_at FROM memories WHERE id = ?').get(secret) },
+      { pinned_at: 50, deleted_at: null },
+    );
+  });
+});
+
 test('the sync destination is refused in M1', async () => {
   await withSeededDatabase((db) => {
     assert.throws(
