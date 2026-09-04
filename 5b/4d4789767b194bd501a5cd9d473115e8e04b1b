@@ -1,0 +1,32 @@
+test/unit/classify.test.ts
+  s_04742ec628f474::t_3ed03f28e45afa 671-679,681-688,690-693
+  s_04742ec628f474::t_deeefbf2e32000 680,689
+  s_04742ec628f474::t_b1d9af8fdd7640 694-731
+test/unit/llm.test.ts
+  s_04742ec628f474::t_8330c49469c465 225-232
+src/observer/classify.ts
+  s_04742ec628f474::t_aa0eb252be3210 421
+  s_04742ec628f474::t_23d44bf734854a 422,560
+src/observer/llm.ts
+  s_04742ec628f474::t_014c23c154a236 280
+docs/research/m1-amendments-2026-09.md
+  s_04742ec628f474::t_043f4f12ac7a18 45,184
+specs/007-oboete-m1-alpha/contracts/observer.md
+  s_04742ec628f474::t_043f4f12ac7a18 90
+---
+{
+  "schema_version": "authorship/3.0.0",
+  "git_ai_version": "1.6.16",
+  "base_commit_sha": "5b4d4789767b194bd501a5cd9d473115e8e04b1b",
+  "prompts": {},
+  "sessions": {
+    "s_04742ec628f474": {
+      "agent_id": {
+        "tool": "codex",
+        "id": "01a06c7a-e39f-7e53-bfb9-bf6369911fe2",
+        "model": "gpt-5.6-sol"
+      },
+      "human_author": "ojungo69 <210335670+ojungo69@users.noreply.github.com>"
+    }
+  }
+}
