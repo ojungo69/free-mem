@@ -11,7 +11,7 @@ import { parseArgs } from 'node:util';
 
 import { loadConfig, PRESET_CATALOG, type OboeteConfig, type PresetName } from '../config.js';
 import { openDatabase } from '../db/open.js';
-import { appendLog, isCredentialVariable } from '../log.js';
+import { appendLog, childEnvironment } from '../log.js';
 import { ensureDirectories, oboetePaths, resolveHome } from '../paths.js';
 import { runtimeStateSet } from '../worker/purge.js';
 
@@ -84,10 +84,7 @@ function defaults(): SetupDeps {
     versionSpawn: spawnSync,
     spawn,
     runCli: (command) => {
-      // FR-016: oboete's provider credentials stay on oboete's own request path.
-      const env = Object.fromEntries(
-        Object.entries(process.env).filter(([name]) => !isCredentialVariable(name)),
-      );
+      const env = childEnvironment(process.env);
       const result = spawnSync(command[0] ?? '', command.slice(1), {
         encoding: 'utf8',
         env,

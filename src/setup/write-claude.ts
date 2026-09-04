@@ -6,7 +6,13 @@
 import { readFileSync, rmSync } from 'node:fs';
 import { join } from 'node:path';
 
-import { applyJsonHandlers, BACKUP_SUFFIX, removeJsonHandlers } from './managed-block.js';
+import {
+  applyJsonHandlers,
+  BACKUP_SUFFIX,
+  isOboeteOwned,
+  isPlainObject,
+  removeJsonHandlers,
+} from './managed-block.js';
 import { shellQuote } from './shell-quote.js';
 
 export type WriteClaudeOptions = {
@@ -70,7 +76,7 @@ export function writeClaude(claudeConfigDir: string, options: WriteClaudeOptions
   }
   // `settings.json` can carry credentials (`env`, `apiKeyHelper`), so the copy taken before the
   // first oboete write is owner-only whatever mode the developer's own file has (research.md R8).
-  applyJsonHandlers(file, ['hooks'], handlers, { credentialBearing: true });
+  applyJsonHandlers(file, handlers, { credentialBearing: true });
   return {
     file,
     mcpArgs: ['mcp', 'add', 'oboete', '--', options.nodePath, options.bundlePath, 'mcp'],
@@ -87,7 +93,7 @@ export function writeClaude(claudeConfigDir: string, options: WriteClaudeOptions
  */
 export function removeClaude(claudeConfigDir: string): void {
   const file = join(claudeConfigDir, 'settings.json');
-  if (holdsOboeteHandler(file)) removeJsonHandlers(file, ['hooks']);
+  if (holdsOboeteHandler(file)) removeJsonHandlers(file);
   else rmSync(file + BACKUP_SUFFIX, { force: true });
 }
 
@@ -103,14 +109,8 @@ function holdsOboeteHandler(file: string): boolean {
   } catch {
     return true;
   }
-  if (!isObject(root)) return true;
+  if (!isPlainObject(root)) return true;
   const hooks = root.hooks;
-  if (!isObject(hooks)) return false;
-  return Object.values(hooks).some(
-    (entries) => Array.isArray(entries) && entries.some((entry) => isObject(entry) && entry.oboete === true),
-  );
-}
-
-function isObject(value: unknown): value is Record<string, unknown> {
-  return typeof value === 'object' && value !== null && !Array.isArray(value);
+  if (!isPlainObject(hooks)) return false;
+  return Object.values(hooks).some((entries) => Array.isArray(entries) && entries.some(isOboeteOwned));
 }

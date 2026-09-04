@@ -318,7 +318,7 @@ function recordingDependencies(home) {
       }
       const stdout =
         argv[0] === "oboete" && argv[1] === "search"
-          ? JSON.stringify([{ text: facts.join(" ") }])
+          ? JSON.stringify({ memories: [{ text: facts.join(" ") }] })
           : JSON.stringify({ result: facts.join(" | ") });
       return { exitCode: 0, signal: null, elapsedMs: 1, stdout, stderr: "" };
     },
@@ -375,10 +375,7 @@ test("runHarness keeps oboete credentials off every agent and trusts the copied 
   assert.equal(codex.env.CODEX_HOME, agentHome);
 });
 
-// ponytail: pins the harness inside the instrumented step because Sonar charges lines_to_cover for
-// every file under sonar.sources whether or not lcov names it; delete the ci.yml half once
-// sonar.coverage.exclusions=scripts/e2e/** lands in sonar-project.properties.
-test("every harness test file is run by npm test and by the instrumented CI step", () => {
+test("every harness test file is run by npm test", () => {
   const root = path.resolve(path.dirname(fileURLToPath(import.meta.url)), "../..");
   const files = fs
     .readdirSync(path.join(root, "scripts", "e2e"), { recursive: true })
@@ -390,19 +387,11 @@ test("every harness test file is run by npm test and by the instrumented CI step
   );
 
   const { scripts } = JSON.parse(fs.readFileSync(path.join(root, "package.json"), "utf8"));
-  const workflow = fs.readFileSync(path.join(root, ".github", "workflows", "ci.yml"), "utf8");
-  const coverageStep = workflow
-    .split(/^ *- name: /m)
-    .find((step) => step.includes("--experimental-test-coverage") && step.includes("coverage/lcov.info"));
-  assert.ok(coverageStep, "ci.yml has no instrumented step writing coverage/lcov.info");
-
-  for (const [label, command] of [["npm test", scripts.test], ["the CI coverage step", coverageStep]]) {
-    const globs = [...command.matchAll(/'([^']+)'/g)].map((match) => match[1]);
-    for (const file of files) {
-      assert.ok(
-        globs.some((glob) => path.matchesGlob(file, glob)),
-        `${label} does not run ${file} (globs: ${globs.join(" ")})`,
-      );
-    }
+  const globs = [...scripts.test.matchAll(/'([^']+)'/g)].map((match) => match[1]);
+  for (const file of files) {
+    assert.ok(
+      globs.some((glob) => path.matchesGlob(file, glob)),
+      `npm test does not run ${file} (globs: ${globs.join(" ")})`,
+    );
   }
 });

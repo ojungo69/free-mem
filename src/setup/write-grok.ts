@@ -13,6 +13,8 @@ import {
   applyJsonHandlers,
   applyTomlBlock,
   BACKUP_SUFFIX,
+  isOboeteOwned,
+  isPlainObject,
   removeJsonHandlers,
   removeTomlBlock,
 } from './managed-block.js';
@@ -72,7 +74,7 @@ export function writeGrok(grokHome: string, options: GrokWriteOptions): GrokWrit
     ];
   }
   // One call: applyJsonHandlers takes `handlers` for the whole of what oboete owns in the file.
-  applyJsonHandlers(hooksFile, ['hooks'], handlers);
+  applyJsonHandlers(hooksFile, handlers);
 
   // Verified 2026-09-03 (docs/research/oboete-contracts-probes.md "Grok user-scoped MCP
   // registration"): the same table `grok mcp add --scope user` writes; hooks then see the tools as
@@ -92,7 +94,7 @@ export function writeGrok(grokHome: string, options: GrokWriteOptions): GrokWrit
     // oboete's hooks while setup reports `wired: failed` and no probe runs. A setup that fails
     // hands the files back the way it found them (FR-031, the rule src/setup/write-codex.ts keeps).
     // A backup this run took is its own leftover; an older one is the pre-oboete copy and stays.
-    removeJsonHandlers(hooksFile, ['hooks'], { keepBackup: hooksBackupExisted });
+    removeJsonHandlers(hooksFile, { keepBackup: hooksBackupExisted });
     if (!hooksExisted) rmSync(hooksFile, { force: true });
     if (!configBackupExisted) rmSync(configFile + BACKUP_SUFFIX, { force: true });
     throw error;
@@ -107,7 +109,7 @@ export function writeGrok(grokHome: string, options: GrokWriteOptions): GrokWrit
 /** Undoes {@link writeGrok}: the handlers, the file when it held nothing else, and the MCP block. */
 export function removeGrok(grokHome: string): void {
   const hooksFile = join(grokHome, 'hooks', 'oboete.json');
-  removeJsonHandlers(hooksFile, ['hooks']);
+  removeJsonHandlers(hooksFile);
   const remaining = readJson(hooksFile);
   // oboete created this file, so an empty one is oboete's leftover rather than the developer's.
   if (remaining !== null && Object.keys(remaining).length === 0) rmSync(hooksFile);
@@ -129,9 +131,7 @@ function claudeCompatDuplicates(settingsPath: string | undefined): string[] {
   if (!isPlainObject(container)) return [];
   return Object.keys(HOOK_TIMEOUTS).filter((event) => {
     const entries = container[event];
-    return (
-      Array.isArray(entries) && entries.some((entry) => isPlainObject(entry) && entry.oboete === true)
-    );
+    return Array.isArray(entries) && entries.some(isOboeteOwned);
   });
 }
 
@@ -143,8 +143,4 @@ function readJson(file: string): Record<string, unknown> | null {
   } catch {
     return null;
   }
-}
-
-function isPlainObject(value: unknown): value is Record<string, unknown> {
-  return typeof value === 'object' && value !== null && !Array.isArray(value);
 }

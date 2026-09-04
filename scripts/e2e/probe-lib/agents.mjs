@@ -231,11 +231,11 @@ export function oversizedPrompt(shellName) {
   return `Use the ${shellName} tool to run exactly this command: head -c 1200000 /dev/zero | base64 ; then reply with exactly the word DONE`;
 }
 
-export function redactValue(value, repoPath) {
+export function redactValue(value, repoPath, label = "<repo>") {
   const walk = (v) => {
     if (typeof v === "string") {
       let s = v;
-      if (repoPath) s = s.split(repoPath).join("<repo>");
+      if (repoPath) s = s.split(repoPath).join(label);
       return s.replace(HOME_RE, "~").replace(RUN_RE, "<run>");
     }
     if (Array.isArray(v)) return v.map(walk);

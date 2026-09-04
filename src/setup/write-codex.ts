@@ -5,6 +5,7 @@
 // file is touched, and Codex's own `memories` setting is read by nobody here (FR-032, FR-043).
 import { existsSync, readFileSync, rmSync } from 'node:fs';
 import { resolve } from 'node:path';
+import { stringify as stringifyToml } from 'smol-toml';
 
 import { trustedHash, trustKey } from './codex-trust.js';
 import type { CodexHandler } from './codex-trust.js';
@@ -67,7 +68,7 @@ export function writeCodex(home: string, options: CodexSetupOptions): WriteResul
   // One call: `handlers` is the whole of what oboete owns in the file, so wiring the events in
   // separate calls would leave each call's handlers stripped by the next.
   for (const wiring of WIRING) groups[wiring.event] = [group(wiring, options)];
-  applyJsonHandlers(hooksPath, ['hooks'], groups);
+  applyJsonHandlers(hooksPath, groups);
 
   try {
     // `config.toml` can hold an API key, so its backup is owner-only.
@@ -78,7 +79,7 @@ export function writeCodex(home: string, options: CodexSetupOptions): WriteResul
     // that fails hands the files back the way it found them instead (FR-031).
     // Same rule as the config.toml backup below: a copy this run took is its own leftover, an
     // older one is the pre-oboete copy `oboete setup --remove` restores and stays.
-    removeJsonHandlers(hooksPath, ['hooks'], { keepBackup: hooksBackupExisted });
+    removeJsonHandlers(hooksPath, { keepBackup: hooksBackupExisted });
     if (!hooksExisted) rmSync(hooksPath, { force: true });
     // The backup is taken before the parse that rejected the write, so a copy this run made of a
     // file it then left alone is its own leftover; an older one is the pre-oboete copy and stays.
@@ -94,7 +95,7 @@ export function removeCodex(home: string): void {
   // A backup exists for every file that was the developer's before setup, so a file without one is
   // oboete's own: what removal leaves of it is an empty shell rather than their configuration.
   const oboetes = [hooksPath, configPath].filter((file) => !existsSync(file + BACKUP_SUFFIX));
-  removeJsonHandlers(hooksPath, ['hooks']);
+  removeJsonHandlers(hooksPath);
   removeTomlBlock(configPath);
   for (const file of oboetes) if (isEmptyShell(file)) rmSync(file);
 }
@@ -130,33 +131,26 @@ function group(wiring: Wiring, options: CodexSetupOptions): CodexGroup {
  */
 function blockText(hooksPath: string, options: CodexSetupOptions): string {
   const merged = mergedGroups(hooksPath);
-  const lines = [
-    '[mcp_servers.oboete]',
-    `command = ${tomlString(options.node)}`,
-    `args = [${tomlString(options.bundle)}, "mcp"]`,
-  ];
+  const state: Record<string, { trusted_hash: string }> = {};
   for (const wiring of WIRING) {
     (merged[wiring.event] ?? []).forEach((group, groupIndex) => {
       if (group.oboete !== true) return;
       group.hooks.forEach((handler, handlerIndex) => {
-        const key = trustKey(hooksPath, wiring.event, groupIndex, handlerIndex);
-        lines.push(
-          '',
-          `[hooks.state.${tomlString(key)}]`,
-          `trusted_hash = ${tomlString(trustedHash(wiring.event, group.matcher, handler))}`,
-        );
+        state[trustKey(hooksPath, wiring.event, groupIndex, handlerIndex)] = {
+          trusted_hash: trustedHash(wiring.event, group.matcher, handler),
+        };
       });
     });
   }
-  return lines.join('\n');
+  // `hooks` and `hooks.state` carry no key of their own, so smol-toml emits only the
+  // `[hooks.state."<key>"]` rows and never a `[hooks]` header to collide with the developer's.
+  return stringifyToml({
+    mcp_servers: { oboete: { command: options.node, args: [options.bundle, 'mcp'] } },
+    hooks: { state },
+  });
 }
 
 function mergedGroups(hooksPath: string): Record<string, CodexGroup[]> {
   const file = JSON.parse(readFileSync(hooksPath, 'utf8')) as { hooks?: Record<string, CodexGroup[]> };
   return file.hooks ?? {};
-}
-
-/** A TOML basic string: the escapes JSON produces are the ones TOML reads. */
-function tomlString(value: string): string {
-  return JSON.stringify(value);
 }

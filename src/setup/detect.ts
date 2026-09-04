@@ -14,7 +14,7 @@ import { parse as parseToml } from 'smol-toml';
 import { z } from 'zod';
 
 import type { AgentName } from '../events.js';
-import { isCredentialVariable } from '../log.js';
+import { childEnvironment } from '../log.js';
 
 import { trustedHash, trustKey, type CodexHandler } from './codex-trust.js';
 
@@ -99,24 +99,16 @@ function isExecutable(file: string): boolean {
   }
 }
 
+// ponytail: `PATH` and a bare name only, because M1 targets Linux/WSL (plan.md "Target Platform");
+// the `Path` casing fallback and the PATHEXT suffixes come back with Windows in M5 (README).
 function resolveOnPath(command: string, env: NodeJS.ProcessEnv): string | null {
-  const pathValue = env.PATH ?? env.Path ?? env.path ?? '';
-  const suffixes =
-    process.platform === 'win32'
-      ? (env.PATHEXT ?? '.COM;.EXE;.BAT;.CMD')
-          .split(';')
-          .filter((suffix) => suffix !== '')
-          .map((suffix) => suffix.toLowerCase())
-      : [''];
-  for (const entry of pathValue.split(delimiter)) {
+  for (const entry of (env.PATH ?? '').split(delimiter)) {
     const directory = entry.replace(/^"|"$/g, '');
     // An empty or relative entry would resolve against the current working directory, so a script
     // in the repository could be reported as the agent CLI and then executed.
     if (!isAbsolute(directory)) continue;
-    for (const suffix of suffixes) {
-      const file = join(directory, `${command}${suffix}`);
-      if (isExecutable(file)) return file;
-    }
+    const file = join(directory, command);
+    if (isExecutable(file)) return file;
   }
   return null;
 }
@@ -270,11 +262,7 @@ export function detectAgents(
   ];
 
   const cliPaths = agents.map(({ cli }) => resolveOnPath(cli, env));
-  // FR-016: oboete's provider credentials stay on oboete's own request path, never on an agent's
-  // (the same rule src/setup/probe.ts applies to the wiring probe).
-  const probeEnv = Object.fromEntries(
-    Object.entries(env).filter(([name]) => !isCredentialVariable(name)),
-  );
+  const probeEnv = childEnvironment(env);
   const versions = cliPaths.map((cliPath) =>
     cliPath === null ? undefined : readVersion(cliPath, probeEnv, spawnFn),
   );

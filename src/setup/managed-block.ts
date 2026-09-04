@@ -31,6 +31,8 @@ export const BLOCK_BEGIN = '# oboete:begin';
 export const BLOCK_END = '# oboete:end';
 /** The pre-oboete copy of a foreign file: created when absent, deleted by removal. */
 export const BACKUP_SUFFIX = '.oboete-backup';
+/** contracts/agents.md: all three JSON files hold their hook wiring under a top-level `hooks`. */
+const CONTAINER = 'hooks';
 
 export type ManagedFileErrorCode =
   | 'symlink_escape'
@@ -95,8 +97,9 @@ export function removeTomlBlock(file: string): void {
 }
 
 /**
- * Merges oboete-owned handler objects into the hook arrays under `containerPath` (`['hooks']` for
- * `~/.claude/settings.json` and `~/.codex/hooks.json`). Entries the developer wrote keep their
+ * Merges oboete-owned handler objects into the hook arrays under the top-level `hooks` object, the
+ * container contracts/agents.md gives all three JSON files (`~/.claude/settings.json`,
+ * `~/.codex/hooks.json`, `~/.grok/hooks/oboete.json`). Entries the developer wrote keep their
  * order; a previous oboete entry is replaced where it stood. `handlers` is the whole of what oboete
  * owns here afterwards, so a repeat that no longer wires an event drops the handler it left there
  * last time instead of leaving it live (FR-031, setup is repeatable). The file is created when
@@ -104,7 +107,6 @@ export function removeTomlBlock(file: string): void {
  */
 export function applyJsonHandlers(
   file: string,
-  containerPath: readonly string[],
   handlers: Record<string, readonly unknown[]>,
   options: ManagedWriteOptions = {},
 ): void {
@@ -122,13 +124,13 @@ export function applyJsonHandlers(
   }
   const target = resolveTarget(file);
   const root = readJsonRoot(target, file);
-  const node = containerFor(root, containerPath, file, true);
+  const node: Record<string, unknown> = hookContainer(root, file) ?? (root[CONTAINER] = {});
   stripOwned(node, new Set(Object.keys(handlers)));
   for (const [event, entries] of Object.entries(handlers)) {
     const current = node[event];
     if (current !== undefined && !Array.isArray(current)) {
       throw new ManagedFileError(
-        `${file} holds a ${typeof current} at ${[...containerPath, event].join('.')} where oboete expects a list of handlers`,
+        `${file} holds a ${typeof current} at ${CONTAINER}.${event} where oboete expects a list of handlers`,
         'not_an_object',
         file,
       );
@@ -143,23 +145,15 @@ export function applyJsonHandlers(
  * backup. `keepBackup` is for a rollback: the copy from before oboete first touched the file is
  * what `oboete setup --remove` restores, so undoing a later run must leave it where it is.
  */
-export function removeJsonHandlers(
-  file: string,
-  containerPath: readonly string[],
-  options: { keepBackup?: boolean } = {},
-): void {
+export function removeJsonHandlers(file: string, options: { keepBackup?: boolean } = {}): void {
   const target = resolveTarget(file);
   if (existsSync(target)) {
     const original = readFileSync(target, 'utf8');
     const root = readJsonRoot(target, file);
-    const node = containerFor(root, containerPath, file, false);
+    const node = hookContainer(root, file);
     if (node) {
       stripOwned(node, new Set());
-      const last = containerPath.at(-1);
-      if (last !== undefined && Object.keys(node).length === 0) {
-        const parent = containerFor(root, containerPath.slice(0, -1), file, false);
-        if (parent) delete parent[last];
-      }
+      if (Object.keys(node).length === 0) delete root[CONTAINER];
     }
     const content = serializeJson(root);
     if (content !== original) writeManaged(target, file, content, parseJsonOrThrow, {}, false);
@@ -325,11 +319,12 @@ function serializeJson(root: Record<string, unknown>): string {
   return `${JSON.stringify(root, null, 2)}\n`;
 }
 
-function isPlainObject(value: unknown): value is Record<string, unknown> {
+export function isPlainObject(value: unknown): value is Record<string, unknown> {
   return typeof value === 'object' && value !== null && !Array.isArray(value);
 }
 
-function isOboeteOwned(entry: unknown): boolean {
+/** The marker every entry oboete writes carries, and the only way removal finds it again. */
+export function isOboeteOwned(entry: unknown): boolean {
   return isPlainObject(entry) && entry.oboete === true;
 }
 
@@ -353,42 +348,16 @@ function readJsonRoot(target: string, file: string): Record<string, unknown> {
   return parsed;
 }
 
-function containerFor(
-  root: Record<string, unknown>,
-  path: readonly string[],
-  file: string,
-  create: true,
-): Record<string, unknown>;
-function containerFor(
-  root: Record<string, unknown>,
-  path: readonly string[],
-  file: string,
-  create: false,
-): Record<string, unknown> | null;
-function containerFor(
-  root: Record<string, unknown>,
-  path: readonly string[],
-  file: string,
-  create: boolean,
-): Record<string, unknown> | null {
-  let node = root;
-  for (const key of path) {
-    const child = node[key];
-    if (child === undefined) {
-      if (!create) return null;
-      const created: Record<string, unknown> = {};
-      node[key] = created;
-      node = created;
-      continue;
-    }
-    if (!isPlainObject(child)) {
-      throw new ManagedFileError(
-        `${file} holds a ${Array.isArray(child) ? 'list' : typeof child} at ${key} where oboete expects an object`,
-        'not_an_object',
-        file,
-      );
-    }
-    node = child;
+/** The `hooks` object of the file, or null when it has none; anything else there is refused. */
+function hookContainer(root: Record<string, unknown>, file: string): Record<string, unknown> | null {
+  const node = root[CONTAINER];
+  if (node === undefined) return null;
+  if (!isPlainObject(node)) {
+    throw new ManagedFileError(
+      `${file} holds a ${Array.isArray(node) ? 'list' : typeof node} at ${CONTAINER} where oboete expects an object`,
+      'not_an_object',
+      file,
+    );
   }
   return node;
 }
