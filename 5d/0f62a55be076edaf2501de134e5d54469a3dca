@@ -1,0 +1,21 @@
+src/setup/write-claude.ts
+  s_c3a3aca6da7be1::t_53fc3941376804 1-119
+test/unit/write-claude.test.ts
+  s_c3a3aca6da7be1::t_e0f1f3342fab1f 1-163
+---
+{
+  "schema_version": "authorship/3.0.0",
+  "git_ai_version": "1.6.16",
+  "base_commit_sha": "5d0f62a55be076edaf2501de134e5d54469a3dca",
+  "prompts": {},
+  "sessions": {
+    "s_c3a3aca6da7be1": {
+      "agent_id": {
+        "tool": "claude",
+        "id": "7392a577-3272-4376-9b89-f4c55b10c247",
+        "model": "claude-fable-5-1"
+      },
+      "human_author": "ojungo69 <210335670+ojungo69@users.noreply.github.com>"
+    }
+  }
+}
