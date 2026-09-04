@@ -29,6 +29,12 @@ const commands: Record<string, () => Promise<(argv: string[]) => Promise<number>
   capture: () => import('./capture.js').then((module) => module.runCapture),
   observe: () => import('./worker/observe.js').then((module) => module.runObserve),
   inject: () => import('./injection/inject.js').then((module) => module.runInject),
+  search: () => import('./memories-cli.js').then((module) => module.runSearch),
+  timeline: () => import('./memories-cli.js').then((module) => module.runTimeline),
+  get: () => import('./memories-cli.js').then((module) => module.runGet),
+  pin: () => import('./memories-cli.js').then((module) => module.runPin),
+  unpin: () => import('./memories-cli.js').then((module) => module.runUnpin),
+  delete: () => import('./memories-cli.js').then((module) => module.runDelete),
 };
 
 /**

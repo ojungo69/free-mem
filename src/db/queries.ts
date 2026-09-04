@@ -35,6 +35,13 @@ export type MemoryRow = {
   created_at: number | null;
 };
 
+export type MemorySourceRow = {
+  raw_event_id: string | null;
+  citation_kind: string | null;
+  citation_value: string | null;
+  source_agent: string | null;
+};
+
 /** A `WHERE` fragment over the alias `m` plus its parameters, in that order. */
 export type MemoryScope = { where: string; params: SQLInputValue[] };
 
@@ -43,6 +50,26 @@ export type TimelineTurn = {
   ordinal: number;
   started_at: number | null;
   ended_at: number | null;
+  memory_ids: string[];
+};
+
+export type TimelineMemory = Pick<
+  MemoryRow,
+  | 'id'
+  | 'type'
+  | 'title'
+  | 'body'
+  | 'sensitivity'
+  | 'review_state'
+  | 'degraded_reason'
+  | 'source_session_id'
+  | 'source_batch_id'
+  | 'pinned_at'
+  | 'pin_order'
+  | 'created_at'
+> & {
+  turn_ids: string[];
+  sources: MemorySourceRow[];
 };
 
 export type TimelineSession = {
@@ -55,6 +82,7 @@ export type TimelineSession = {
   summary_state: SummaryState | null;
   turns: TimelineTurn[];
   memory_ids: string[];
+  memories: TimelineMemory[];
 };
 
 export type SessionState = {
@@ -105,6 +133,43 @@ export function getMemory(db: DatabaseSync, id: string, scope: MemoryScope): Mem
     .prepare(`SELECT m.* FROM memories m WHERE ${scope.where} AND m.id = ?`)
     .get(...scope.params, id);
   return row === undefined ? null : asMemoryRows([row])[0];
+}
+
+export function memorySources(db: DatabaseSync, id: string): MemorySourceRow[] {
+  return db
+    .prepare(
+      `SELECT raw_event_id, citation_kind, citation_value, source_agent
+       FROM memory_sources WHERE memory_id = ? ORDER BY id`,
+    )
+    .all(id) as unknown as MemorySourceRow[];
+}
+
+/** Pins or unpins one active row of the current repository. */
+export function setPinned(
+  db: DatabaseSync,
+  input: { id: string; repoId: string; pinnedAt: number | null; pinOrder: number | null },
+): boolean {
+  const result = db
+    .prepare(
+      `UPDATE memories SET pinned_at = ?, pin_order = ?
+       WHERE id = ? AND repo_id = ? AND deleted_at IS NULL AND valid_to IS NULL`,
+    )
+    .run(input.pinnedAt, input.pinOrder, input.id, input.repoId);
+  return Number(result.changes) !== 0;
+}
+
+/** Leaves the hashes and content in place so identical content cannot be recreated (FR-035). */
+export function tombstone(
+  db: DatabaseSync,
+  input: { id: string; repoId: string; deletedAt: number },
+): boolean {
+  const result = db
+    .prepare(
+      `UPDATE memories SET deleted_at = ?
+       WHERE id = ? AND repo_id = ? AND deleted_at IS NULL`,
+    )
+    .run(input.deletedAt, input.id, input.repoId);
+  return Number(result.changes) !== 0;
 }
 
 export function listMemories(
@@ -165,6 +230,57 @@ export function latestSessionState(db: DatabaseSync, repoId: string): SessionSta
   };
 }
 
+function timelineMemories(
+  db: DatabaseSync,
+  sessionId: string,
+  memories: MemoryRow[],
+): TimelineMemory[] {
+  if (memories.length === 0) return [];
+  const sourceRows = db
+    .prepare(
+      `SELECT ms.memory_id, ms.raw_event_id, ms.citation_kind, ms.citation_value,
+              ms.source_agent, e.session_id AS event_session_id, e.turn_id
+       FROM memory_sources ms LEFT JOIN raw_events e ON e.id = ms.raw_event_id
+       WHERE ms.memory_id IN (${memories.map(() => '?').join(', ')}) ORDER BY ms.id`,
+    )
+    .all(...memories.map((memory) => memory.id));
+  const sources = new Map<string, MemorySourceRow[]>();
+  const turnIds = new Map<string, Set<string>>();
+  for (const row of sourceRows) {
+    const memoryId = String(row.memory_id);
+    const list = sources.get(memoryId) ?? [];
+    list.push({
+      raw_event_id: typeof row.raw_event_id === 'string' ? row.raw_event_id : null,
+      citation_kind: typeof row.citation_kind === 'string' ? row.citation_kind : null,
+      citation_value: typeof row.citation_value === 'string' ? row.citation_value : null,
+      source_agent: typeof row.source_agent === 'string' ? row.source_agent : null,
+    });
+    sources.set(memoryId, list);
+    if (row.event_session_id === sessionId && typeof row.turn_id === 'string') {
+      const ids = turnIds.get(memoryId) ?? new Set<string>();
+      ids.add(row.turn_id);
+      turnIds.set(memoryId, ids);
+    }
+  }
+
+  return memories.map((memory) => ({
+    id: memory.id,
+    type: memory.type,
+    title: memory.title,
+    body: memory.body,
+    sensitivity: memory.sensitivity,
+    review_state: memory.review_state,
+    degraded_reason: memory.degraded_reason,
+    source_session_id: memory.source_session_id,
+    source_batch_id: memory.source_batch_id,
+    pinned_at: memory.pinned_at,
+    pin_order: memory.pin_order,
+    created_at: memory.created_at,
+    turn_ids: [...(turnIds.get(memory.id) ?? [])],
+    sources: sources.get(memory.id) ?? [],
+  }));
+}
+
 /** Sessions of the repository with their turns and the memories that reach the reader. */
 export function timeline(
   db: DatabaseSync,
@@ -192,9 +308,18 @@ export function timeline(
      FROM turns t WHERE t.session_id = ? ORDER BY t.ordinal`,
   );
 
-  // ponytail: one turn query and one memory query per session; the listing caps at 50 (contracts/cli.md).
+  // ponytail: three fixed queries per session; the listing caps at 50 (contracts/cli.md).
   return sessions.map((session) => {
     const sessionId = String(session.id);
+    const memories = timelineMemories(db, sessionId, memoriesForSession(db, sessionId, scope));
+    const memoryIdsByTurn = new Map<string, string[]>();
+    for (const memory of memories) {
+      for (const turnId of memory.turn_ids) {
+        const ids = memoryIdsByTurn.get(turnId) ?? [];
+        ids.push(memory.id);
+        memoryIdsByTurn.set(turnId, ids);
+      }
+    }
     return {
       id: sessionId,
       agent: String(session.agent),
@@ -208,13 +333,15 @@ export function timeline(
         ordinal: Number(turn.ordinal),
         started_at: (turn.started_at as number | null) ?? null,
         ended_at: (turn.ended_at as number | null) ?? null,
+        memory_ids: memoryIdsByTurn.get(String(turn.id)) ?? [],
       })),
-      memory_ids: memoriesForSession(db, sessionId, scope).map((memory) => memory.id),
+      memory_ids: memories.map((memory) => memory.id),
+      memories,
     };
   });
 }
 
-/** The memories a session produced, through the sources that link them to the session's events. */
+/** The memories a session produced, including after raw-event expiry (FR-008, data-model "raw_events"). */
 export function memoriesForSession(
   db: DatabaseSync,
   sessionId: string,
@@ -224,12 +351,12 @@ export function memoriesForSession(
     db
       .prepare(
         `SELECT DISTINCT m.* FROM memories m
-         JOIN memory_sources ms ON ms.memory_id = m.id
-         JOIN raw_events e ON e.id = ms.raw_event_id
-         WHERE ${scope.where} AND e.session_id = ?
+         LEFT JOIN memory_sources ms ON ms.memory_id = m.id
+         LEFT JOIN raw_events e ON e.id = ms.raw_event_id
+         WHERE ${scope.where} AND (m.source_session_id = ? OR e.session_id = ?)
          ORDER BY m.created_at DESC, m.id DESC`,
       )
-      .all(...scope.params, sessionId),
+      .all(...scope.params, sessionId, sessionId),
   );
 }
 
