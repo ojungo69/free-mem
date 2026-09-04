@@ -348,3 +348,27 @@ Task: "T023 src/repo-identity.ts + tests"
   250 ms here; tighten MAX_REPO_SECRET_PATH_LENGTH if that ever matters, not the rule count.
 - staleness.test.ts teardown can hit ENOTEMPTY on `.git/ai` when `git` on PATH is the git-ai wrapper
   (dev machines only; CI has no wrapper). The retrying rmSync covers it most of the time.
+
+### Phase 3 follow-ups (collected from the review, security and verification rounds, 2026-09-05)
+
+- write-codex.ts rolls back a failed config.toml append by calling removeJsonHandlers, which deletes
+  hooks.json's pre-oboete backup unconditionally; fold into whoever touches that file next.
+- probe.ts reports fail/probe_event_missing only after polling the whole 90 s deadline, so setup
+  takes about 90 s per agent that is installed but not actually wired. A shorter post-exit grace
+  (the child already exited cleanly) would cut that without weakening the check.
+- events.ts defines a `probe` event kind and the schema keeps it in the enum, but nothing emits it:
+  probeEventStored recognises the marker inside a `prompt` row. Delete the kind or emit it.
+- The live consent re-check is stricter than contracts/cli.md: preset, credentials and model are a
+  snapshot taken when the run starts, so switching presets mid-run stops the send instead of
+  following the newly consented preset.
+- No test drives the pre-send checkpoint (llm.ts) with a predicate that answers false; the agent-cli
+  branch and the checkpoint share one callable by construction only.
+- scripts/e2e/isolated-user.mjs runs the observe leg and the search leg with the same environment,
+  credentials included. The search leg is oboete's own CLI, so FR-016 does not cover it, but the two
+  legs could carry different environments.
+- `oboete setup` registers the Claude, Codex and Grok MCP servers while `oboete mcp` is still the
+  T077 stub, so `claude mcp get oboete` reports "Failed to connect" until T077 lands. Decide whether
+  the registration waits for T077 or the setup output says so.
+- The isolated user runs pi-coding-agent 0.84.4 and this machine's developer account 0.85.0; the
+  `ToolDefinition.execute(toolCallId, params, signal, onUpdate, ctx)` declaration is identical in
+  both, so the T051 signature fix covers the two versions the project has seen.
