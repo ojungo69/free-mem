@@ -1,0 +1,25 @@
+src/capture.ts
+  s_c3a3aca6da7be1::t_3ef52dabf71635 42,759-763,1223,1232
+src/injection/inject.ts
+  s_c3a3aca6da7be1::t_865f67a6bafa63 15,89,448,643
+src/injection/pack.ts
+  s_c3a3aca6da7be1::t_89f697cae1bd7b 20,236-238,241-242,244-245,258-259,358,363
+src/log.ts
+  s_c3a3aca6da7be1::t_dd1915d6621196 43-56
+---
+{
+  "schema_version": "authorship/3.0.0",
+  "git_ai_version": "1.6.16",
+  "base_commit_sha": "8ba3c5e572c68b72c4e620425d974289cab999b1",
+  "prompts": {},
+  "sessions": {
+    "s_c3a3aca6da7be1": {
+      "agent_id": {
+        "tool": "claude",
+        "id": "7392a577-3272-4376-9b89-f4c55b10c247",
+        "model": "claude-fable-5-1"
+      },
+      "human_author": "ojungo69 <210335670+ojungo69@users.noreply.github.com>"
+    }
+  }
+}
