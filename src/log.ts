@@ -1,7 +1,8 @@
 import { appendFileSync, mkdirSync } from 'node:fs';
 import { dirname } from 'node:path';
 
-function isCredentialVariable(name: string): boolean {
+/** The oboete credential variables of contracts/cli.md: the Cloudflare pair and one key per preset. */
+export function isCredentialVariable(name: string): boolean {
   if (name === 'OBOETE_CF_ACCOUNT_ID') return true;
   return name.startsWith('OBOETE_') && (name.endsWith('_API_KEY') || name.endsWith('_API_TOKEN'));
 }

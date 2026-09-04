@@ -8,6 +8,7 @@ import {
 import { basename, join } from 'node:path';
 import { test } from 'node:test';
 
+import { trustedHash } from '../../src/setup/codex-trust.js';
 import {
   detectAgents,
   type VersionSpawn,
@@ -135,9 +136,9 @@ test('Codex trust requires a matching row for every oboete handler', async () =>
                   command: 'node /opt/oboete.mjs hook --agent codex --event SessionStart',
                   timeout: 12,
                   async: true,
-                  oboete: true,
                 },
               ],
+              oboete: true,
             },
           ],
           UserPromptSubmit: [
@@ -147,22 +148,32 @@ test('Codex trust requires a matching row for every oboete handler', async () =>
                   type: 'command',
                   command: 'node /opt/oboete.mjs hook --agent codex --event UserPromptSubmit',
                   timeout: 12,
-                  oboete: true,
                 },
               ],
+              oboete: true,
             },
           ],
         },
       }),
     );
+    // The rows the installer writes: one shared rule in src/setup/codex-trust.ts, pinned against
+    // the recorded Codex behaviour in test/unit/codex-trust.test.ts.
     writeFileSync(
       configPath,
       [
         `[hooks.state."${hooksPath}:session_start:0:0"]`,
-        'trusted_hash = "sha256:113f08fe38a57f927461befe41be0866d83b5ac08a9b0d9f82afa80d5d7d9b49"',
+        `trusted_hash = "${trustedHash('SessionStart', 'startup|clear|compact', {
+          type: 'command',
+          command: 'node /opt/oboete.mjs hook --agent codex --event SessionStart',
+          timeout: 12,
+        })}"`,
         '',
         `[hooks.state."${hooksPath}:user_prompt_submit:0:0"]`,
-        'trusted_hash = "sha256:147ba77a83c54e1a14b72c25bfdfd3d2802ed37a490d20d4041ef32502e59c7f"',
+        `trusted_hash = "${trustedHash('UserPromptSubmit', undefined, {
+          type: 'command',
+          command: 'node /opt/oboete.mjs hook --agent codex --event UserPromptSubmit',
+          timeout: 12,
+        })}"`,
         '',
         '[features]',
         'memories = true',

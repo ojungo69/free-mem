@@ -7,6 +7,7 @@ import { dirname, join } from 'node:path';
 import { performance } from 'node:perf_hooks';
 import type { DatabaseSync } from 'node:sqlite';
 
+import { isCredentialVariable } from '../log.js';
 import type { AgentDetection, SetupAgent } from './detect.js';
 
 const PROBE_DEADLINE_MS = 90_000;
@@ -39,12 +40,6 @@ type Invocation = {
 type ProcessOutcome =
   | { kind: 'closed'; code: number | null }
   | { kind: 'error'; error: unknown };
-
-// The rule of isCredentialVariable in src/log.ts; the merge step lifts it to one shared export.
-function isCredentialVariable(name: string): boolean {
-  if (name === 'OBOETE_CF_ACCOUNT_ID') return true;
-  return name.startsWith('OBOETE_') && (name.endsWith('_API_KEY') || name.endsWith('_API_TOKEN'));
-}
 
 /** FR-016: oboete's provider credentials stay on oboete's own request path, never on the agent's. */
 function childEnvironment(env: NodeJS.ProcessEnv): NodeJS.ProcessEnv {

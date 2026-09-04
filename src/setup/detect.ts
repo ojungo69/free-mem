@@ -13,8 +13,9 @@ import { delimiter, isAbsolute, join, resolve } from 'node:path';
 import { parse as parseToml } from 'smol-toml';
 import { z } from 'zod';
 
-import { canonicalJson, type AgentName } from '../events.js';
-import { sha256Hex } from '../hash.js';
+import type { AgentName } from '../events.js';
+
+import { trustedHash, trustKey, type CodexHandler } from './codex-trust.js';
 
 const VERSION_PROBE_TIMEOUT_MS = 2_000;
 
@@ -47,13 +48,14 @@ const handlerSchema = z.looseObject({
   type: z.string().optional(),
   command: z.string().optional(),
   timeout: z.number().optional(),
+  additionalContextLimit: z.number().optional(),
   async: z.boolean().optional(),
-  oboete: z.boolean().optional(),
 });
 
 const groupSchema = z.looseObject({
   matcher: z.unknown().optional(),
   hooks: z.array(handlerSchema),
+  oboete: z.boolean().optional(),
 });
 
 const hooksFileSchema = z.looseObject({
@@ -148,27 +150,6 @@ function readCodexConfig(path: string): CodexConfig | null {
   }
 }
 
-function snakeCase(event: string): string {
-  return event.replace(/([a-z0-9])([A-Z])/g, '$1_$2').toLowerCase();
-}
-
-function handlerTrustHash(
-  event: string,
-  matcher: unknown,
-  handler: { command: string; type: string },
-): string {
-  const eventName = snakeCase(event);
-  const normalized = {
-    async: false,
-    command: handler.command,
-    timeout: eventName === 'session_end' || eventName === 'interrupt' ? 1 : 600,
-    type: handler.type,
-  };
-  const group: Record<string, unknown> = { event_name: eventName, hooks: [normalized] };
-  if (matcher !== undefined && matcher !== null) group.matcher = matcher;
-  return `sha256:${sha256Hex(canonicalJson(group))}`;
-}
-
 function codexTrust(hooksPath: string, config: CodexConfig | null): AgentTrust {
   if (!existsSync(hooksPath)) return 'absent';
   let hooks: z.infer<typeof hooksFileSchema>;
@@ -184,15 +165,26 @@ function codexTrust(hooksPath: string, config: CodexConfig | null): AgentTrust {
   let invalid = false;
   for (const [event, groups] of Object.entries(hooks.hooks)) {
     groups.forEach((group, groupIndex) => {
+      // The marker sits on the entry of the event's array, which for Codex is the matcher group:
+      // that is the entry src/setup/managed-block.ts finds again when setup removes the wiring.
+      if (group.oboete !== true) return;
       group.hooks.forEach((handler, handlerIndex) => {
-        if (handler.oboete !== true) return;
-        const { command, type } = handler;
-        if (command === undefined || type === undefined) {
+        const { command, timeout, additionalContextLimit } = handler;
+        // Only a command handler carries an identity oboete can rebuild; anything else oboete
+        // marked as its own is a file it no longer understands.
+        if (command === undefined || handler.type !== 'command') {
           invalid = true;
           return;
         }
-        const key = `${hooksPath}:${snakeCase(event)}:${groupIndex}:${handlerIndex}`;
-        expected.push([key, handlerTrustHash(event, group.matcher, { command, type })]);
+        const rebuilt: CodexHandler = { type: 'command', command };
+        if (timeout !== undefined) rebuilt.timeout = timeout;
+        if (additionalContextLimit !== undefined) rebuilt.additionalContextLimit = additionalContextLimit;
+        expected.push([
+          trustKey(hooksPath, event, groupIndex, handlerIndex),
+          // The installer's rule (src/setup/codex-trust.ts), so detection cannot drift from what
+          // src/setup/write-codex.ts writes.
+          trustedHash(event, typeof group.matcher === 'string' ? group.matcher : undefined, rebuilt),
+        ]);
       });
     });
   }

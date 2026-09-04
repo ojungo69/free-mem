@@ -25,6 +25,7 @@ const knownCommands = [
 ];
 
 const commands: Record<string, () => Promise<(argv: string[]) => Promise<number>>> = {
+  setup: () => import('./setup/setup.js').then((module) => module.runSetup),
   hook: () => import('./capture.js').then((module) => module.runHook),
   capture: () => import('./capture.js').then((module) => module.runCapture),
   observe: () => import('./worker/observe.js').then((module) => module.runObserve),

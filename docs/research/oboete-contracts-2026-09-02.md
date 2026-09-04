@@ -91,7 +91,7 @@
 ### 設計への影響
 
 - installer の書き込み先は `config.toml` より `~/.codex/hooks.json` (または project の `.codex/hooks.json`) を第一候補にする。Codex は Claude Code と同じ JSON 形状でこれを読み、trust identity も TOML 版と収束する。ユーザーの 300 行超の `config.toml` を書き換えるリスクが消え、Claude Code 向けに出す hooks.json と実装経路が 1 本にまとまる。ただし `[hooks.state]` の trust 行だけは `config.toml` 側に書く必要がある。
-- installer は hook を書いたら必ず対応する `[hooks.state."<abs config path>:<snake_case_event>:<group_idx>:<handler_idx>"] trusted_hash` を書く。preimage は `{"event_name": <snake_case>, "hooks": [{正規化済み handler}]}` を key ソート・compact separator で JSON 化したもの。正規化の落とし穴が 3 つ: `timeout` は設定値ではなく正規化後の値 (既定 600、SessionEnd/Interrupt は 1)、`commandWindows` は非 Windows では None、`additionalContextLimit` は 2500 のとき preimage から除去、None 値のフィールドは丸ごと落とす。
+- installer は hook を書いたら必ず対応する `[hooks.state."<abs config path>:<snake_case_event>:<group_idx>:<handler_idx>"] trusted_hash` を書く。preimage は `{"event_name": <snake_case>, "hooks": [{正規化済み handler}]}` を key ソート・compact separator で JSON 化したもの。正規化の落とし穴が 3 つ: `timeout` は設定値がそのまま preimage に入る (未設定なら既定 600、SessionEnd/Interrupt は 1。2026-09-04 に codex-cli 0.153.2 で hooks.json に `"timeout": 12` を置き、設定値 12 でハッシュした trust 行だけが発火し、既定 600 でハッシュした行は発火しないことを実測。当初の「正規化後の値」は timeout 未設定の hook でしか検証されていなかった)、`commandWindows` は非 Windows では None、`additionalContextLimit` は 2500 のとき preimage から除去、None 値のフィールドは丸ごと落とす。
 - `[[hooks.SessionStart]]` には `matcher = "startup"` (または `"startup|resume"`) を必ず付ける。付けないと `/clear` と auto-compaction のたびに記憶ダイジェスト全体を再注入して 2,500 token 予算を焼く。
 - `additionalContextLimit = 0` を使う。spill されたテキストは OS temp のパスになり、モデルが読みに行かなければ実質失われる。
 - `SessionStart` hook は JSON envelope 無しの素の stdout でよい (`plain_stdout_becomes_model_context()` で確認済み)。JSON が要るのは `continue` / `systemMessage` を使うときだけ。

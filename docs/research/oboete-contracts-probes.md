@@ -71,6 +71,12 @@ recorded in docs/research/m1-amendments-2026-09.md (task T011).
   of the preimage when present (verified 12/12 hooks firing without `--dangerously-bypass-hook-trust`,
   and against 5 real hashes). `scripts/e2e/probe-lib/trusthash.mjs` is the corrected implementation and
   the installer (T049) must use the same rule.
+  Correction 2026-09-04: that rule is only right for handlers without a `timeout` (the probes stripped
+  it). A live run of codex-cli 0.153.2 with `"timeout": 12` in hooks.json and two trust rows fired only
+  the group hashed with the configured value 12, not the one hashed with the default 600, so the
+  installer's rule in `src/setup/codex-trust.ts` (configured timeout in the preimage) is the verified
+  one. The clamp for SessionEnd/Interrupt was not probed separately; oboete writes 3 s, which equals
+  the cap either way.
 - **`agent-cli` preset** (row "headless JSON output"): all four CLIs return the model text in a stable
   place (`claude -p --output-format json` → `result`; `codex exec --json --output-last-message <file>` →
   the file; `grok -p --output-format json` → `text`, but that field concatenates every assistant message,
