@@ -668,6 +668,67 @@ test('an English answer to a Japanese input is a language mismatch', () => {
   assert.equal(checkLanguage(inputWithHint('other'), english), 'ok');
 });
 
+test('the session summary preserves a roughly 600-character first prompt verbatim', async () => {
+  await withOpened(async (db, token) => {
+    seedRepo(db);
+    seedSession(db, 'sess1', { status: 'ended', summaryState: 'pending', turns: 2 });
+    const firstPrompt = [
+      'These three exact strings are durable facts about this repository. Preserve them verbatim:',
+      'fact-run-claude-to-codex-1: the build token is cedar.',
+      'fact-run-claude-to-codex-2: the release bird is heron.',
+      'fact-run-claude-to-codex-3: 配布色は琥珀。',
+      `Background: ${'This context must remain attached to the exact facts. '.repeat(7).trimEnd()}`,
+    ].join('\n');
+    seedEvent(db, { id: 'p1', content: firstPrompt, turn: 1 });
+
+    const result = sessionSummary(db, token, 'sess1', NOW);
+    assert.equal(result.state, 'done');
+    if (result.memoryId === null) assert.fail('expected a summary memory');
+
+    const body = String(memoryRow(db, result.memoryId)?.body);
+    assert.ok(body.startsWith(`request: ${firstPrompt}\ninvestigated:`));
+    assert.ok(body.length <= 2000);
+  });
+});
+
+test('the session summary keeps request and next_steps limits separate while trimming lists', async () => {
+  await withOpened(async (db, token) => {
+    seedRepo(db);
+    seedSession(db, 'sess1', { status: 'ended', summaryState: 'pending', turns: 2 });
+    const paths = Array.from(
+      { length: 20 },
+      (_, index) => `src/features/summary-request-truncation/path-${String(index).padStart(2, '0')}.ts`,
+    );
+    seedEvent(db, { id: 'p1', content: 'R'.repeat(1500), turn: 1 });
+    seedEvent(db, {
+      id: 'c1',
+      kind: 'tool_call',
+      content: 'read paths',
+      payload: { tool_name: 'read', input: { paths } },
+      turn: 1,
+    });
+    seedEvent(db, {
+      id: 'c2',
+      kind: 'tool_call',
+      content: 'edit paths',
+      payload: { tool_name: 'edit', input: { paths } },
+      turn: 1,
+    });
+    seedEvent(db, { id: 'p2', content: 'N'.repeat(300), turn: 2 });
+
+    const result = sessionSummary(db, token, 'sess1', NOW);
+    assert.equal(result.state, 'done');
+    if (result.memoryId === null) assert.fail('expected a summary memory');
+
+    const body = String(memoryRow(db, result.memoryId)?.body);
+    assert.match(body, new RegExp(`^request: ${'R'.repeat(1000)}$`, 'm'));
+    assert.match(body, /^investigated: .*\.\.\. \(\+\d+ omitted\)$/m);
+    assert.match(body, /^completed: .*\.\.\. \(\+\d+ omitted\)$/m);
+    assert.match(body, new RegExp(`^next_steps: ${'N'.repeat(200)}$`, 'm'));
+    assert.ok(body.length <= 2000);
+  });
+});
+
 test('the deterministic session summary carries the five lines and the worst degraded reason', async () => {
   await withOpened(async (db, token) => {
     seedRepo(db);

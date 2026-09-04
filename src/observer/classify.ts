@@ -418,7 +418,8 @@ export async function applyObservations(
 // Deterministic session summary (contracts/observer.md "Session summary")
 // ---------------------------------------------------------------------------
 
-const REQUEST_CHARS = 200;
+const REQUEST_CHARS = 1000;
+const NEXT_STEPS_CHARS = 200;
 const MAX_LIST = 20;
 const MAX_LEARNED = 10;
 const READ_TOOLS: ReadonlySet<string> = new Set(['read', 'grep', 'glob']);
@@ -556,7 +557,7 @@ export function sessionSummary(
       investigated,
       learned,
       completed: [...modified.entries()].map(([path, count]) => `${path} (${count})`),
-      nextSteps: nextPrompt.slice(0, REQUEST_CHARS),
+      nextSteps: nextPrompt.slice(0, NEXT_STEPS_CHARS),
     });
 
     // contracts/observer.md: the most severe reason among the session's batches, NULL only when

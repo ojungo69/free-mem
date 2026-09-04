@@ -222,6 +222,14 @@ test('buildSummarizerPrompt states the contract without an agent name or reposit
   assert.match(textJsonPrompt.system, /"observations"/);
 });
 
+test('buildSummarizerPrompt preserves exact strings in both modes', () => {
+  for (const mode of ['schema', 'text-json'] as const) {
+    const prompt = buildSummarizerPrompt(INPUT, mode);
+    assert.match(prompt.system, /verbatim/);
+    assert.match(prompt.system, /never translate/);
+  }
+});
+
 test('schema success returns validated output, model id, attempts, and header neurons', async () => {
   let requestBody: Record<string, unknown> | undefined;
   const scripted = scriptedFetch(async (_input, init) => {
