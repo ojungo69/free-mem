@@ -1,0 +1,26 @@
+src/setup/write-grok.ts
+  s_c3a3aca6da7be1::t_41bb5f9168984a 95-97
+  s_c3a3aca6da7be1::t_ead2a9da313655 1-7,9-86,88-94,98-112,114-138
+  s_c3a3aca6da7be1::t_27d3f13896491f 8,87,113
+test/unit/write-grok.test.ts
+  s_c3a3aca6da7be1::t_de0c18a1c6d60f 1-121,123-147,151-172
+  s_c3a3aca6da7be1::t_7aee4069da60c9 122
+  s_c3a3aca6da7be1::t_92c0b87bc3461e 148-150
+  s_c3a3aca6da7be1::t_5ba7905f4c3bb9 173-190
+---
+{
+  "schema_version": "authorship/3.0.0",
+  "git_ai_version": "1.6.16",
+  "base_commit_sha": "479483d88f06c6cede86b5fb738532da663a073b",
+  "prompts": {},
+  "sessions": {
+    "s_c3a3aca6da7be1": {
+      "agent_id": {
+        "tool": "claude",
+        "id": "7392a577-3272-4376-9b89-f4c55b10c247",
+        "model": "claude-fable-5-1"
+      },
+      "human_author": "ojungo69 <210335670+ojungo69@users.noreply.github.com>"
+    }
+  }
+}
