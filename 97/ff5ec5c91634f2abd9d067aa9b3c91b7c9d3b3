@@ -1,0 +1,45 @@
+src/config.ts
+  s_c3a3aca6da7be1::t_cb05e63691d438 141-148,150-157
+src/injection/pack.ts
+  s_c3a3aca6da7be1::t_731d99a8022de7 19,254-257,259-262
+src/observer/request.ts
+  s_c3a3aca6da7be1::t_09158a4dff5446 8-14,96
+src/privacy/detect.ts
+  s_c3a3aca6da7be1::t_a4f92af8fd7c05 90-92,94-105,112,115,119,124,130-132,137,139-190,220
+src/worker/batches.ts
+  s_c3a3aca6da7be1::t_f1997a29033f43 11,111-120,133,164-185
+src/worker/observe.ts
+  s_c3a3aca6da7be1::t_fec8ec124b74b1 48,50-51,164,170,572-585,593-595,597
+src/worker/purge.ts
+  s_c3a3aca6da7be1::t_9ad668cdb47d9d 6,12-19,24-28
+test/unit/batches.test.ts
+  s_c3a3aca6da7be1::t_cffe1e0ae1cff0 16,578-607
+test/unit/config.test.ts
+  s_c3a3aca6da7be1::t_bba55a574994ff 20-21,300-327
+test/unit/observe.test.ts
+  s_c3a3aca6da7be1::t_ab63decbc85646 585-601
+test/unit/pack.test.ts
+  s_c3a3aca6da7be1::t_ae605de50eb9e6 395-402,457
+test/unit/privacy.test.ts
+  s_c3a3aca6da7be1::t_ac6bd38efb3929 16,151,154-171,173-174,196-211
+test/unit/purge.test.ts
+  s_c3a3aca6da7be1::t_fd485d2962eca1 56-58,63-75,126-160
+test/unit/request.test.ts
+  s_c3a3aca6da7be1::t_1528b3c5066f3f 122-123,128,131-145,264-267,270-277,286,317
+---
+{
+  "schema_version": "authorship/3.0.0",
+  "git_ai_version": "1.6.16",
+  "base_commit_sha": "97ff5ec5c91634f2abd9d067aa9b3c91b7c9d3b3",
+  "prompts": {},
+  "sessions": {
+    "s_c3a3aca6da7be1": {
+      "agent_id": {
+        "tool": "claude",
+        "id": "7392a577-3272-4376-9b89-f4c55b10c247",
+        "model": "claude-fable-5-1"
+      },
+      "human_author": "ojungo69 <210335670+ojungo69@users.noreply.github.com>"
+    }
+  }
+}
