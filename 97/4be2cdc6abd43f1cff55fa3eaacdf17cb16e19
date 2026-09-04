@@ -1,0 +1,31 @@
+src/capture.ts
+  s_fb58e09627940f::t_61f5a41ae7b1f2 45,58-63,82-88,138-139,142-150,251-257,259-262,268,271,274-279,378,384,394,398-412,427-434,558-559,834-842,870-875,914,945,960,967,1035,1218-1231,1241,1250
+src/repo-identity.ts
+  s_fb58e09627940f::t_d2bc08d3c49689 15,17-19,125-128,130,136
+src/worker/batches.ts
+  s_fb58e09627940f::t_35c9ba485a1812 10,211,222-258,283-331,558-562,568-577,579,582
+src/worker/observe.ts
+  s_fb58e09627940f::t_7bd3e3ed2d80ec 106-111,114-118
+test/unit/batches.test.ts
+  s_fb58e09627940f::t_bf75d56afad924 297-328,365-366,390,392-396,408-467
+test/unit/capture.test.ts
+  s_fb58e09627940f::t_1d99dfe1b2c93b 21,38,335-376,544-565,735-778,931-980,1246-1305
+test/unit/observe.test.ts
+  s_fb58e09627940f::t_29da7b968f34d8 20,229-250
+---
+{
+  "schema_version": "authorship/3.0.0",
+  "git_ai_version": "1.6.16",
+  "base_commit_sha": "974be2cdc6abd43f1cff55fa3eaacdf17cb16e19",
+  "prompts": {},
+  "sessions": {
+    "s_fb58e09627940f": {
+      "agent_id": {
+        "tool": "claude",
+        "id": "85541cda-e22f-45ae-a41f-98db490b90bf",
+        "model": "claude-fable-5-1"
+      },
+      "human_author": "ojungo69 <210335670+ojungo69@users.noreply.github.com>"
+    }
+  }
+}
