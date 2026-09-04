@@ -157,8 +157,13 @@ export function piExtension(pi: PiApi, options: PiExtensionOptions): void {
         // Pi owns stdout in `--mode json`, so the child must never inherit it.
         { detached: true, stdio: ['pipe', 'ignore', 'ignore'] },
       );
-      failures.length = 0;
-      child.on('error', () => count('capture_spawn_failed'));
+      // The child is the only durable record of these codes (Pi keeps none: R12, amendment A8), so
+      // they leave the buffer once it exists and go back in when it turns out never to have started.
+      const carried = failures.splice(0, failures.length);
+      child.on('error', () => {
+        failures.unshift(...carried.slice(0, Math.max(0, MAX_FAILURE_CODES - failures.length)));
+        count('capture_spawn_failed');
+      });
       child.stdin?.on('error', () => undefined);
       child.unref();
       child.stdin?.end(envelope);

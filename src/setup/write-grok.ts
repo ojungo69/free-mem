@@ -5,16 +5,18 @@
 // unless `GROK_CLAUDE_HOOKS_ENABLED` is 0, which would run oboete's Claude handlers a second time;
 // that is reported to the caller and never repaired here: the developer's Claude file is not this
 // writer's to edit and an environment variable is not oboete's to set (FR-043).
-import { readFileSync, rmSync } from 'node:fs';
+import { existsSync, readFileSync, rmSync } from 'node:fs';
 import { join } from 'node:path';
 import { stringify as stringifyToml } from 'smol-toml';
 
 import {
   applyJsonHandlers,
   applyTomlBlock,
+  BACKUP_SUFFIX,
   removeJsonHandlers,
   removeTomlBlock,
 } from './managed-block.js';
+import { shellQuote } from './shell-quote.js';
 
 /**
  * Every event oboete takes from Grok, with the seconds the agent gives the hook. 12 s covers the
@@ -56,6 +58,9 @@ export type GrokWriteResult = {
 export function writeGrok(grokHome: string, options: GrokWriteOptions): GrokWriteResult {
   const hooksFile = join(grokHome, 'hooks', 'oboete.json');
   const configFile = join(grokHome, 'config.toml');
+  const hooksExisted = existsSync(hooksFile);
+  const hooksBackupExisted = existsSync(hooksFile + BACKUP_SUFFIX);
+  const configBackupExisted = existsSync(configFile + BACKUP_SUFFIX);
 
   const handlers: Record<string, unknown[]> = {};
   for (const [event, timeout] of Object.entries(HOOK_TIMEOUTS)) {
@@ -72,15 +77,26 @@ export function writeGrok(grokHome: string, options: GrokWriteOptions): GrokWrit
   // Verified 2026-09-03 (docs/research/oboete-contracts-probes.md "Grok user-scoped MCP
   // registration"): the same table `grok mcp add --scope user` writes; hooks then see the tools as
   // `oboete__<tool>`. config.toml can carry an `env` table with a token, so its backup is 0600.
-  applyTomlBlock(
-    configFile,
-    stringifyToml({
-      mcp_servers: {
-        oboete: { command: options.nodePath, args: [options.bundlePath, 'mcp'], enabled: true },
-      },
-    }),
-    { credentialBearing: true },
-  );
+  try {
+    applyTomlBlock(
+      configFile,
+      stringifyToml({
+        mcp_servers: {
+          oboete: { command: options.nodePath, args: [options.bundlePath, 'mcp'], enabled: true },
+        },
+      }),
+      { credentialBearing: true },
+    );
+  } catch (error) {
+    // The handlers go in before the block, so a failure here would otherwise leave Grok running
+    // oboete's hooks while setup reports `wired: failed` and no probe runs. A setup that fails
+    // hands the files back the way it found them (FR-031, the rule src/setup/write-codex.ts keeps).
+    // A backup this run took is its own leftover; an older one is the pre-oboete copy and stays.
+    removeJsonHandlers(hooksFile, ['hooks'], { keepBackup: hooksBackupExisted });
+    if (!hooksExisted) rmSync(hooksFile, { force: true });
+    if (!configBackupExisted) rmSync(configFile + BACKUP_SUFFIX, { force: true });
+    throw error;
+  }
 
   return {
     files: [hooksFile, configFile],
@@ -103,11 +119,7 @@ export function removeGrok(grokHome: string): void {
  * contracts/agents.md: the selector is fixed on the command line, never guessed from the payload).
  */
 function hookCommand(options: GrokWriteOptions, event: string): string {
-  return `${quote(options.nodePath)} ${quote(options.bundlePath)} hook --agent claude-or-grok --event ${event}`;
-}
-
-function quote(path: string): string {
-  return `'${path.replaceAll("'", `'\\''`)}'`;
+  return `${shellQuote(options.nodePath)} ${shellQuote(options.bundlePath)} hook --agent claude-or-grok --event ${event}`;
 }
 
 function claudeCompatDuplicates(settingsPath: string | undefined): string[] {

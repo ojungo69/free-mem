@@ -295,3 +295,27 @@ test('a failing repeat keeps the copy of config.toml from before oboete', async 
     assert.equal('hooks' in JSON.parse(readFileSync(join(home, 'hooks.json'), 'utf8')), false);
   });
 });
+
+test('a failing repeat keeps the copy of hooks.json from before oboete', async () => {
+  await withTempHome(async (home) => {
+    mkdirSync(home, { recursive: true });
+    const configPath = join(home, 'config.toml');
+    const hooksPath = join(home, 'hooks.json');
+    const userGroup = { matcher: 'startup', hooks: [{ type: 'command', command: 'notify-send hi' }] };
+    const original = `${JSON.stringify({ hooks: { SessionStart: [userGroup] } }, null, 2)}\n`;
+    writeFileSync(hooksPath, original);
+
+    writeCodex(home, { node: NODE, bundle: BUNDLE });
+    assert.equal(readFileSync(hooksPath + BACKUP_SUFFIX, 'utf8'), original);
+    // The developer registers oboete by hand next to the block oboete already wrote.
+    writeFileSync(configPath, readFileSync(configPath, 'utf8') + HAND_WRITTEN_MCP);
+
+    assert.throws(
+      () => writeCodex(home, { node: NODE, bundle: BUNDLE }),
+      (error: unknown) => error instanceof ManagedFileError && error.code === 'reparse_failed',
+    );
+    // The same rule the config.toml backup has: the copy from before oboete is what
+    // `oboete setup --remove` restores, so a rollback of a later run must not take it.
+    assert.equal(readFileSync(hooksPath + BACKUP_SUFFIX, 'utf8'), original);
+  });
+});

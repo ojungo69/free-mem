@@ -302,3 +302,20 @@ test('a symlink that leaves its directory is refused, one that stays is written 
     assert.ok(lstatSync(inside).isSymbolicLink(), 'the symlink itself is preserved');
   });
 });
+
+test('a symbolic link left at the temporary path is refused instead of written through', async () => {
+  await withTempHome(async (home) => {
+    const original = 'model = "gpt-5"\n';
+    const file = agentFile(home, '.codex/config.toml', original);
+    const victim = join(home, 'victim.toml');
+    writeFileSync(victim, 'stays = true\n');
+    // The temporary name is predictable, so the write must create it exclusively: an attacker who
+    // pre-places a link there otherwise has oboete write the developer's configuration elsewhere.
+    symlinkSync(victim, `${file}.oboete-tmp-${process.pid}`);
+
+    assert.throws(() => applyTomlBlock(file, BLOCK));
+    assert.equal(readFileSync(victim, 'utf8'), 'stays = true\n', 'the link is never followed');
+    assert.equal(readFileSync(file, 'utf8'), original);
+    assert.equal(lstatSync(file).isSymbolicLink(), false);
+  });
+});

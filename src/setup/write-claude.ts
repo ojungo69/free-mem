@@ -7,6 +7,7 @@ import { readFileSync, rmSync } from 'node:fs';
 import { join } from 'node:path';
 
 import { applyJsonHandlers, BACKUP_SUFFIX, removeJsonHandlers } from './managed-block.js';
+import { shellQuote } from './shell-quote.js';
 
 export type WriteClaudeOptions = {
   /** Absolute path of the node binary that runs the bundle (`process.execPath` at setup). */
@@ -18,11 +19,12 @@ export type WriteClaudeOptions = {
 export type WriteClaudeResult = {
   file: string;
   /**
-   * `claude mcp add oboete -- <node> <bundle> mcp` as argv. Setup runs it through its own spawner
-   * so a missing `claude` executable is reported rather than thrown from here (contracts/cli.md
-   * `oboete setup`); no shell is involved, so the arguments carry no quoting.
+   * The arguments of `claude mcp add oboete -- <node> <bundle> mcp`, without the executable: setup
+   * puts the absolute path detection resolved on PATH in front of them and runs the result through
+   * its own spawner, so a missing `claude` is reported rather than thrown from here (contracts/cli.md
+   * `oboete setup`). No shell is involved, so the arguments carry no quoting.
    */
-  mcpCommand: readonly string[];
+  mcpArgs: readonly string[];
 };
 
 /**
@@ -58,7 +60,7 @@ export function writeClaude(claudeConfigDir: string, options: WriteClaudeOptions
         hooks: [
           {
             type: 'command',
-            command: `${quote(options.nodePath)} ${quote(options.bundlePath)} hook --agent claude-or-grok --event ${event}`,
+            command: `${shellQuote(options.nodePath)} ${shellQuote(options.bundlePath)} hook --agent claude-or-grok --event ${event}`,
             timeout,
           },
         ],
@@ -71,7 +73,7 @@ export function writeClaude(claudeConfigDir: string, options: WriteClaudeOptions
   applyJsonHandlers(file, ['hooks'], handlers, { credentialBearing: true });
   return {
     file,
-    mcpCommand: ['claude', 'mcp', 'add', 'oboete', '--', options.nodePath, options.bundlePath, 'mcp'],
+    mcpArgs: ['mcp', 'add', 'oboete', '--', options.nodePath, options.bundlePath, 'mcp'],
   };
 }
 
@@ -111,9 +113,4 @@ function holdsOboeteHandler(file: string): boolean {
 
 function isObject(value: unknown): value is Record<string, unknown> {
   return typeof value === 'object' && value !== null && !Array.isArray(value);
-}
-
-/** Claude Code runs a `command` handler through a shell, so a path with a space needs quoting. */
-function quote(value: string): string {
-  return `'${value.replaceAll("'", `'\\''`)}'`;
 }

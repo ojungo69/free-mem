@@ -14,6 +14,7 @@ import { parse as parseToml } from 'smol-toml';
 import { z } from 'zod';
 
 import type { AgentName } from '../events.js';
+import { isCredentialVariable } from '../log.js';
 
 import { trustedHash, trustKey, type CodexHandler } from './codex-trust.js';
 
@@ -269,8 +270,13 @@ export function detectAgents(
   ];
 
   const cliPaths = agents.map(({ cli }) => resolveOnPath(cli, env));
+  // FR-016: oboete's provider credentials stay on oboete's own request path, never on an agent's
+  // (the same rule src/setup/probe.ts applies to the wiring probe).
+  const probeEnv = Object.fromEntries(
+    Object.entries(env).filter(([name]) => !isCredentialVariable(name)),
+  );
   const versions = cliPaths.map((cliPath) =>
-    cliPath === null ? undefined : readVersion(cliPath, env, spawnFn),
+    cliPath === null ? undefined : readVersion(cliPath, probeEnv, spawnFn),
   );
   return agents.map((entry, index) => ({
     agent: entry.agent,

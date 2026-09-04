@@ -138,8 +138,16 @@ export function applyJsonHandlers(
   writeManaged(target, file, serializeJson(root), parseJsonOrThrow, options, true);
 }
 
-/** Strips the oboete-owned entries, drops the arrays and the container it emptied, deletes the backup. */
-export function removeJsonHandlers(file: string, containerPath: readonly string[]): void {
+/**
+ * Strips the oboete-owned entries, drops the arrays and the container it emptied, deletes the
+ * backup. `keepBackup` is for a rollback: the copy from before oboete first touched the file is
+ * what `oboete setup --remove` restores, so undoing a later run must leave it where it is.
+ */
+export function removeJsonHandlers(
+  file: string,
+  containerPath: readonly string[],
+  options: { keepBackup?: boolean } = {},
+): void {
   const target = resolveTarget(file);
   if (existsSync(target)) {
     const original = readFileSync(target, 'utf8');
@@ -156,7 +164,7 @@ export function removeJsonHandlers(file: string, containerPath: readonly string[
     const content = serializeJson(root);
     if (content !== original) writeManaged(target, file, content, parseJsonOrThrow, {}, false);
   }
-  rmSync(target + BACKUP_SUFFIX, { force: true });
+  if (options.keepBackup !== true) rmSync(target + BACKUP_SUFFIX, { force: true });
 }
 
 /**
@@ -210,7 +218,11 @@ function writeManaged(
   const temporary = `${target}.oboete-tmp-${process.pid}`;
   // A fresh machine has no `~/.grok/hooks/` for the file oboete is about to create.
   mkdirSync(dirname(target), { recursive: true });
-  const handle = openSync(temporary, 'w', mode);
+  // `wx` like the backup below: the temporary name is predictable, so an exclusive create is what
+  // keeps a link pre-placed there from being followed and the write landing on the file it points
+  // at. A stale temporary is not unlinked first -- that would reopen the very race this closes --
+  // so the rare leftover of a killed run with this pid surfaces as EEXIST naming the exact file.
+  const handle = openSync(temporary, 'wx', mode);
   try {
     writeSync(handle, content);
     fsyncSync(handle);

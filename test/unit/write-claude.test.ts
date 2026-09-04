@@ -55,17 +55,20 @@ test('writeClaude wires every event with the fixed selector, its own event name,
   });
 });
 
-test('writeClaude returns the MCP registration argv and quotes a path with a space', async () => {
+test('writeClaude returns the MCP registration arguments and quotes a path the shell would split', async () => {
   await withTempHome(async (home) => {
-    const bundle = '/opt/my oboete/dist/oboete.mjs';
+    const bundle = "/opt/my oboete's/dist/oboete.mjs";
 
     const result = writeClaude(home, { nodePath: NODE, bundlePath: bundle });
 
-    assert.deepEqual(result.mcpCommand, ['claude', 'mcp', 'add', 'oboete', '--', NODE, bundle, 'mcp']);
+    // No shell is involved in the registration, so its arguments carry no quoting...
+    assert.deepEqual(result.mcpArgs, ['mcp', 'add', 'oboete', '--', NODE, bundle, 'mcp']);
+    // ...while the handler is a command line an agent hands to a shell: src/setup/shell-quote.ts
+    // closes the word, escapes the quote and reopens it, for all three writers alike.
     const hooks = settingsOf(home).hooks as Record<string, { hooks: { command: string }[] }[]>;
     assert.equal(
       hooks.Stop[0].hooks[0].command,
-      `'${NODE}' '${bundle}' hook --agent claude-or-grok --event Stop`,
+      `'${NODE}' '/opt/my oboete'\\''s/dist/oboete.mjs' hook --agent claude-or-grok --event Stop`,
     );
   });
 });
