@@ -1,0 +1,25 @@
+src/setup/codex-trust.ts
+  s_c3a3aca6da7be1::t_f79ac5ddf0707e 1-95
+src/setup/write-codex.ts
+  s_c3a3aca6da7be1::t_14aa7de59f2769 1-135
+  s_c3a3aca6da7be1::t_d7cb18bdc646ac 136-163
+test/unit/write-codex.test.ts
+  s_c3a3aca6da7be1::t_fa4dadedb5645b 1-243
+  s_c3a3aca6da7be1::t_87ebbc009e2538 244-297
+---
+{
+  "schema_version": "authorship/3.0.0",
+  "git_ai_version": "1.6.16",
+  "base_commit_sha": "a43d83c97cb93f6b11e9ab0adea80cf7d24a1154",
+  "prompts": {},
+  "sessions": {
+    "s_c3a3aca6da7be1": {
+      "agent_id": {
+        "tool": "claude",
+        "id": "7392a577-3272-4376-9b89-f4c55b10c247",
+        "model": "claude-fable-5-1"
+      },
+      "human_author": "ojungo69 <210335670+ojungo69@users.noreply.github.com>"
+    }
+  }
+}
