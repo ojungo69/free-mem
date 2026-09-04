@@ -1,0 +1,29 @@
+.github/workflows/ci.yml
+  s_c3a3aca6da7be1::t_bc68715bc567b1 44-48
+docs/evidence/m1-resource-envelope.md
+  s_c3a3aca6da7be1::t_5a2ed093b0d63c 9,51,102,136
+docs/research/oboete-contracts-probes.md
+  s_c3a3aca6da7be1::t_2caa03f576b35c 274
+specs/007-oboete-m1-alpha/tasks.md
+  s_c3a3aca6da7be1::t_aeb76bc49c9afb 69
+specs/007-oboete-m1-alpha/verify-tasks-report.md
+  s_c3a3aca6da7be1::t_15fd1f78defada 4,89
+test/unit/privacy.test.ts
+  s_c3a3aca6da7be1::t_e4035b3d925d76 211-213,218-219,221-222
+---
+{
+  "schema_version": "authorship/3.0.0",
+  "git_ai_version": "1.6.16",
+  "base_commit_sha": "e439b7b1f71d7f99773eb19ecdb96918341231e5",
+  "prompts": {},
+  "sessions": {
+    "s_c3a3aca6da7be1": {
+      "agent_id": {
+        "tool": "claude",
+        "id": "7392a577-3272-4376-9b89-f4c55b10c247",
+        "model": "claude-fable-5-1"
+      },
+      "human_author": "ojungo69 <210335670+ojungo69@users.noreply.github.com>"
+    }
+  }
+}
