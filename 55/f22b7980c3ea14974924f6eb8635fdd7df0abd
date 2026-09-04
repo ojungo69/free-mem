@@ -1,0 +1,33 @@
+src/injection/deferred.ts
+  s_c3a3aca6da7be1::t_05fc0953cead27 9,11,130-157,193,432-436,439-440,451,471,479-481,490,502,518-521,523,527-529,533,536-542
+src/injection/inject.ts
+  s_c3a3aca6da7be1::t_14f46793989946 173
+src/injection/ledger.ts
+  s_c3a3aca6da7be1::t_c0979872ab7ad7 305-310
+src/injection/pack.ts
+  s_c3a3aca6da7be1::t_776fe968ec9221 16,21,34,109-110,236-256,371-377,382-384,386,430-432,434,485-507,529-548
+src/injection/staleness.ts
+  s_c3a3aca6da7be1::t_c2ee3a26bc53d9 12-16,27,35-47
+test/corpus/directives.jsonl
+  s_c3a3aca6da7be1::t_489329d39bbe69 31-32
+test/unit/deferred.test.ts
+  s_c3a3aca6da7be1::t_3ccc972fb784be 493-617
+test/unit/pack.test.ts
+  s_c3a3aca6da7be1::t_d419c57717ba4e 2,4,36-40,792-903
+---
+{
+  "schema_version": "authorship/3.0.0",
+  "git_ai_version": "1.6.16",
+  "base_commit_sha": "55f22b7980c3ea14974924f6eb8635fdd7df0abd",
+  "prompts": {},
+  "sessions": {
+    "s_c3a3aca6da7be1": {
+      "agent_id": {
+        "tool": "claude",
+        "id": "7392a577-3272-4376-9b89-f4c55b10c247",
+        "model": "claude-fable-5-1"
+      },
+      "human_author": "ojungo69 <210335670+ojungo69@users.noreply.github.com>"
+    }
+  }
+}
