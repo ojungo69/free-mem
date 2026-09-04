@@ -1,7 +1,7 @@
 # Verify Tasks Report: 007-oboete-m1-alpha (Phase 2, T012-T046)
 
 - Date: 2026-09-04
-- Scope: all (origin/main..HEAD at a2af2fa, working tree clean)
+- Scope: all (origin/main..HEAD at 727ca58, working tree clean)
 - Tasks verified: 35 of 35 requested (T012-T046, marked [X] on 2026-09-04)
 - Method: one independent verifier agent per task (Dynamic Workflow, opus), five layers each; this session implemented Phase 2, so the checks were not run by it
 
