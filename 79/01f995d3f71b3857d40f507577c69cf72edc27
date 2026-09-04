@@ -1,0 +1,19 @@
+specs/007-oboete-m1-alpha/verify-tasks-report.md
+  s_c3a3aca6da7be1::t_065e5df69128ea 1,4-6,8,10,12,14-15,22-39,43,45-120,122,124-158
+---
+{
+  "schema_version": "authorship/3.0.0",
+  "git_ai_version": "1.6.16",
+  "base_commit_sha": "7901f995d3f71b3857d40f507577c69cf72edc27",
+  "prompts": {},
+  "sessions": {
+    "s_c3a3aca6da7be1": {
+      "agent_id": {
+        "tool": "claude",
+        "id": "7392a577-3272-4376-9b89-f4c55b10c247",
+        "model": "unknown"
+      },
+      "human_author": "ojungo69 <210335670+ojungo69@users.noreply.github.com>"
+    }
+  }
+}
