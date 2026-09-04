@@ -277,6 +277,7 @@ export function buildSummarizerPrompt(
     'Citations must name only files and commits supported by the supplied events; use empty arrays when there are none.',
     'Every observation must have non-empty source_event_ids chosen from the events list only.',
     'Classify each observation as add, update, delete, or noop against the supplied nearby records.',
+    'Keep identifiers, tokens, codes, file names, error text and any string the developer marks as exact verbatim in titles and bodies; never translate or paraphrase them.',
     'Answer in the dominant language of the input.',
   ];
   if (mode === 'text-json') {
