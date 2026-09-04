@@ -156,3 +156,9 @@ None.
 | T044 | ✅ VERIFIED | staleness.ts and pack.ts both implement the described behaviour and are wired into inject.ts/deferred.ts; test/unit/pack.test.ts covers every named case. Done-note correction (1 s wait, not 8 s) matches SUMMARY_WAIT_MS = 1_000. |
 | T045 | ✅ VERIFIED | T045 fully implemented: src/injection/deferred.ts contains the complete Grok deferred state machine (merge, attach, deliver, failure, stop) in BEGIN IMMEDIATE transactions, wired into src/injection/inject.ts, with all six named test cases present in test/unit/deferred.test.ts. |
 | T046 | ✅ VERIFIED | T046 fully implemented: `oboete inject --agent pi --kind start/prompt` (runInject) plus Claude/Codex/Grok hook injection branches, 1,300 ms deadline, plain-stdout vs additionalContext rules, and directive gating via the observer's rejectsDirectives. All layers positive. |
+
+## Walkthrough Log
+
+| Task | Verdict | Disposition |
+|---|---|---|
+| T014 | 🔍 PARTIAL | Fix proposed and applied (owner delegated the decision): the T014 done note now records that the pack-check step waits for the T087 script; CI matrix, typecheck, lint, build and test are in place. Re-run `/speckit.verify-tasks` for a clean re-evaluation once T087 lands. |
