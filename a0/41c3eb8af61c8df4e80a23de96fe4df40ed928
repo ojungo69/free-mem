@@ -1,0 +1,25 @@
+docs/evidence/m1-resource-envelope.md
+  s_c3a3aca6da7be1::t_7c0b84b88fc56b 9,51,102,136
+docs/research/oboete-contracts-probes.md
+  s_c3a3aca6da7be1::t_03da1ece54b0e9 274
+specs/007-oboete-m1-alpha/tasks.md
+  s_c3a3aca6da7be1::t_f69131850f3957 69
+specs/007-oboete-m1-alpha/verify-tasks-report.md
+  s_c3a3aca6da7be1::t_b49e4491cfd77a 4,89
+---
+{
+  "schema_version": "authorship/3.0.0",
+  "git_ai_version": "1.6.16",
+  "base_commit_sha": "a041c3eb8af61c8df4e80a23de96fe4df40ed928",
+  "prompts": {},
+  "sessions": {
+    "s_c3a3aca6da7be1": {
+      "agent_id": {
+        "tool": "claude",
+        "id": "7392a577-3272-4376-9b89-f4c55b10c247",
+        "model": "claude-fable-5-1"
+      },
+      "human_author": "ojungo69 <210335670+ojungo69@users.noreply.github.com>"
+    }
+  }
+}
