@@ -2,6 +2,10 @@
 # legacy/ is frozen evidence; specs/, docs/ and the Phase 1 probe harness with its recorded
 # contract fixtures are reviewed by their own gates, so the count is spent on src/ and test/unit.
 reviews:
+  # This pull request stays a draft until M1 is complete, and CodeRabbit skips drafts by default.
+  auto_review:
+    enabled: true
+    drafts: true
   path_filters:
     - "!legacy/**"
     - "!specs/**"
