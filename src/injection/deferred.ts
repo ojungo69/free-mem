@@ -6,8 +6,9 @@
 import { createHash } from 'node:crypto';
 import type { DatabaseSync, SQLOutputValue } from 'node:sqlite';
 
-import { runtimeStateGet, runtimeStateSet } from '../worker/purge.js';
+import { rejectsDirectives } from '../observer/classify.js';
 import { transactionImmediate } from '../worker/lease.js';
+import { runtimeStateGet, runtimeStateSet } from '../worker/purge.js';
 import {
   confirmDeliveryIn,
   omitInjection,
@@ -18,7 +19,6 @@ import {
 } from './ledger.js';
 import {
   hasControlCharacter,
-  hasDirective,
   renderPack,
   type BuiltPack,
   type PackItem,
@@ -127,6 +127,34 @@ function omitPlanned(db: DatabaseSync, injectionId: string, reason: ItemReason |
   ).run(reason, injectionId);
 }
 
+/**
+ * Only the blocks the stored pack rendered reached the model. A record whose text was lost (a hook
+ * killed between the ledger write and the stored pack) keeps its own items `planned`, and the pack
+ * that merged into it must not carry them into `included`: those memories were never delivered and
+ * stay injectable (FR-026, FR-028).
+ */
+function omitUnrendered(
+  db: DatabaseSync,
+  injectionId: string,
+  blocks: readonly PendingBlock[],
+): void {
+  const key = (memoryId: unknown, rawEventId: unknown): string =>
+    JSON.stringify([memoryId ?? null, rawEventId ?? null]);
+  const rendered = new Set(blocks.map((block) => key(block.memoryId, block.rawEventId)));
+  const planned = db
+    .prepare(
+      `SELECT id, memory_id, raw_event_id FROM injection_items
+       WHERE injection_id = ? AND decision = 'planned'`,
+    )
+    .all(injectionId);
+  const omit = db.prepare(
+    `UPDATE injection_items SET decision = 'omitted', reason = 'not_delivered' WHERE id = ?`,
+  );
+  for (const row of planned) {
+    if (!rendered.has(key(row.memory_id, row.raw_event_id))) omit.run(Number(row.id));
+  }
+}
+
 /** The merged-away pack keeps every row it planned, so its omissions stay in `why` (FR-028). */
 function reparentItems(db: DatabaseSync, injectionId: string, liveId: string): void {
   db.prepare('UPDATE injection_items SET injection_id = ? WHERE injection_id = ?').run(
@@ -162,7 +190,7 @@ async function packRejection(
   validation: PackValidation,
 ): Promise<Rejection | null> {
   if (await validation.detect(text)) return 'secret_detected';
-  if (hasDirective(text, validation.directives)) return 'directive';
+  if (rejectsDirectives(text, validation.directives) !== null) return 'directive';
   if (hasControlCharacter(text)) return 'control_characters';
   return null;
 }
@@ -401,11 +429,15 @@ export function markFailure(
   }
 
   return transactionImmediate(db, () => {
-    const live = liveRecord(db, input.conversationId);
-    if (live === null) return 'none';
-    const attempts = parseAttempts(live.attempts_json);
+    // The denied call may belong to the batch whose other call already delivered the pack, so the
+    // attempt to update can sit on the emitted record (rule 4: the deny is recorded either way).
+    const record = reportedRecord(db, input.conversationId);
+    if (record === null) return 'none';
+    const attempts = parseAttempts(record.attempts_json);
     const attempt = attempts.find((entry) => entry.tool_call_id === input.toolCallId);
     if (attempt === undefined) {
+      // A call the pack was never attached to writes no attempt on a record that is already done.
+      if (record.state === 'emitted') return 'none';
       attempts.push({
         tool_call_id: input.toolCallId,
         execution: 'denied',
@@ -416,7 +448,7 @@ export function markFailure(
       attempt.execution = 'denied';
       attempt.delivery = 'dropped';
     }
-    saveAttempts(db, String(live.id), attempts);
+    saveAttempts(db, String(record.id), attempts);
     return 'attempted';
   });
 }
@@ -436,6 +468,7 @@ function deliver(
 
     const injectionId = String(record.id);
     const emitted = record.state === 'emitted';
+    const pending = readPending(db, input.conversationId);
     const attempts = parseAttempts(record.attempts_json);
     const attempt = attempts.find((entry) => entry.tool_call_id === input.toolCallId);
     let text: string | null = null;
@@ -443,6 +476,9 @@ function deliver(
     if (attempt !== undefined && attempt.delivery === 'delivered') {
       return { status: 'already', text: null };
     }
+    // A15 counts the calls of the batch that carried the pack. A later call of the conversation
+    // reaches PostToolUse with no attempt of its own: it carried nothing, so it delivers nothing.
+    if (attempt === undefined && emitted) return { status: 'none', text: null };
     if (attempt === undefined) {
       attempts.push({
         tool_call_id: input.toolCallId,
@@ -451,7 +487,7 @@ function deliver(
         at: input.now,
       });
       // Rule 3: the pack was never attached, so this hook prints it.
-      if (!emitted) text = readPending(db, input.conversationId)?.text ?? null;
+      if (!emitted) text = pending?.text ?? null;
     } else {
       attempt.execution = input.execution;
       attempt.delivery = 'delivered';
@@ -463,6 +499,7 @@ function deliver(
     );
     if (emitted) return { status: 'already', text: null };
 
+    omitUnrendered(db, injectionId, pending?.blocks ?? []);
     confirmDeliveryIn(db, injectionId, input.now);
     clearPending(db, input.conversationId);
     return { status: 'emitted', text };
@@ -478,21 +515,31 @@ export function closeOnStop(
   input: { conversationId: string; sawAnyToolHook: boolean; now: number },
 ): 'omitted' | 'none' {
   return transactionImmediate(db, () => {
-    const live = liveRecord(db, input.conversationId);
-    if (live === null) return 'none';
+    // Rule 4: Stop drops every attempt still pending, on the delivered record as well as on the
+    // open one, so `why` never reports a call of this turn as still waiting.
+    const record = reportedRecord(db, input.conversationId);
+    if (record === null) return 'none';
 
-    const attempts = parseAttempts(live.attempts_json);
+    const attempts = parseAttempts(record.attempts_json);
     for (const attempt of attempts) {
       if (attempt.delivery === 'pending') attempt.delivery = 'dropped';
     }
-    saveAttempts(db, String(live.id), attempts);
+    saveAttempts(db, String(record.id), attempts);
+    if (record.state === 'emitted') return 'none';
+
     db.prepare(
       `UPDATE injection_items SET decision = 'omitted', reason = 'not_delivered'
        WHERE injection_id = ? AND decision = 'planned'`,
-    ).run(String(live.id));
+    ).run(String(record.id));
     // "All denied" is not distinguishable from a chain an earlier handler stopped, so it is not
     // claimed: with no tool hook at all the reason is no_tool_call, otherwise not_delivered.
-    omitInjection(db, String(live.id), input.sawAnyToolHook ? 'not_delivered' : 'no_tool_call');
+    // The reason the pack was built with is the more specific one and stays (FR-028).
+    omitInjection(
+      db,
+      String(record.id),
+      (record.degraded_reason as DegradedReason | null) ??
+        (input.sawAnyToolHook ? 'not_delivered' : 'no_tool_call'),
+    );
     clearPending(db, input.conversationId);
     return 'omitted';
   });

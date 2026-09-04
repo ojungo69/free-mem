@@ -13,9 +13,11 @@ import {
   type MemoryRow,
 } from '../db/queries.js';
 import type { AgentName } from '../events.js';
+import { rejectsDirectives } from '../observer/classify.js';
 import { isCjk } from '../retrieval/fts.js';
 import { searchCandidates } from '../retrieval/query.js';
 import { rankCandidates } from '../retrieval/rank.js';
+import { transactionImmediate } from '../worker/lease.js';
 import { charBudget } from './budget.js';
 import {
   alreadyIncluded,
@@ -28,7 +30,7 @@ import {
   type ItemReason,
   type LedgerItem,
 } from './ledger.js';
-import { checkCommits, checkPaths, createAncestorCache } from './staleness.js';
+import { checkPaths, repositoryHead } from './staleness.js';
 
 const HEADER = 'oboete memory context';
 const FOOTER = 'end of oboete memory context';
@@ -81,12 +83,6 @@ const STALE_NOTES: Record<'stale_path' | 'stale_commit', string> = {
 /** True when the finished text contains a secret. The caller supplies privacy/detect.ts (FR-018). */
 export type SecretDetector = (text: string) => boolean | Promise<boolean>;
 
-/** FR-021: a text that reads as an instruction to the agent is dropped, not framed harder. */
-export function hasDirective(text: string, directives: readonly string[]): boolean {
-  const haystack = text.toLowerCase();
-  return directives.some((phrase) => phrase !== '' && haystack.includes(phrase.toLowerCase()));
-}
-
 /** The control characters `canonicalLine` removed; a finished pack must not carry one back. */
 export function hasControlCharacter(text: string): boolean {
   return /[\p{Cc}\p{Cf}]/u.test(text.replace(/\n/g, ''));
@@ -109,6 +105,8 @@ export type PackChannelInput = {
   detect: SecretDetector;
   directives: readonly string[];
   repoRoot: string;
+  /** What is left of the hook's deadline; the pack's one git call stays inside it (FR-002). */
+  remainingBudget?: () => number;
   /** Grok stores its pack `pending` until a tool call delivers it (FR-045); everyone else prints. */
   state?: Extract<InjectionState, 'built' | 'pending'>;
 };
@@ -234,6 +232,27 @@ function lastInjectedAt(db: DatabaseSync, ids: readonly string[]): Map<string, n
   return byMemory;
 }
 
+/** The worker's last citation check of one memory (data-model.md memories); hooks only read it. */
+type CitationCheck = { head: string | null; ok: number | null };
+
+function citationChecks(db: DatabaseSync, ids: readonly string[]): Map<string, CitationCheck> {
+  const byMemory = new Map<string, CitationCheck>();
+  if (ids.length === 0) return byMemory;
+  const rows = db
+    .prepare(
+      `SELECT id, citations_head, citations_ok FROM memories
+       WHERE id IN (${ids.map(() => '?').join(', ')})`,
+    )
+    .all(...(ids as SQLInputValue[]));
+  for (const row of rows) {
+    byMemory.set(String(row.id), {
+      head: row.citations_head === null ? null : String(row.citations_head),
+      ok: (row.citations_ok as number | null) ?? null,
+    });
+  }
+  return byMemory;
+}
+
 type ActivityRow = { rawEventId: string; line: string };
 
 function parseJson(value: SQLOutputValue): Record<string, unknown> {
@@ -347,19 +366,22 @@ async function assemble(
     all.filter((citation) => citation.kind !== 'commit').map((citation) => citation.value),
     input.repoRoot,
   );
-  const commitState = checkCommits(
-    all.filter((citation) => citation.kind === 'commit').map((citation) => citation.value),
-    input.repoRoot,
-    createAncestorCache(),
-  );
+  // FR-029 with the 300 ms SLA: the cited commits were checked by the worker against a `HEAD` it
+  // recorded, so the pack asks git for `HEAD` once and reads that record (contracts/agents.md
+  // "commits via the worker's HEAD-keyed cache"). An unchecked or older answer counts as stale,
+  // because a pack never claims a citation it could not check is still current.
+  const citesCommit = all.some((citation) => citation.kind === 'commit');
+  const repoHead = citesCommit ? repositoryHead(input.repoRoot, input.remainingBudget?.()) : null;
+  const checked = citesCommit ? citationChecks(db, ids) : new Map<string, CitationCheck>();
 
   const items: PackItem[] = [];
   for (const memory of assembly.memories) {
     const own = citations.get(memory.id) ?? [];
+    const check = checked.get(memory.id);
+    const commitsFresh =
+      repoHead !== null && check !== undefined && check.head === repoHead && check.ok === 1;
     const stale = own.find((citation) =>
-      citation.kind === 'commit'
-        ? commitState.get(citation.value) === false
-        : pathState.get(citation.value) === false,
+      citation.kind === 'commit' ? !commitsFresh : pathState.get(citation.value) === false,
     );
     const staleReason: 'stale_path' | 'stale_commit' | null =
       stale === undefined ? null : stale.kind === 'commit' ? 'stale_commit' : 'stale_path';
@@ -403,9 +425,11 @@ async function assemble(
     });
   }
 
-  // FR-021: an item that reads as an instruction to the agent is dropped, not framed harder.
+  // FR-021: an item that reads as an instruction to the agent is dropped, not framed harder. The
+  // corpus is matched with the observer's normalization (A13), so a full-width or half-width form
+  // of a phrase is the same phrase.
   for (const item of items) {
-    if (hasDirective(item.lines.join('\n'), assembly.directives)) {
+    if (rejectsDirectives(item.lines.join('\n'), assembly.directives) !== null) {
       item.decision = 'omitted';
       item.reason = 'directive';
       item.lines = [];
@@ -456,26 +480,30 @@ async function assemble(
 
   if (kept.length === 0) return recordOmitted(db, input, assembly, items, 'empty');
 
-  const injectionId = createInjection(db, {
-    repoId: input.repoId,
-    sessionId: input.sessionId,
-    conversationId: input.conversationId,
-    turnId: input.turnId ?? null,
-    kind: assembly.kind,
-    channel: input.channel,
-    state: input.state ?? 'built',
-    epoch: input.epoch,
-    packHash: createHash('sha256').update(text, 'utf8').digest('hex'),
-    charBudget: assembly.budgetChars,
-    charsUsed: text.length,
-    degradedReason: degraded,
-    createdAt: input.now,
+  // docs/dev/conventions.md: the record and the rows it accounts for are one write unit, so no
+  // reader ever finds a pack whose items are missing.
+  const injectionId = transactionImmediate(db, () => {
+    const id = createInjection(db, {
+      repoId: input.repoId,
+      sessionId: input.sessionId,
+      conversationId: input.conversationId,
+      turnId: input.turnId ?? null,
+      kind: assembly.kind,
+      channel: input.channel,
+      state: input.state ?? 'built',
+      epoch: input.epoch,
+      packHash: createHash('sha256').update(text, 'utf8').digest('hex'),
+      charBudget: assembly.budgetChars,
+      charsUsed: text.length,
+      degradedReason: degraded,
+      createdAt: input.now,
+    });
+    planItems(db, { id, conversationId: input.conversationId, epoch: input.epoch }, [
+      ...items,
+      ...assembly.omitted,
+    ]);
+    return id;
   });
-  planItems(
-    db,
-    { id: injectionId, conversationId: input.conversationId, epoch: input.epoch },
-    [...items, ...assembly.omitted],
-  );
 
   return {
     injectionId,
@@ -496,26 +524,27 @@ function recordOmitted(
   items: PackItem[],
   reason: DegradedReason,
 ): null {
-  const injectionId = createInjection(db, {
-    repoId: input.repoId,
-    sessionId: input.sessionId,
-    conversationId: input.conversationId,
-    turnId: input.turnId ?? null,
-    kind: assembly.kind,
-    channel: input.channel,
-    state: 'omitted',
-    epoch: input.epoch,
-    packHash: null,
-    charBudget: assembly.budgetChars,
-    charsUsed: 0,
-    degradedReason: reason,
-    createdAt: input.now,
+  transactionImmediate(db, () => {
+    const id = createInjection(db, {
+      repoId: input.repoId,
+      sessionId: input.sessionId,
+      conversationId: input.conversationId,
+      turnId: input.turnId ?? null,
+      kind: assembly.kind,
+      channel: input.channel,
+      state: 'omitted',
+      epoch: input.epoch,
+      packHash: null,
+      charBudget: assembly.budgetChars,
+      charsUsed: 0,
+      degradedReason: reason,
+      createdAt: input.now,
+    });
+    planItems(db, { id, conversationId: input.conversationId, epoch: input.epoch }, [
+      ...items.map((item) => ({ ...item, decision: 'omitted' as const })),
+      ...assembly.omitted,
+    ]);
   });
-  planItems(
-    db,
-    { id: injectionId, conversationId: input.conversationId, epoch: input.epoch },
-    [...items.map((item) => ({ ...item, decision: 'omitted' as const })), ...assembly.omitted],
-  );
   return null;
 }
 

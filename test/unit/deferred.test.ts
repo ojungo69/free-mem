@@ -490,3 +490,128 @@ test('a merged item that no longer fits the budget is recorded as trimmed', asyn
     ],
   );
 });
+
+test('a PostToolUse for a call that never carried the pack changes nothing', async () => {
+  await withGrok(async (db) => {
+    const id = await pendingPack(db);
+    attachOnPreToolUse(db, { conversationId: CONVERSATION, toolCallId: 'call-1', now: NOW + 1 });
+    confirmOnPostToolUse(db, { conversationId: CONVERSATION, toolCallId: 'call-1', now: NOW + 2 });
+
+    // Every later tool call of the conversation reaches PostToolUse with no attempt of its own:
+    // the pack was never attached to it, so it delivered nothing (FR-045 rule 3, SC-010).
+    for (const toolCallId of ['call-2', 'call-3']) {
+      const late = confirmOnPostToolUse(db, { conversationId: CONVERSATION, toolCallId, now: NOW + 10 });
+      assert.equal(late.status, 'none');
+      assert.equal(late.text, null);
+    }
+
+    const row = injectionRow(db, id);
+    assert.equal(row.delivery_count, 1, 'only the attached call counts as a delivery');
+    assert.deepEqual(
+      whyReport(db, 's_now')[0].attempts.map((attempt) => attempt.tool_call_id),
+      ['call-1'],
+    );
+  });
+});
+
+test('a deny and a stop after the pack was delivered still record their attempts', async () => {
+  await withGrok(async (db) => {
+    const id = await pendingPack(db);
+    for (const toolCallId of ['call-a', 'call-b', 'call-c']) {
+      assert.notEqual(
+        attachOnPreToolUse(db, { conversationId: CONVERSATION, toolCallId, now: NOW + 1 }),
+        null,
+      );
+    }
+    assert.equal(
+      confirmOnPostToolUse(db, { conversationId: CONVERSATION, toolCallId: 'call-a', now: NOW + 40 }).status,
+      'emitted',
+    );
+
+    // Rule 4: the deny and the Stop belong to attempts of the batch that delivered the pack.
+    markFailure(db, {
+      conversationId: CONVERSATION,
+      toolCallId: 'call-b',
+      kind: 'PermissionDenied',
+      now: NOW + 41,
+    });
+    closeOnStop(db, { conversationId: CONVERSATION, sawAnyToolHook: true, now: NOW + 50 });
+
+    assert.equal(injectionRow(db, id).delivery_count, 1);
+    assert.deepEqual(
+      whyReport(db, 's_now')[0].attempts.map((attempt) => [
+        attempt.tool_call_id,
+        attempt.execution,
+        attempt.delivery,
+      ]),
+      [
+        ['call-a', 'ran', 'delivered'],
+        ['call-b', 'denied', 'dropped'],
+        ['call-c', 'pending', 'dropped'],
+      ],
+    );
+  });
+});
+
+test('why marks a Grok pack deferred even when no tool call ever ran', async () => {
+  await withGrok(async (db) => {
+    await pendingPack(db);
+    closeOnStop(db, { conversationId: CONVERSATION, sawAnyToolHook: false, now: NOW + 5 });
+
+    // FR-045: the Grok lane is the deferred one, and a pack that reached no call is still its pack.
+    assert.equal(whyReport(db, 's_now')[0].deferred, true);
+  });
+});
+
+test('the degraded reason the pack was built with survives the close at Stop', async () => {
+  await withGrok(async (db) => {
+    const id = await pendingPack(db, { model: 'grok-not-in-the-catalog' });
+    assert.equal(injectionRow(db, id).degraded_reason, 'window_unknown');
+
+    closeOnStop(db, { conversationId: CONVERSATION, sawAnyToolHook: false, now: NOW + 5 });
+
+    const row = injectionRow(db, id);
+    assert.equal(row.state, 'omitted');
+    assert.equal(row.degraded_reason, 'window_unknown', 'the built reason is not overwritten');
+    const items = whyReport(db, 's_now')[0].items;
+    assert.ok(items.every((item) => item.decision === 'omitted' && item.reason === 'not_delivered'));
+  });
+});
+
+test('a record whose stored pack was lost delivers only the items that were rendered', async () => {
+  await withGrok(
+    async (db) => {
+      // The crash window: the ledger row and its planned items are written by the pack builder,
+      // the rendered text by storePending. A hook killed in between leaves this record behind.
+      const orphan = await buildPromptPack(db, promptInput({ prompt: 'retrieval' }));
+      assert.notEqual(orphan, null);
+      assert.equal(injectionRow(db, orphan!.injectionId).state, 'pending');
+
+      const merged = await pendingPack(db, { prompt: 'lease', now: NOW + 100 });
+      assert.equal(merged, orphan!.injectionId, 'the next pack merges into the record it finds');
+
+      const text = attachOnPreToolUse(db, {
+        conversationId: CONVERSATION,
+        toolCallId: 'call-1',
+        now: NOW + 200,
+      });
+      assert.notEqual(text, null);
+      assert.ok(text!.includes('Lease note two'));
+      assert.ok(!text!.includes('Retrieval note one'), 'the lost pack was never rendered');
+      confirmOnPostToolUse(db, { conversationId: CONVERSATION, toolCallId: 'call-1', now: NOW + 201 });
+
+      // FR-026: only a delivered memory is counted for the conversation, so m_1 stays injectable.
+      const items = whyReport(db, 's_now').flatMap((injection) => injection.items);
+      assert.deepEqual(
+        items.map((item) => `${item.memoryId}:${item.decision}:${item.reason ?? '-'}`).sort(),
+        ['m_1:omitted:not_delivered', 'm_2:included:-'],
+      );
+      const next = await buildPromptPack(db, promptInput({ prompt: 'retrieval', now: NOW + 300 }));
+      assert.ok(next!.items.some((item) => item.memoryId === 'm_1' && item.decision === 'planned'));
+    },
+    [
+      { id: 'm_1', title: 'Retrieval note one', body: 'The ranking is lexical.' },
+      { id: 'm_2', title: 'Lease note two', body: 'The lease is fenced by its owner token.' },
+    ],
+  );
+});
