@@ -12,7 +12,6 @@ import {
   copyMode,
   finalText,
   gitInit,
-  isCredentialVariable,
   redactValue,
   runTimed,
   shellQuote,
@@ -362,12 +361,6 @@ function prepareAgent(agent, directory, homes, prompt, repo) {
   }
 }
 
-/** FR-016: only `oboete observe` needs the provider credentials, so nothing else is handed them. */
-function withoutCredentials(env) {
-  for (const name of Object.keys(env)) if (isCredentialVariable(name)) delete env[name];
-  return env;
-}
-
 async function launchAgent(agent, directory, repo, prompt, options, homes, dependencies, oboeteHome) {
   fs.mkdirSync(directory, { recursive: true });
   const prepared = prepareAgent(agent, directory, homes, prompt, repo);
@@ -375,8 +368,8 @@ async function launchAgent(agent, directory, repo, prompt, options, homes, depen
   const stderrPath = path.join(directory, "stderr.txt");
   const proc = await dependencies.runTimed(prepared.argv, {
     cwd: repo,
-    // An agent CLI runs the developer's shell tools; oboete's provider credentials stay out of it.
-    env: withoutCredentials(dependencies.childEnv({ OBOETE_HOME: oboeteHome, ...prepared.env })),
+    // An agent CLI runs the developer's shell tools; childEnv keeps the credentials out of it.
+    env: dependencies.childEnv({ OBOETE_HOME: oboeteHome, ...prepared.env }),
     stdoutPath,
     stderrPath,
     timeoutMs: options.timeoutMs,
@@ -463,8 +456,12 @@ async function runPair(pair, context) {
 
     const oboeteHome = path.join(pairDir, "oboete-home");
     prepareOboeteHome(oboeteHome, homes.oboete);
-    const env = dependencies.childEnv({ OBOETE_HOME: oboeteHome });
-    if (options.noCredentials) withoutCredentials(env);
+    // FR-016: `oboete observe` is the one leg that reaches a provider, so it is the one leg that
+    // asks for the credentials; --no-credentials is the run that takes them away from it.
+    const env = dependencies.childEnv(
+      { OBOETE_HOME: oboeteHome },
+      { credentials: !options.noCredentials },
+    );
 
     dependencies.log(`[${pair.from}:${pair.to}] seed`);
     const seeded = await launchAgent(

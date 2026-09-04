@@ -107,13 +107,17 @@ export function memoryScope(
 
   // data-model "destination_rules": one seeded table governs every egress decision, so the list is
   // read here and never hardcoded. privacy/egress.ts evaluates the same table row by row on the
-  // observer path. Secret is excluded because the table allows it nowhere (FR-020).
+  // observer path.
   const allowed = db
     .prepare(
       'SELECT sensitivity AS sensitivity FROM destination_rules WHERE destination = ? AND allowed = 1 ORDER BY sensitivity',
     )
     .all(input.destination)
-    .map((row) => String(row.sensitivity));
+    .map((row) => String(row.sensitivity))
+    // FR-020: a secret row is never readable, whatever the table happens to say, so a restored or
+    // tampered database can only narrow this set. privacy/egress.ts isAllowed holds the same hard
+    // rule for the observer path.
+    .filter((sensitivity) => sensitivity !== 'secret');
 
   const conditions = [
     'm.repo_id = ?', // FR-044: the same repository is the only scope in M1.

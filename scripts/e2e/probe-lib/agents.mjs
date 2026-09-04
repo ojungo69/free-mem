@@ -118,8 +118,16 @@ export function isCredentialVariable(name) {
   return name.startsWith("OBOETE_") && (name.endsWith("_API_KEY") || name.endsWith("_API_TOKEN"));
 }
 
-export function childEnv(extra = {}) {
-  return { ...process.env, PATH: agentPath(), ...extra };
+/**
+ * The environment a probe hands to a child. FR-016: a probe runs from the developer's shell, and
+ * oboete's provider credentials are the developer's, so no launcher passes them on. Only a caller
+ * that runs `oboete` itself asks for them with `{ credentials: true }`.
+ */
+export function childEnv(extra = {}, { credentials = false } = {}) {
+  const env = { ...process.env, PATH: agentPath(), ...extra };
+  if (credentials) return env;
+  for (const name of Object.keys(env)) if (isCredentialVariable(name)) delete env[name];
+  return env;
 }
 
 export function copyMode(src, dest, mode = 0o600) {

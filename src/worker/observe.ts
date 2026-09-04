@@ -4,7 +4,9 @@ import type { DatabaseSync } from 'node:sqlite';
 
 import {
   PRESET_CATALOG,
+  consentHash,
   consentMatches,
+  consentTuple,
   isPaused,
   loadConfig,
   readCredentials,
@@ -268,6 +270,24 @@ function recordProviderResult(
   });
 }
 
+/**
+ * contracts/observer.md call policy 6 and R8: the consent tuple is recomputed from the configuration
+ * as it is on disk before every reservation and again immediately before every send, not from the
+ * snapshot the run started with -- a run lasts up to twenty minutes (DEFAULT_MAX_RUN_MS). The live
+ * tuple must still be the one consent records and must still be the destination this run reserved
+ * against, so choosing another preset, choosing `none` or revoking consent stops the next batch. A
+ * file that cannot be read or parsed is a mismatch, never a licence to keep sending. The cost is two
+ * re-reads of one small TOML file per attempt, so nothing is cached.
+ */
+function liveConsentOk(paths: OboetePaths, env: NodeJS.ProcessEnv, startedHash: string): boolean {
+  try {
+    const live = loadConfig(paths);
+    return consentMatches(live, env) && consentHash(consentTuple(live, env)) === startedHash;
+  } catch {
+    return false;
+  }
+}
+
 async function providerCall(
   db: DatabaseSync,
   token: string,
@@ -277,6 +297,7 @@ async function providerCall(
   deps: ObserveDeps,
   preset: PresetName,
   model: string,
+  consentOk: () => boolean,
 ): Promise<CallOutcome> {
   const entry = PRESET_CATALOG[preset];
   return await summarizeWithProvider(input, {
@@ -284,7 +305,7 @@ async function providerCall(
     model,
     agentCli: config.observer.agent_cli,
     credentials: readCredentials(preset, deps.env, config.observer.agent_cli),
-    consentOk: () => consentMatches(config, deps.env),
+    consentOk,
     reserve: () => {
       const result = reserveAttempt(db, {
         preset,
@@ -361,6 +382,7 @@ async function processBatch(
   providerState: Map<string, DegradedReason | null>,
   initialProviderReason: DegradedReason | null,
   resolved: { preset: PresetName | 'none'; model: string },
+  consentOk: () => boolean,
 ): Promise<BatchResult> {
   const input = loadBatchInput(db, batch.id);
   if (input === null) throw new Error('batch input missing');
@@ -405,6 +427,7 @@ async function processBatch(
     deps,
     resolved.preset,
     resolved.model,
+    consentOk,
   );
   if (outcome.ok) {
     if (!recordProviderResult(db, token, resolved.preset, outcome, deps.now())) {
@@ -420,6 +443,7 @@ async function processBatch(
         deps,
         resolved.preset,
         resolved.model,
+        consentOk,
       );
       if (outcome.ok && !recordProviderResult(db, token, resolved.preset, outcome, deps.now())) {
         return { state: 'lease_lost', reason: null, memoryIds: [] };
@@ -729,6 +753,8 @@ export async function runObserve(argv: string[], overrides: Partial<ObserveDeps>
         : !consentMatches(config, deps.env)
           ? 'consent_changed'
           : null;
+    const startedConsentHash = consentHash(consentTuple(config, deps.env));
+    const consentOk = (): boolean => liveConsentOk(paths, deps.env, startedConsentHash);
     const providerState = new Map<string, DegradedReason | null>();
     const ancestorCache = createAncestorCache();
     const detect = (text: string) =>
@@ -798,6 +824,7 @@ export async function runObserve(argv: string[], overrides: Partial<ObserveDeps>
             providerState,
             initialProviderReason,
             resolved,
+            consentOk,
           );
           if (batchResult.state === 'lease_lost') {
             leaseLost = true;

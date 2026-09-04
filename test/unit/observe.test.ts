@@ -401,6 +401,67 @@ test('a consent hash mismatch never calls the provider and records consent_chang
   });
 });
 
+// contracts/observer.md call policy 6 and R8: the tuple is recomputed from the configuration as it
+// is on disk, not from the snapshot the run started with. A run lasts up to twenty minutes, so a
+// developer who changes the destination or makes the file unreadable stops the next batch.
+for (const variant of [
+  { change: 'chooses no preset', write: (fixture: Fixture) => writeConfig(fixture, 'none') },
+  {
+    change: 'leaves the file unparsable',
+    write: (fixture: Fixture) => writeFileSync(fixture.paths.config, '[observer\npreset = '),
+  },
+  {
+    // The destination stays remote and only changes which one, so the stored hash is valid again:
+    // the run must still stop, because it would keep sending to the preset it started with.
+    change: 'accepts another remote preset',
+    write: (fixture: Fixture) => writeConfig(fixture, 'workers-ai', fixture.env),
+  },
+]) {
+  test(`a developer who ${variant.change} mid-run degrades the next batch with consent_changed`, async () => {
+    await withFixture(async (fixture) => {
+      fixture.env = cleanEnv(fixture.home, { OBOETE_OPENROUTER_API_KEY: 'openrouter-test-key' });
+      writeConfig(fixture, 'openrouter', fixture.env);
+      const first = 'Record the retry behavior.';
+      const second = 'Record the upload timeout.';
+      for (const [index, prompt] of [first, second].entries()) {
+        await captureEndedSession(fixture, {
+          sessionId: `backlog-session-${index + 1}`,
+          prompts: [prompt],
+          assistant: 'The upload path retries once.',
+        });
+      }
+      const sourceIds = { [first]: eventId(fixture, first), [second]: eventId(fixture, second) };
+
+      let calls = 0;
+      const fetchImpl: typeof fetch = async (_input, init) => {
+        calls += 1;
+        const body = String(init?.body ?? '');
+        const answered = body.includes(first) ? first : second;
+        variant.write(fixture);
+        return openAiResponse(providerOutput(sourceIds[answered]));
+      };
+
+      const exit = await runObserveForFixture(fixture, { fetch: fetchImpl });
+      assert.equal(calls, 1);
+      assert.equal(exit, 1);
+      fixture.withDb((db) => {
+        assert.deepEqual(
+          db
+            .prepare('SELECT state, degraded_reason FROM observation_batches ORDER BY state')
+            .all()
+            .map((row) => ({ ...row })),
+          [
+            { state: 'applied', degraded_reason: null },
+            { state: 'fallback', degraded_reason: 'consent_changed' },
+          ],
+        );
+        // The check runs before the reservation as well, so the refused batch never counts an attempt.
+        assert.equal(db.prepare('SELECT calls FROM provider_usage').get()?.calls, 1);
+      });
+    });
+  });
+}
+
 test('two English answers for Japanese input fall back with language_mismatch', async () => {
   await withFixture(async (fixture) => {
     fixture.env = cleanEnv(fixture.home, { OBOETE_OPENROUTER_API_KEY: 'openrouter-test-key' });
