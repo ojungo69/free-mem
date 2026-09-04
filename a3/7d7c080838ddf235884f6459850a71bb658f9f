@@ -1,0 +1,41 @@
+docs/research/oboete-contracts-2026-09-02.md
+  s_c3a3aca6da7be1::t_cbbefa0997c7e5 94
+docs/research/oboete-contracts-probes.md
+  s_c3a3aca6da7be1::t_e2ff15b876576b 74-79
+src/cli.ts
+  s_c3a3aca6da7be1::t_41fdc90cff2a15 28
+src/log.ts
+  s_c3a3aca6da7be1::t_11e3951fa894f7 4-5
+src/setup/consent.ts
+  s_c3a3aca6da7be1::t_ae2477d92cc284 1-162
+src/setup/detect.ts
+  s_c3a3aca6da7be1::t_0f8167f005b5a8 16-18,51,58,168-170,172-175,179-187
+src/setup/probe.ts
+  s_c3a3aca6da7be1::t_e4bf4ad7d15df9 10
+src/setup/setup.ts
+  s_c3a3aca6da7be1::t_70ebdcc29b38ae 1-477
+test/unit/codex-trust.test.ts
+  s_c3a3aca6da7be1::t_104a15a23a2ea9 1-136
+test/unit/consent.test.ts
+  s_c3a3aca6da7be1::t_b9ae3a188d22ed 1-138
+test/unit/detect.test.ts
+  s_c3a3aca6da7be1::t_799c8260644875 11,141,153,159-160,165-169,172-176
+test/unit/setup.test.ts
+  s_c3a3aca6da7be1::t_394c26e7b23345 1-293
+---
+{
+  "schema_version": "authorship/3.0.0",
+  "git_ai_version": "1.6.16",
+  "base_commit_sha": "a37d7c080838ddf235884f6459850a71bb658f9f",
+  "prompts": {},
+  "sessions": {
+    "s_c3a3aca6da7be1": {
+      "agent_id": {
+        "tool": "claude",
+        "id": "7392a577-3272-4376-9b89-f4c55b10c247",
+        "model": "claude-fable-5-1"
+      },
+      "human_author": "ojungo69 <210335670+ojungo69@users.noreply.github.com>"
+    }
+  }
+}
