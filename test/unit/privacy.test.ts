@@ -7,7 +7,12 @@ import { Worker } from 'node:worker_threads';
 
 import type { SecretLintCoreConfig } from '@secretlint/types';
 
-import { RepoConfigError, loadRepoRules } from '../../src/config.js';
+import {
+  MAX_REPO_SECRET_PATHS,
+  MAX_REPO_SECRET_PATH_LENGTH,
+  RepoConfigError,
+  loadRepoRules,
+} from '../../src/config.js';
 import { openDatabase } from '../../src/db/open.js';
 import { promoteSensitivity, strictest } from '../../src/privacy/classify.js';
 import {
@@ -197,16 +202,24 @@ test('a full repository rule list keeps one path match bounded', () => {
   // R4: `.oboete.toml` is repository-supplied, so its rules may be written to be expensive. The
   // list is bounded by loadRepoRules and the matcher sweeps the path once per token, so the work
   // stays linear instead of backtracking over every way to split the path.
-  const rules = Array.from({ length: 64 }, (_, index) =>
-    index % 2 === 0 ? `${'*'.repeat(254)}x` : `${'a*'.repeat(127)}x`,
+  // The shape is the declared bound, so raising either constant is measured here rather than
+  // silently spending more of the capture deadline (CAPTURE_DEADLINE_MS is 300 ms).
+  const stars = MAX_REPO_SECRET_PATH_LENGTH - 1;
+  const rules = Array.from({ length: MAX_REPO_SECRET_PATHS }, (_, index) =>
+    index % 2 === 0 ? `${'*'.repeat(stars)}x` : `${'a*'.repeat(Math.floor(stars / 2))}x`,
   );
-  const path = `${'a/'.repeat(2_000)}b`;
+  // A path with no slash is the expensive shape: every `*` can reach every position of it.
+  const path = `${'a'.repeat(4_095)}b`;
   const started = process.hrtime.bigint();
   assert.equal(matchSecretPath(path, rules, null), null);
   const elapsedMs = Number(process.hrtime.bigint() - started) / 1e6;
-  // What is measured is linear against exponential: this takes about 70 ms here, while the same
-  // rules compiled into one backtracking expression do not finish at all.
-  assert.ok(elapsedMs < 500, `matching 64 rules against a 4 KiB path took ${elapsedMs.toFixed(0)} ms`);
+  // What is measured is linear against exponential: the same rules compiled into one backtracking
+  // expression do not finish at all. Measured at about 250 ms on the machine this was written on,
+  // so the bound leaves room for a slow or loaded one while still failing a return to backtracking.
+  assert.ok(
+    elapsedMs < 2_000,
+    `matching ${MAX_REPO_SECRET_PATHS} rules against a 4 KiB path took ${elapsedMs.toFixed(0)} ms`,
+  );
 });
 
 test('fail-closed: a path rule hit keeps metadata only, even for harmless text', async () => {

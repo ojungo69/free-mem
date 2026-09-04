@@ -21,7 +21,10 @@ const skip = gitAvailable ? false : 'git is not installed, so the commit stalene
 const temporaryRoots: string[] = [];
 
 after(() => {
-  for (const root of temporaryRoots) rmSync(root, { recursive: true, force: true });
+  // A git child of a fixture (background maintenance) can still hold the directory for a moment.
+  for (const root of temporaryRoots) {
+    rmSync(root, { recursive: true, force: true, maxRetries: 5, retryDelay: 50 });
+  }
 });
 
 function temporaryRoot(): string {

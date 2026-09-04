@@ -599,6 +599,28 @@ test('a session of lifecycle rows only is no queued work and the run ends empty'
   });
 });
 
+test('a prompt of non-ASCII blanks is no queued work and the run ends empty', async () => {
+  await withFixture(async (fixture) => {
+    writeConfig(fixture, 'none');
+    // U+3000 and U+00A0 are whitespace to `String.prototype.trim`, so `isSummarizableRow` never
+    // batches this row and purge never deletes it. The queue check has to call it blank too, or the
+    // worker treats it as work on every pass for the whole run (FR-002: the worker runs beside the
+    // hooks). The advancing clock turns a wrong answer into `max_run` instead of a hanging test.
+    await fixture.capture('SessionStart', { ...eventBase('blank-session'), source: 'startup' });
+    await fixture.capture('UserPromptSubmit', {
+      ...eventBase('blank-session'),
+      prompt: '\u3000\u00a0',
+    });
+    let clock = NOW;
+    assert.equal(await runObserveForFixture(fixture, { now: () => clock++, maxRunMs: 5_000 }), 0);
+
+    fixture.withDb((db) => {
+      assert.equal(Number(db.prepare('SELECT COUNT(*) AS n FROM observation_batches').get()?.n), 0);
+    });
+    assert.match(readFileSync(fixture.paths.observeLog, 'utf8'), /run end .*reason=empty/);
+  });
+});
+
 test('the loop purges expired terminal rows and folds Pi done acknowledgements', async () => {
   await withFixture(async (fixture) => {
     writeConfig(fixture, 'none');

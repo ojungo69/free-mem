@@ -14,6 +14,7 @@ import {
   recoverSpool,
   reclaimStale,
   toolInputOf,
+  BLANK_CODE_POINTS,
 } from '../../src/worker/batches.js';
 import { claimLease } from '../../src/worker/lease.js';
 import { withTempHome } from '../helpers/home.js';
@@ -634,4 +635,16 @@ test('the batch input keeps the row order and strips a partial row to its metada
     assert.equal(partial?.content, null);
     assert.equal(partial?.payload_json, JSON.stringify({ tool_name: 'read', input: { paths: ['src/a.ts'] } }));
   });
+});
+
+test('the blank characters the SQL predicates trim are the ones trim() removes', () => {
+  // purge's delete predicate and the worker's queue check ask "has content" in SQL, while
+  // `isSummarizableRow` asks it with `trim()`. A character on one list only is a row that is never
+  // batched, never purged, and keeps the worker awake for its whole run.
+  const stripped: number[] = [];
+  for (let code = 0; code <= 0xffff; code += 1) {
+    const character = String.fromCharCode(code);
+    if (character.trim() === '') stripped.push(code);
+  }
+  assert.deepEqual([...BLANK_CODE_POINTS], stripped);
 });

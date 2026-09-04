@@ -149,11 +149,13 @@ test('expired unbatched rows no summarizer can use are purged and the ones it ca
       payload: { tool_name: 'read', input: { paths: ['src/a.ts'] } },
     });
     insertEvent(db, { id: 'e-blank', expiresAt: now, batchId: null, content: ' \n\t ' });
+    // `trim()` calls these blank too, so batches.ts never takes the row and only purge bounds it.
+    insertEvent(db, { id: 'e-blank-wide', expiresAt: now, batchId: null, content: '\u3000\u00a0' });
     insertEvent(db, { id: 'e-prompt', expiresAt: now, batchId: null });
 
     const result = purgeExpiredEvents(db, token, now);
     assert.equal(result.leaseLost, false);
-    assert.equal(result.deleted, 4);
+    assert.equal(result.deleted, 5);
     assert.deepEqual(eventIds(db), ['e-prompt', 'e-tool-call']);
   });
 });

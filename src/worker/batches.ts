@@ -111,12 +111,17 @@ const SUMMARIZABLE_KINDS: ReadonlySet<string> = new Set([
 /** The same kinds where the rule has to be applied in SQL: purge and the worker's queue check. */
 export const SUMMARIZABLE_KINDS_SQL = [...SUMMARIZABLE_KINDS].map((kind) => `'${kind}'`).join(', ');
 /**
- * SQLite's `TRIM` strips spaces only, so the characters it has to strip to answer "has content"
- * the way `isSummarizableRow` does are named here. The set is the ASCII whitespace `trim()`
- * removes, which keeps SQL's idea of a blank row a subset of this module's: SQL may leave a row
- * for the worker, never delete one the worker would still summarize.
+ * The characters `String.prototype.trim()` removes (ECMA-262 WhiteSpace and LineTerminator);
+ * SQLite's own `TRIM` strips the ASCII space only. The SQL that has to answer "has content" the
+ * way `isSummarizableRow` does — purge's delete predicate and the worker's queue check — trims
+ * exactly this set: a row only one of the two calls blank is never batched, never deleted and
+ * keeps the worker awake for its whole run.
  */
-export const BLANK_CHARACTERS_SQL = "' ' || char(9) || char(10) || char(11) || char(12) || char(13)";
+export const BLANK_CODE_POINTS: readonly number[] = [
+  0x09, 0x0a, 0x0b, 0x0c, 0x0d, 0x20, 0xa0, 0x1680, 0x2000, 0x2001, 0x2002, 0x2003, 0x2004, 0x2005,
+  0x2006, 0x2007, 0x2008, 0x2009, 0x200a, 0x2028, 0x2029, 0x202f, 0x205f, 0x3000, 0xfeff,
+];
+export const BLANK_CHARACTERS_SQL = `char(${BLANK_CODE_POINTS.join(', ')})`;
 
 const DESTINATION_ORDER: readonly BatchDestination[] = [
   'remote_observer',
