@@ -419,8 +419,10 @@ export async function applyObservations(
 // ---------------------------------------------------------------------------
 
 const REQUEST_CHARS = 1000;
+const REQUEST_FLOOR = 200;
 const NEXT_STEPS_CHARS = 200;
 const MAX_LIST = 20;
+const LIST_FLOOR = 5;
 const MAX_LEARNED = 10;
 const READ_TOOLS: ReadonlySet<string> = new Set(['read', 'grep', 'glob']);
 const WRITE_TOOLS: ReadonlySet<string> = new Set(['write', 'edit']);
@@ -443,6 +445,11 @@ function listLine(label: string, items: string[], cap: number): string {
   return `${label}: ${text}`.trimEnd();
 }
 
+/**
+ * contracts/observer.md trim order: the three list lines drop entries from the end until five are
+ * left in each, then `request` gives back characters down to 200 (A20 keeps the developer's exact
+ * words), and only a body still over budget empties the lists further.
+ */
 function summaryBody(parts: {
   request: string;
   investigated: string[];
@@ -450,25 +457,27 @@ function summaryBody(parts: {
   completed: string[];
   nextSteps: string;
 }): string {
-  for (let cap = MAX_LIST; cap >= 0; cap -= 1) {
-    const body = [
-      `request: ${parts.request}`.trimEnd(),
+  const compose = (request: string, cap: number): string =>
+    [
+      `request: ${request}`.trimEnd(),
       listLine('investigated', parts.investigated, cap),
       listLine('learned', parts.learned, Math.min(cap, MAX_LEARNED)),
       listLine('completed', parts.completed, cap),
       `next_steps: ${parts.nextSteps}`.trimEnd(),
     ].join('\n');
+
+  for (let cap = MAX_LIST; cap > LIST_FLOOR; cap -= 1) {
+    const body = compose(parts.request, cap);
     if (body.length <= MAX_BODY) return body;
   }
-  return [
-    `request: ${parts.request}`.trimEnd(),
-    'investigated:',
-    'learned:',
-    'completed:',
-    `next_steps: ${parts.nextSteps}`.trimEnd(),
-  ]
-    .join('\n')
-    .slice(0, MAX_BODY);
+  let body = '';
+  for (let cap = LIST_FLOOR; cap >= 0; cap -= 1) {
+    // One character of the room pays for the space after the `request:` label.
+    const room = MAX_BODY - compose('', cap).length - 1;
+    body = compose(parts.request.slice(0, Math.max(REQUEST_FLOOR, room)), cap);
+    if (body.length <= MAX_BODY) return body;
+  }
+  return body.slice(0, MAX_BODY);
 }
 
 /**

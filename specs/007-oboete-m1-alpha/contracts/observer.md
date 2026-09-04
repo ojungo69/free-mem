@@ -87,10 +87,14 @@ shortened form appears only in bodies.
 
 **Session summary (deterministic, worker-side, no provider call)**: `type = session_summary`,
 `title` = the session's first prompt truncated to 120 characters, `body` = five labelled lines
-under the same 2,000-character budget and trim order: `request` = the first prompt (up to 1,000 characters);
+under the same 2,000-character budget: `request` = the first prompt (up to 1,000 characters);
 `investigated` = the distinct files read (up to 20 paths); `learned` = the titles of the
 observations applied for the session (up to 10); `completed` = the distinct files modified with
-tool counts (up to 20); `next_steps` = the last unfinished turn's prompt (200). Sensitivity =
+tool counts (up to 20); `next_steps` = the last unfinished turn's prompt (200). Trim order: the
+three list lines drop entries from the end until five remain in each, then `request` gives back
+characters down to a floor of 200, and only a body still over budget empties the lists further, so
+a long prompt keeps the developer's exact words without evicting the session's findings (A20).
+Sensitivity =
 strictest source row. `degraded_reason` = the most severe reason among the session's batches by this fixed precedence:
 `provider_paid` > `provider_exhausted` > `auth_failed` > `consent_changed` > `daily_cap` >
 `unreachable` > `timeout` > `unusable_output` > `language_mismatch` > `model_alias` >

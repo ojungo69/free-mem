@@ -350,7 +350,8 @@ async function changePin(
   const pinnedAt = pinned ? runtime.now() : null;
 
   return withDatabase(runtime, (db, repoId) => {
-    if (!setPinned(db, { id, repoId, pinnedAt, pinOrder: order })) {
+    const scope = memoryScope(db, { repoId, destination: 'injection' });
+    if (!setPinned(db, { id, scope, pinnedAt, pinOrder: order })) {
       return notFound(runtime, id, json);
     }
     if (json) {
@@ -395,7 +396,8 @@ export async function runDelete(
   const deletedAt = runtime.now();
 
   return withDatabase(runtime, (db, repoId) => {
-    if (!tombstone(db, { id, repoId, deletedAt })) return notFound(runtime, id, json);
+    const scope = memoryScope(db, { repoId, destination: 'injection' });
+    if (!tombstone(db, { id, scope, deletedAt })) return notFound(runtime, id, json);
     if (json) runtime.writeOut(`${JSON.stringify({ id, action: 'deleted', deleted_at: deletedAt })}\n`);
     else runtime.writeOut(`Deleted memory ${id}.\n`);
     return 0;

@@ -326,6 +326,54 @@ test('pin and unpin update pinned_at and pin_order inside the repository', async
   });
 });
 
+
+test('pin and delete answer for a hidden memory exactly as they answer for a missing one', async () => {
+  await withFixture(async ({ home, repo, identity, otherIdentity }) => {
+    const opened = openDatabase({ path: oboetePaths(home).db, timeoutMs: 1000 });
+    insertRepo(opened.db, identity);
+    insertRepo(opened.db, otherIdentity);
+    const secret = insertMemory(opened.db, {
+      repoId: identity.id,
+      title: 'Secret memory',
+      body: 'The developer may not read this one.',
+      sensitivity: 'secret',
+    });
+    const outside = insertMemory(opened.db, {
+      repoId: otherIdentity.id,
+      title: 'Other memory',
+      body: 'It belongs to another repository.',
+    });
+    opened.db.close();
+
+    // FR-044 and contracts/cli.md: an id the reader cannot see answers like an id that is not
+    // there, so the exit code never tells the developer that a hidden row exists.
+    for (const id of [secret, outside, 'm_no_such_memory']) {
+      for (const command of [runPin, runUnpin, runDelete]) {
+        const json = await run(command, [id, '--json'], repo);
+        assert.equal(json.status, 1);
+        assert.equal(json.stdout, `${JSON.stringify({ error: 'memory_not_found', id })}\n`);
+        assert.equal(json.stderr, '');
+
+        const plain = await run(command, [id], repo);
+        assert.equal(plain.status, 1);
+        assert.equal(plain.stdout, '');
+        assert.equal(plain.stderr, `Memory ${id} was not found in the current repository.\n`);
+      }
+    }
+
+    const checked = openDatabase({ path: oboetePaths(home).db, timeoutMs: 1000 });
+    for (const id of [secret, outside]) {
+      const row = checked.db
+        .prepare('SELECT pinned_at, pin_order, deleted_at FROM memories WHERE id = ?')
+        .get(id);
+      assert.equal(row?.pinned_at, null);
+      assert.equal(row?.pin_order, null);
+      assert.equal(row?.deleted_at, null);
+    }
+    checked.db.close();
+  });
+});
+
 test('delete keeps a tombstone and observer writes cannot recreate it under another type', async () => {
   await withFixture(async ({ home, repo, identity }) => {
     const title = 'Stable memory identity';

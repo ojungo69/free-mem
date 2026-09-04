@@ -12,7 +12,9 @@ import {
   memoriesForSession,
   memoryScope,
   pinnedMemories,
+  setPinned,
   timeline,
+  tombstone,
 } from '../../src/db/queries.js';
 import { oboetePaths } from '../../src/paths.js';
 import { withTempHome } from '../helpers/home.js';
@@ -292,6 +294,49 @@ test('getMemory hides out-of-boundary and secret rows the same way it hides miss
   });
 });
 
+test('setPinned and tombstone reach exactly the rows the reader can see', async () => {
+  await withSeededDatabase((db) => {
+    const scope = memoryScope(db, { repoId: REPO_A, destination: 'injection' });
+    const visible = 'm_a_eligible_unreviewed_active';
+    const hidden = [
+      'm_a_secret_unreviewed_active',
+      'm_a_eligible_imported_active',
+      'm_a_eligible_unreviewed_superseded',
+      'm_a_eligible_unreviewed_deleted',
+      'm_b_eligible_unreviewed_active',
+      'no_such_memory',
+    ];
+
+    assert.equal(setPinned(db, { id: visible, scope, pinnedAt: 4242, pinOrder: 7 }), true);
+    for (const id of hidden) {
+      assert.equal(
+        setPinned(db, { id, scope, pinnedAt: 4242, pinOrder: 7 }),
+        false,
+        `${id} must be unpinnable, exactly as a missing id is`,
+      );
+      assert.equal(
+        tombstone(db, { id, scope, deletedAt: 5555 }),
+        false,
+        `${id} must be undeletable, exactly as a missing id is`,
+      );
+    }
+
+    // The writes reached the one row in scope and no other, so an exit code tells the developer
+    // nothing about a row they may not read (contracts/cli.md "within the cwd repository boundary").
+    assert.deepEqual(
+      db.prepare('SELECT id AS id FROM memories WHERE pinned_at = 4242 ORDER BY id').all().map((row) => String(row.id)),
+      [visible],
+    );
+    assert.deepEqual(db.prepare('SELECT id AS id FROM memories WHERE deleted_at = 5555').all(), []);
+
+    assert.equal(tombstone(db, { id: visible, scope, deletedAt: 5555 }), true);
+    assert.equal(getMemory(db, visible, scope), null);
+    // The tombstone left the scope, so a second delete of the same id is a miss like any other.
+    assert.equal(tombstone(db, { id: visible, scope, deletedAt: 5556 }), false);
+    assert.equal(setPinned(db, { id: visible, scope, pinnedAt: 4243, pinOrder: 7 }), false);
+  });
+});
+
 test('listMemories returns the newest first and honours limit and offset', async () => {
   await withSeededDatabase((db) => {
     const scope = memoryScope(db, { repoId: REPO_A, destination: 'injection' });
@@ -383,6 +428,22 @@ test('memoriesForSession stays inside the scope', async () => {
       ['m_a_summary_done', 'm_a_eligible_unreviewed_active'],
     );
     assert.deepEqual(memoriesForSession(db, 's_a_active', scope), []);
+  });
+});
+
+test('memoriesForSession joins both paths to the session and returns each memory once', async () => {
+  await withSeededDatabase((db) => {
+    const scope = memoryScope(db, { repoId: REPO_A, destination: 'injection' });
+    // m_a_summary_done already cites a raw event of s_a_done, so both paths now name it.
+    db.prepare("UPDATE memories SET source_session_id = 's_a_done' WHERE id IN (?, ?)").run(
+      'm_a_summary_done',
+      'm_a_private_reviewed_active', // this one has no sources: the session id is its only path
+    );
+
+    assert.deepEqual(
+      memoriesForSession(db, 's_a_done', scope).map((row) => row.id),
+      ['m_a_summary_done', 'm_a_private_reviewed_active', 'm_a_eligible_unreviewed_active'],
+    );
   });
 });
 

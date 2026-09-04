@@ -144,31 +144,29 @@ export function memorySources(db: DatabaseSync, id: string): MemorySourceRow[] {
     .all(id) as unknown as MemorySourceRow[];
 }
 
-/** Pins or unpins one active row of the current repository. */
+/** Pins or unpins one row the same scope shows the reader, so a hidden id changes nothing. */
 export function setPinned(
   db: DatabaseSync,
-  input: { id: string; repoId: string; pinnedAt: number | null; pinOrder: number | null },
+  input: { id: string; scope: MemoryScope; pinnedAt: number | null; pinOrder: number | null },
 ): boolean {
   const result = db
-    .prepare(
-      `UPDATE memories SET pinned_at = ?, pin_order = ?
-       WHERE id = ? AND repo_id = ? AND deleted_at IS NULL AND valid_to IS NULL`,
-    )
-    .run(input.pinnedAt, input.pinOrder, input.id, input.repoId);
+    .prepare(`UPDATE memories AS m SET pinned_at = ?, pin_order = ? WHERE ${input.scope.where} AND m.id = ?`)
+    .run(input.pinnedAt, input.pinOrder, ...input.scope.params, input.id);
   return Number(result.changes) !== 0;
 }
 
-/** Leaves the hashes and content in place so identical content cannot be recreated (FR-035). */
+/**
+ * Leaves the hashes and content in place so identical content cannot be recreated (FR-035).
+ * Scoped like the reads: an id outside the boundary is refused exactly like a missing one, so the
+ * exit code never reveals a row the developer may not see (contracts/cli.md).
+ */
 export function tombstone(
   db: DatabaseSync,
-  input: { id: string; repoId: string; deletedAt: number },
+  input: { id: string; scope: MemoryScope; deletedAt: number },
 ): boolean {
   const result = db
-    .prepare(
-      `UPDATE memories SET deleted_at = ?
-       WHERE id = ? AND repo_id = ? AND deleted_at IS NULL`,
-    )
-    .run(input.deletedAt, input.id, input.repoId);
+    .prepare(`UPDATE memories AS m SET deleted_at = ? WHERE ${input.scope.where} AND m.id = ?`)
+    .run(input.deletedAt, ...input.scope.params, input.id);
   return Number(result.changes) !== 0;
 }
 
@@ -347,13 +345,17 @@ export function memoriesForSession(
   sessionId: string,
   scope: MemoryScope,
 ): MemoryRow[] {
+  // The two paths to a session are collected as ids and the rows are then read by primary key:
+  // joining them onto the row itself made SQLite expand every in-scope memory by its
+  // `memory_sources` rows and de-duplicate whole rows, about a third slower over 4,000 memories.
   return asMemoryRows(
     db
       .prepare(
-        `SELECT DISTINCT m.* FROM memories m
-         LEFT JOIN memory_sources ms ON ms.memory_id = m.id
-         LEFT JOIN raw_events e ON e.id = ms.raw_event_id
-         WHERE ${scope.where} AND (m.source_session_id = ? OR e.session_id = ?)
+        `SELECT m.* FROM memories m WHERE ${scope.where} AND m.id IN (
+           SELECT s.id FROM memories s WHERE s.source_session_id = ?
+           UNION ALL
+           SELECT ms.memory_id FROM memory_sources ms JOIN raw_events e ON e.id = ms.raw_event_id
+            WHERE e.session_id = ?)
          ORDER BY m.created_at DESC, m.id DESC`,
       )
       .all(...scope.params, sessionId, sessionId),
