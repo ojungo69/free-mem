@@ -170,6 +170,7 @@ function packInput(
     detect: validation.detect,
     directives: validation.directives,
     repoRoot: context.repoRoot,
+    remainingBudget: context.remainingBudget,
   };
 }
 

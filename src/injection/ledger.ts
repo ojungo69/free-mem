@@ -302,8 +302,12 @@ export function whyReport(db: DatabaseSync, sessionId: string, turn?: number): W
     charBudget: (row.char_budget as number | null) ?? null,
     charsUsed: (row.chars_used as number | null) ?? null,
     deliveryCount: Number(row.delivery_count ?? 0),
-    // FR-045: the Grok lane is the deferred one, and `why` says so.
-    deferred: row.kind === 'grok_deferred' || parseAttempts(row.attempts_json).length > 0,
+    // FR-045: the Grok lane is the deferred one, and `why` says so even for a pack that reached
+    // no tool call. The channel says which lane built it whatever became of the record.
+    deferred:
+      row.kind === 'grok_deferred' ||
+      String(row.channel ?? '').startsWith('grok:') ||
+      parseAttempts(row.attempts_json).length > 0,
     attempts: parseAttempts(row.attempts_json),
     items: itemsOf.all(String(row.id)).map((item) => ({
       sourceKind: (item.source_kind as ItemSourceKind | null) ?? null,
