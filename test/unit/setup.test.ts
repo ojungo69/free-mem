@@ -318,7 +318,7 @@ test('the agent CLI is spawned by the absolute path detection resolved, never by
     // would run a file called `claude` out of the developer's repository -- the reason
     // src/setup/detect.ts refuses a relative PATH entry when it resolves the CLI in the first place.
     assert.deepEqual(context.calls, [
-      [join(bin, 'claude'), 'mcp', 'add', 'oboete', '--', NODE, BUNDLE, 'mcp'],
+      [join(bin, 'claude'), 'mcp', 'add', 'oboete', '--scope', 'user', '--', NODE, BUNDLE, 'mcp'],
       [join(bin, 'claude'), 'mcp', 'remove', 'oboete'],
     ]);
   });

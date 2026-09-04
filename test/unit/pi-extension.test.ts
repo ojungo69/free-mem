@@ -333,18 +333,18 @@ test('the tools run the command line as child processes', async () => {
   const { pi, tools } = stubPi();
   piExtension(pi, { node: NODE, bundle: BUNDLE, spawn });
 
-  const search = tools.get('oboete_search')?.execute({ query: 'parser', limit: 3 });
+  const search = tools.get('oboete_search')?.execute('call-search', { query: 'parser', limit: 3 });
   calls[0].deliver('{"results":[]}');
   assert.deepEqual(await search, { content: [{ type: 'text', text: '{"results":[]}' }] });
   assert.deepEqual(calls[0].args, [BUNDLE, 'search', 'parser', '--json', '--limit', '3']);
   assert.deepEqual(calls[0].options.stdio, ['ignore', 'pipe', 'ignore']);
 
-  const get = tools.get('oboete_get')?.execute({ id: 'm_abc' });
+  const get = tools.get('oboete_get')?.execute('call-get', { id: 'm_abc' });
   calls[1].deliver('{"id":"m_abc"}');
   assert.deepEqual(await get, { content: [{ type: 'text', text: '{"id":"m_abc"}' }] });
   assert.deepEqual(calls[1].args, [BUNDLE, 'get', 'm_abc', '--json']);
 
-  const timeline = tools.get('oboete_timeline')?.execute({});
+  const timeline = tools.get('oboete_timeline')?.execute('call-timeline', {});
   calls[2].deliver('[]');
   assert.deepEqual(await timeline, { content: [{ type: 'text', text: '[]' }] });
   assert.deepEqual(calls[2].args, [BUNDLE, 'timeline', '--json']);
@@ -357,7 +357,7 @@ test('a tool child that exits non-zero is a counted failure, not an empty answer
 
   // `oboete search --json` prints its complaint on stderr and exits 2 while this task is unbuilt;
   // an empty stdout must never reach the model as a successful answer.
-  const search = tools.get('oboete_search')?.execute({ query: 'parser' });
+  const search = tools.get('oboete_search')?.execute('call-search-fail', { query: 'parser' });
   calls[0].deliver('', 2);
 
   assert.deepEqual(await search, {
@@ -373,7 +373,7 @@ test('a tool child that exits non-zero is a counted failure, not an empty answer
   // call, because a rejection would leave Pi's own turn broken (FR-007).
   const refused = stubPi();
   piExtension(refused.pi, { node: NODE, bundle: BUNDLE, spawn: spawnRecorder(1).spawn });
-  assert.deepEqual(await refused.tools.get('oboete_get')?.execute({ id: 'm_abc' }), {
+  assert.deepEqual(await refused.tools.get('oboete_get')?.execute('call-get-refused', { id: 'm_abc' }), {
     content: [
       { type: 'text', text: 'oboete could not run that command. Run oboete doctor to see why.' },
     ],
@@ -400,4 +400,22 @@ test('the built extension can reach nothing but a child process', () => {
   for (const forbidden of ['node:fs', 'node:http', 'node:net', 'fetch(', 'import(', 'require(']) {
     assert.equal(text.includes(forbidden), false, `the extension must not contain ${forbidden}`);
   }
+});
+
+// Pi passes the call id first and the arguments second. A handler that reads the first parameter as
+// its arguments runs every tool with empty ones, which the CLI answers with exit 2 rather than a
+// result, so the whole tool surface fails silently (verified against pi-coding-agent 0.85.0).
+test('a tool reads its arguments from the position Pi passes them in, not from the call id', async () => {
+  // Pi calls `execute(toolCallId, params, …)` (ToolDefinition of pi-coding-agent, checked against
+  // 0.85.0). A handler that reads the first parameter as its arguments runs every tool with none,
+  // which the CLI answers with exit 2, so the whole tool surface fails without a word.
+  const { calls, spawn } = spawnRecorder();
+  const { pi, tools } = stubPi();
+  piExtension(pi, { node: NODE, bundle: BUNDLE, spawn });
+
+  const search = tools.get('oboete_search')?.execute('toolu_01abcdef', { query: 'retry policy' });
+  calls[0].deliver('{"memories":[]}');
+  await search;
+
+  assert.deepEqual(calls[0].args, [BUNDLE, 'search', 'retry policy', '--json']);
 });

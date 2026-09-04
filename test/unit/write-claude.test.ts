@@ -62,7 +62,7 @@ test('writeClaude returns the MCP registration arguments and quotes a path the s
     const result = writeClaude(home, { nodePath: NODE, bundlePath: bundle });
 
     // No shell is involved in the registration, so its arguments carry no quoting...
-    assert.deepEqual(result.mcpArgs, ['mcp', 'add', 'oboete', '--', NODE, bundle, 'mcp']);
+    assert.deepEqual(result.mcpArgs, ['mcp', 'add', 'oboete', '--scope', 'user', '--', NODE, bundle, 'mcp']);
     // ...while the handler is a command line an agent hands to a shell: src/setup/shell-quote.ts
     // closes the word, escapes the quote and reopens it, for all three writers alike.
     const hooks = settingsOf(home).hooks as Record<string, { hooks: { command: string }[] }[]>;

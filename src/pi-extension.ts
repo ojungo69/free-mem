@@ -19,7 +19,15 @@ export type PiTool = {
   label: string;
   description: string;
   parameters: Record<string, unknown>;
-  execute(input: Record<string, unknown>): Promise<{ content: { type: 'text'; text: string }[] }>;
+  /**
+   * Pi calls a tool with the call id first and the arguments second (`ToolDefinition.execute` of
+   * pi-coding-agent, verified against 0.85.0). A handler written to take the arguments first
+   * receives the call id string instead and every argument reads as undefined.
+   */
+  execute(
+    toolCallId: string,
+    params: Record<string, unknown>,
+  ): Promise<{ content: { type: 'text'; text: string }[] }>;
 };
 
 /** Everything the extension touches on a child process; `node:child_process` `spawn` satisfies it. */
@@ -212,12 +220,12 @@ export function piExtension(pi: PiApi, options: PiExtensionOptions): void {
     label,
     description,
     parameters,
-    execute: async (input) => {
+    execute: async (_toolCallId, params) => {
       let text = '';
       let ok = false;
       try {
         ({ text, ok } = await readChild(
-          commandFor(input ?? {}),
+          commandFor(params ?? {}),
           { stdio: ['ignore', 'pipe', 'ignore'], signal: AbortSignal.timeout(TOOL_DEADLINE_MS) },
           null,
         ));

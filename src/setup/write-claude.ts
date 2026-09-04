@@ -79,7 +79,11 @@ export function writeClaude(claudeConfigDir: string, options: WriteClaudeOptions
   applyJsonHandlers(file, handlers, { credentialBearing: true });
   return {
     file,
-    mcpArgs: ['mcp', 'add', 'oboete', '--', options.nodePath, options.bundlePath, 'mcp'],
+    // `claude mcp add` defaults to local scope, which registers the tools only for the directory
+    // setup happened to run in; contracts/mcp.md registers oboete for the user, the way the Codex
+    // and Grok writers do (verified against claude 2.x: without the flag `claude mcp get oboete`
+    // answers "No MCP server named" from any other directory).
+    mcpArgs: ['mcp', 'add', 'oboete', '--scope', 'user', '--', options.nodePath, options.bundlePath, 'mcp'],
   };
 }
 
