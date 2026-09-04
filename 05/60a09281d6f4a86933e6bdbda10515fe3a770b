@@ -1,0 +1,19 @@
+specs/007-oboete-m1-alpha/tasks.md
+  s_d9e42b4587fc81::t_d3c81ea79e562d 351-374
+---
+{
+  "schema_version": "authorship/3.0.0",
+  "git_ai_version": "1.6.16",
+  "base_commit_sha": "0560a09281d6f4a86933e6bdbda10515fe3a770b",
+  "prompts": {},
+  "sessions": {
+    "s_d9e42b4587fc81": {
+      "agent_id": {
+        "tool": "claude",
+        "id": "c71a1c70-4032-4f69-bbf0-857b7e13b519",
+        "model": "claude-opus-5"
+      },
+      "human_author": "ojungo69 <210335670+ojungo69@users.noreply.github.com>"
+    }
+  }
+}
