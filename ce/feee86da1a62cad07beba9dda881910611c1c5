@@ -1,0 +1,48 @@
+test/unit/cli-memories.test.ts
+  s_17048a941df205::t_64488ede26c9d9 148
+src/capture.ts
+  s_17048a941df205::t_dad3f55d148fc7 930,1027,1032,1041,1060,1066,1074,1077,1092
+test/unit/capture.test.ts
+  s_17048a941df205::t_1a942d22c52332 699-702
+  s_17048a941df205::t_64488ede26c9d9 680-698,703-705
+test/unit/catalog.test.ts
+  s_17048a941df205::t_dad3f55d148fc7 76,89,147
+  s_17048a941df205::t_0de93482c7edc6 63,66,70
+  s_17048a941df205::t_2aef51a569f293 29-33,37-49,81,96,105,125,130,140,158-162,167,174,183-187
+  s_17048a941df205::t_64488ede26c9d9 77,90,106-124,126-129,131-139,141-146,148-151
+src/db/migrations/0002_memory_search.sql
+  s_17048a941df205::t_dad3f55d148fc7 4-5
+test/migrations/apply.test.ts
+  s_17048a941df205::t_64488ede26c9d9 148-225
+src/memories-cli.ts
+  s_17048a941df205::t_dad3f55d148fc7 209
+src/observer/fallback.ts
+  s_17048a941df205::t_dad3f55d148fc7 244,246,249,252,256-257
+src/observer/catalog.ts
+  s_17048a941df205::t_dad3f55d148fc7 7-12,17-23,29,64-67,69-78,87-88
+  s_17048a941df205::t_2aef51a569f293 68,79
+test/unit/fallback.test.ts
+  s_17048a941df205::t_64488ede26c9d9 221-245
+src/worker/observe.ts
+  s_17048a941df205::t_dad3f55d148fc7 25,726
+test/unit/observe.test.ts
+  s_17048a941df205::t_64488ede26c9d9 2,347-378
+  s_17048a941df205::t_2aef51a569f293 203,207,317,325
+  s_17048a941df205::t_df25a126d535e6 379-381
+---
+{
+  "schema_version": "authorship/3.0.0",
+  "git_ai_version": "1.6.16",
+  "base_commit_sha": "cefeee86da1a62cad07beba9dda881910611c1c5",
+  "prompts": {},
+  "sessions": {
+    "s_17048a941df205": {
+      "agent_id": {
+        "tool": "codex",
+        "id": "01a06dec-f7b2-7102-b54f-5668bd8136fc",
+        "model": "gpt-5.6-sol"
+      },
+      "human_author": "ojungo69 <210335670+ojungo69@users.noreply.github.com>"
+    }
+  }
+}
