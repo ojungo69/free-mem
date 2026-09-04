@@ -1,0 +1,419 @@
+import assert from 'node:assert/strict';
+import { mkdirSync } from 'node:fs';
+import { join } from 'node:path';
+import type { DatabaseSync } from 'node:sqlite';
+import { test } from 'node:test';
+
+import {
+  runDelete,
+  runGet,
+  runPin,
+  runSearch,
+  runTimeline,
+  runUnpin,
+} from '../../src/memories-cli.js';
+import type { MemoryCliRuntime } from '../../src/memories-cli.js';
+import { contentHash, materialHash, memoryIdFor } from '../../src/db/identity.js';
+import { openDatabase } from '../../src/db/open.js';
+import { applyObservations } from '../../src/observer/classify.js';
+import type { ObserverOutput } from '../../src/observer/contract.js';
+import { oboetePaths } from '../../src/paths.js';
+import type { DetectorResult } from '../../src/privacy/detect.js';
+import { resolveRepoIdentity, type RepoIdentity } from '../../src/repo-identity.js';
+import { cjkBigrams } from '../../src/retrieval/fts.js';
+import type { RawEventRow } from '../../src/worker/batches.js';
+import { claimLease } from '../../src/worker/lease.js';
+import { withTempHome } from '../helpers/home.js';
+
+const NOW = 1_800_000_000_000;
+
+type MemorySeed = {
+  repoId: string;
+  title: string;
+  body: string;
+  type?: string;
+  sensitivity?: string;
+  deletedAt?: number;
+};
+
+type Command = (
+  argv: string[],
+  runtime?: Partial<MemoryCliRuntime>,
+) => Promise<number>;
+
+function insertRepo(db: DatabaseSync, identity: RepoIdentity): void {
+  db.prepare(
+    `INSERT INTO repos (id, identity_kind, normalized_identity, display_root, created_at, last_seen_at)
+     VALUES (?, ?, ?, ?, 1, 1)`,
+  ).run(identity.id, identity.identityKind, identity.normalizedIdentity, identity.root);
+}
+
+function insertMemory(db: DatabaseSync, seed: MemorySeed): string {
+  const material = materialHash(seed.title, seed.body);
+  const content = contentHash(seed.repoId, material);
+  const id = memoryIdFor(content);
+  db.prepare(
+    `INSERT INTO memories
+       (id, repo_id, type, title, body, concepts, cjk_bigrams, material_hash, content_hash,
+        sensitivity, review_state, valid_from, deleted_at, created_at)
+     VALUES (?, ?, ?, ?, ?, '[]', ?, ?, ?, ?, 'unreviewed', 1, ?, 1)`,
+  ).run(
+    id,
+    seed.repoId,
+    seed.type ?? 'discovery',
+    seed.title,
+    seed.body,
+    cjkBigrams(`${seed.title} ${seed.body}`),
+    material,
+    content,
+    seed.sensitivity ?? 'eligible',
+    seed.deletedAt ?? null,
+  );
+  return id;
+}
+
+async function withFixture(
+  fn: (fixture: {
+    home: string;
+    repo: string;
+    otherRepo: string;
+    identity: RepoIdentity;
+    otherIdentity: RepoIdentity;
+  }) => Promise<void>,
+): Promise<void> {
+  await withTempHome(async (home) => {
+    const repo = join(home, 'repos', 'current');
+    const otherRepo = join(home, 'repos', 'other');
+    mkdirSync(repo, { recursive: true });
+    mkdirSync(otherRepo, { recursive: true });
+    await fn({
+      home,
+      repo,
+      otherRepo,
+      identity: resolveRepoIdentity(repo),
+      otherIdentity: resolveRepoIdentity(otherRepo),
+    });
+  });
+}
+
+async function run(
+  command: Command,
+  argv: string[],
+  cwd: string,
+  now = NOW,
+): Promise<{ status: number; stdout: string; stderr: string }> {
+  let stdout = '';
+  let stderr = '';
+  const status = await command(argv, {
+    cwd,
+    now: () => now,
+    writeOut: (text) => {
+      stdout += text;
+    },
+    writeError: (text) => {
+      stderr += text;
+    },
+  });
+  return { status, stdout, stderr };
+}
+
+test('search returns a ranked repository hit and explains an empty lexical result', async () => {
+  await withFixture(async ({ home, repo, identity, otherIdentity }) => {
+    const opened = openDatabase({ path: oboetePaths(home).db, timeoutMs: 1000 });
+    insertRepo(opened.db, identity);
+    insertRepo(opened.db, otherIdentity);
+    const hit = insertMemory(opened.db, {
+      repoId: identity.id,
+      title: 'SQLite busy timeout',
+      body: 'Set the SQLite busy timeout to 150 milliseconds.',
+      type: 'decision',
+    });
+    insertMemory(opened.db, {
+      repoId: otherIdentity.id,
+      title: 'SQLite busy timeout',
+      body: 'This higher-scoring result belongs to another repository.',
+    });
+    opened.db.close();
+
+    const found = await run(runSearch, ['sqlite busy timeout', '--limit', '1', '--json'], repo);
+    assert.equal(found.status, 0);
+    assert.equal(found.stderr, '');
+    const parsed = JSON.parse(found.stdout) as {
+      memories: { id: string; type: string; title: string; body: string; score: number; reasons: string[] }[];
+    };
+    assert.equal(parsed.memories.length, 1);
+    assert.equal(parsed.memories[0].id, hit);
+    assert.equal(parsed.memories[0].type, 'decision');
+    assert.match(parsed.memories[0].body, /150 milliseconds/);
+    assert.equal(typeof parsed.memories[0].score, 'number');
+    assert.ok(parsed.memories[0].reasons.length > 0);
+
+    const empty = await run(runSearch, ['meteor zebra quartz'], repo);
+    assert.equal(empty.status, 0);
+    assert.match(empty.stdout, /No memories matched this query in the current repository\./);
+    assert.match(empty.stdout, /M1 search is lexical \(word match\)\./);
+    assert.match(empty.stdout, /Semantic search arrives in M2\./);
+  });
+});
+
+test('get includes provenance but exits 1 outside the repository and for a tombstone', async () => {
+  await withFixture(async ({ home, repo, identity, otherIdentity }) => {
+    const opened = openDatabase({ path: oboetePaths(home).db, timeoutMs: 1000 });
+    insertRepo(opened.db, identity);
+    insertRepo(opened.db, otherIdentity);
+    const active = insertMemory(opened.db, {
+      repoId: identity.id,
+      title: 'Current memory',
+      body: 'Visible in this repository.',
+    });
+    opened.db.prepare(
+      `INSERT INTO memory_sources
+         (memory_id, raw_event_id, citation_kind, citation_value, source_agent)
+       VALUES (?, NULL, 'file_read', 'src/example.ts', 'codex')`,
+    ).run(active);
+    const outside = insertMemory(opened.db, {
+      repoId: otherIdentity.id,
+      title: 'Other memory',
+      body: 'Must not cross the repository boundary.',
+    });
+    const deleted = insertMemory(opened.db, {
+      repoId: identity.id,
+      title: 'Deleted memory',
+      body: 'Must never surface again.',
+      deletedAt: NOW - 1,
+    });
+    opened.db.close();
+
+    const visible = await run(runGet, [active, '--json'], repo);
+    assert.equal(visible.status, 0);
+    const record = JSON.parse(visible.stdout) as { id: string; sources: { citation_value: string }[] };
+    assert.equal(record.id, active);
+    assert.deepEqual(record.sources.map((source) => source.citation_value), ['src/example.ts']);
+
+    for (const id of [outside, deleted]) {
+      const hidden = await run(runGet, [id, '--json'], repo);
+      assert.equal(hidden.status, 1);
+      assert.doesNotMatch(hidden.stdout + hidden.stderr, /Other memory|Deleted memory/);
+    }
+  });
+});
+
+test('timeline filters sessions to the current repository and optional session id', async () => {
+  await withFixture(async ({ home, repo, identity, otherIdentity }) => {
+    const opened = openDatabase({ path: oboetePaths(home).db, timeoutMs: 1000 });
+    insertRepo(opened.db, identity);
+    insertRepo(opened.db, otherIdentity);
+    for (const session of [
+      { id: 'session-current', repoId: identity.id },
+      { id: 'session-other', repoId: otherIdentity.id },
+    ]) {
+      opened.db.prepare(
+        `INSERT INTO sessions
+           (id, repo_id, agent, native_session_id, conversation_id, started_at, status, turn_count)
+         VALUES (?, ?, 'codex', ?, ?, 1, 'active', 1)`,
+      ).run(session.id, session.repoId, `native-${session.id}`, session.id);
+    }
+    opened.db.prepare(
+      `INSERT INTO turns (id, session_id, ordinal, started_at)
+       VALUES ('turn-current', 'session-current', 1, 1)`,
+    ).run();
+    const memoryId = insertMemory(opened.db, {
+      repoId: identity.id,
+      title: 'Timeline memory',
+      body: 'This memory belongs to the recorded turn.',
+      type: 'decision',
+    });
+    opened.db.prepare('UPDATE memories SET source_session_id = ? WHERE id = ?').run(
+      'session-current',
+      memoryId,
+    );
+    opened.db.prepare(
+      `INSERT INTO raw_events
+         (id, repo_id, session_id, turn_id, agent, kind, content, sensitivity,
+          classification_state, captured_at, expires_at)
+       VALUES ('event-current', ?, 'session-current', 'turn-current', 'codex', 'prompt',
+               'timeline prompt', 'eligible', 'done', 1, ?)`,
+    ).run(identity.id, NOW + 1_000);
+    opened.db.prepare(
+      `INSERT INTO memory_sources
+         (memory_id, raw_event_id, citation_kind, citation_value, source_agent)
+       VALUES (?, 'event-current', 'file_read', 'src/timeline.ts', 'codex')`,
+    ).run(memoryId);
+    opened.db.close();
+
+    const result = await run(runTimeline, ['--session', 'session-current', '--json'], repo);
+    assert.equal(result.status, 0);
+    const parsed = JSON.parse(result.stdout) as {
+      sessions: {
+        id: string;
+        turns: { ordinal: number; memory_ids: string[] }[];
+        memories: {
+          id: string;
+          type: string;
+          body: string;
+          sensitivity: string;
+          sources: { citation_value: string }[];
+        }[];
+      }[];
+    };
+    assert.deepEqual(parsed.sessions.map((session) => session.id), ['session-current']);
+    assert.deepEqual(parsed.sessions[0].turns.map((turn) => turn.ordinal), [1]);
+    assert.deepEqual(parsed.sessions[0].turns[0].memory_ids, [memoryId]);
+    assert.equal(parsed.sessions[0].memories[0].type, 'decision');
+    assert.match(parsed.sessions[0].memories[0].body, /recorded turn/);
+    assert.equal(parsed.sessions[0].memories[0].sensitivity, 'eligible');
+    assert.deepEqual(
+      parsed.sessions[0].memories[0].sources.map((source) => source.citation_value),
+      ['src/timeline.ts'],
+    );
+
+    const purged = openDatabase({ path: oboetePaths(home).db, timeoutMs: 1000 });
+    purged.db.prepare("DELETE FROM raw_events WHERE id = 'event-current'").run();
+    purged.db.close();
+    const afterRetention = await run(
+      runTimeline,
+      ['--session', 'session-current', '--json'],
+      repo,
+    );
+    const retained = JSON.parse(afterRetention.stdout) as {
+      sessions: {
+        turns: { memory_ids: string[] }[];
+        memories: { id: string; sources: { raw_event_id: string }[] }[];
+      }[];
+    };
+    assert.deepEqual(retained.sessions[0].memories.map((memory) => memory.id), [memoryId]);
+    assert.deepEqual(retained.sessions[0].memories[0].sources.map((source) => source.raw_event_id), [
+      'event-current',
+    ]);
+    assert.deepEqual(retained.sessions[0].turns[0].memory_ids, []);
+
+    const outside = await run(runTimeline, ['--session', 'session-other', '--json'], repo);
+    assert.equal(outside.status, 0);
+    assert.deepEqual(JSON.parse(outside.stdout), { sessions: [] });
+  });
+});
+
+test('pin and unpin update pinned_at and pin_order inside the repository', async () => {
+  await withFixture(async ({ home, repo, identity }) => {
+    const opened = openDatabase({ path: oboetePaths(home).db, timeoutMs: 1000 });
+    insertRepo(opened.db, identity);
+    const id = insertMemory(opened.db, {
+      repoId: identity.id,
+      title: 'Pinned memory',
+      body: 'Keep this at the front.',
+    });
+    opened.db.close();
+
+    const pinned = await run(runPin, [id, '--order', '4', '--json'], repo);
+    assert.equal(pinned.status, 0);
+    let checked = openDatabase({ path: oboetePaths(home).db, timeoutMs: 1000 });
+    let row = checked.db.prepare('SELECT pinned_at, pin_order FROM memories WHERE id = ?').get(id);
+    assert.equal(row?.pinned_at, NOW);
+    assert.equal(row?.pin_order, 4);
+    checked.db.close();
+
+    const unpinned = await run(runUnpin, [id, '--json'], repo);
+    assert.equal(unpinned.status, 0);
+    checked = openDatabase({ path: oboetePaths(home).db, timeoutMs: 1000 });
+    row = checked.db.prepare('SELECT pinned_at, pin_order FROM memories WHERE id = ?').get(id);
+    assert.equal(row?.pinned_at, null);
+    assert.equal(row?.pin_order, null);
+    checked.db.prepare('UPDATE memories SET valid_to = ? WHERE id = ?').run(NOW - 1, id);
+    checked.db.close();
+
+    const superseded = await run(runPin, [id, '--json'], repo);
+    assert.equal(superseded.status, 1);
+  });
+});
+
+test('delete keeps a tombstone and observer writes cannot recreate it under another type', async () => {
+  await withFixture(async ({ home, repo, identity }) => {
+    const title = 'Stable memory identity';
+    const body = 'The title and body define the memory regardless of type.';
+    const opened = openDatabase({ path: oboetePaths(home).db, timeoutMs: 1000 });
+    insertRepo(opened.db, identity);
+    const id = insertMemory(opened.db, { repoId: identity.id, title, body, type: 'discovery' });
+    opened.db.prepare(
+      `INSERT INTO sessions
+         (id, repo_id, agent, native_session_id, conversation_id, started_at, status, turn_count)
+       VALUES ('session-1', ?, 'codex', 'native-1', 'session-1', 1, 'active', 1)`,
+    ).run(identity.id);
+    opened.db.prepare(
+      `INSERT INTO turns (id, session_id, ordinal, started_at)
+       VALUES ('turn-1', 'session-1', 1, 1)`,
+    ).run();
+    opened.db.prepare(
+      `INSERT INTO raw_events
+         (id, repo_id, session_id, turn_id, agent, kind, content, sensitivity,
+          classification_state, captured_at, expires_at)
+       VALUES ('event-1', ?, 'session-1', 'turn-1', 'codex', 'prompt', 'remember this',
+               'eligible', 'done', 1, ?)`,
+    ).run(identity.id, NOW + 1_000);
+    opened.db.prepare(
+      `INSERT INTO observation_batches
+         (id, repo_id, session_id, through_event_id, destination, trigger, state,
+          owner_token, provider_attempts, claimed_at)
+       VALUES ('batch-1', ?, 'session-1', 'event-1', 'remote_observer', 'session_end',
+               'running', 'worker', 1, 1)`,
+    ).run(identity.id);
+    const before = opened.db
+      .prepare('SELECT material_hash, content_hash FROM memories WHERE id = ?')
+      .get(id);
+    opened.db.close();
+
+    const deleted = await run(runDelete, [id, '--json'], repo);
+    assert.equal(deleted.status, 0);
+
+    const checked = openDatabase({ path: oboetePaths(home).db, timeoutMs: 1000 });
+    assert.deepEqual(
+      checked.db.prepare('SELECT material_hash, content_hash FROM memories WHERE id = ?').get(id),
+      before,
+    );
+    assert.equal(
+      checked.db.prepare('SELECT deleted_at FROM memories WHERE id = ?').get(id)?.deleted_at,
+      NOW,
+    );
+
+    const token = claimLease(checked.db, { pid: 1, now: NOW + 1 });
+    if (token === null) assert.fail('expected the observer lease');
+    const output: ObserverOutput = {
+      observations: [
+        {
+          type: 'feature',
+          title,
+          body,
+          concepts: ['what-changed'],
+          citations: { files_read: [], files_modified: [], commits: [] },
+          source_event_ids: ['event-1'],
+          classification: { decision: 'add', target: null, reason: 'same content' },
+        },
+      ],
+    };
+    const result = await applyObservations(checked.db, token, {
+      batchId: 'batch-1',
+      repoId: identity.id,
+      sessionId: 'session-1',
+      output,
+      fallbackReason: null,
+      rows: checked.db.prepare('SELECT * FROM raw_events').all() as unknown as RawEventRow[],
+      nearby: [],
+      detect: async (text): Promise<DetectorResult> => ({
+        ok: true,
+        text,
+        texts: [],
+        redactions: [],
+        privateRemoved: 0,
+        sensitivity: 'local_only',
+        pathRule: null,
+      }),
+      now: NOW + 1,
+    });
+
+    assert.equal(result.suppressed.length, 1);
+    assert.equal(Number(checked.db.prepare('SELECT COUNT(*) AS count FROM memories').get()?.count), 1);
+    const tombstone = checked.db.prepare('SELECT type, deleted_at FROM memories WHERE id = ?').get(id);
+    assert.equal(tombstone?.type, 'discovery');
+    assert.equal(tombstone?.deleted_at, NOW);
+    checked.db.close();
+  });
+});
