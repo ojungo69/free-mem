@@ -8,6 +8,14 @@ export function isCredentialVariable(name: string): boolean {
 }
 
 /**
+ * The environment a process oboete starts on someone else's behalf gets: FR-016 keeps oboete's
+ * provider credentials on oboete's own request path, never on an agent CLI's.
+ */
+export function childEnvironment(env: NodeJS.ProcessEnv): NodeJS.ProcessEnv {
+  return Object.fromEntries(Object.entries(env).filter(([name]) => !isCredentialVariable(name)));
+}
+
+/**
  * Replaces the value of every oboete credential variable with `[credential]`.
  * FR-016 and contracts/cli.md: logs and diagnostics never contain a credential value.
  */

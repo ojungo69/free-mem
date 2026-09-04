@@ -147,7 +147,7 @@ test('a missing file is created, with its missing directory, as two-space JSON w
     // `~/.grok/hooks/` does not exist before setup runs (contracts/agents.md, Setup column).
     const file = agentFile(home, '.grok/hooks/oboete.json');
 
-    applyJsonHandlers(file, ['hooks'], { SessionStart: [oboeteHandler('oboete hook', 12)] });
+    applyJsonHandlers(file, { SessionStart: [oboeteHandler('oboete hook', 12)] });
     const written = readFileSync(file, 'utf8');
     assert.equal(written.at(-1), '\n');
     assert.ok(written.includes('\n  "hooks": {'), 'two-space indentation');
@@ -163,7 +163,7 @@ test('a missing file is created, with its missing directory, as two-space JSON w
 test('a repeat that stops wiring an event takes its handler with it', async () => {
   await withTempHome(async (home) => {
     const file = agentFile(home, '.claude/settings.json', '{}\n', 0o644);
-    applyJsonHandlers(file, ['hooks'], {
+    applyJsonHandlers(file, {
       SessionStart: [oboeteHandler('oboete hook --event SessionStart', 12)],
       PostToolUseFailure: [oboeteHandler('oboete hook --event PostToolUseFailure', 12)],
     });
@@ -173,7 +173,7 @@ test('a repeat that stops wiring an event takes its handler with it', async () =
     writeFileSync(file, `${JSON.stringify(edited, null, 2)}\n`);
 
     // FR-031 "repeatable": the narrower setup must not leave the dropped hook live.
-    applyJsonHandlers(file, ['hooks'], {
+    applyJsonHandlers(file, {
       SessionStart: [oboeteHandler('oboete hook --event SessionStart', 12)],
     });
     const after = JSON.parse(readFileSync(file, 'utf8'));
@@ -182,7 +182,7 @@ test('a repeat that stops wiring an event takes its handler with it', async () =
       oboeteHandler('oboete hook --event SessionStart', 12),
     ]);
 
-    applyJsonHandlers(file, ['hooks'], { Stop: [oboeteHandler('oboete hook --event Stop', 3)] });
+    applyJsonHandlers(file, { Stop: [oboeteHandler('oboete hook --event Stop', 3)] });
     const narrower = JSON.parse(readFileSync(file, 'utf8'));
     assert.equal('SessionStart' in narrower.hooks, false, 'the emptied array goes too');
   });
@@ -199,7 +199,7 @@ test('applyJsonHandlers replaces oboete entries in place and leaves the user ent
       0o644,
     );
 
-    applyJsonHandlers(file, ['hooks'], { SessionStart: [oboeteHandler('oboete hook', 12)] });
+    applyJsonHandlers(file, { SessionStart: [oboeteHandler('oboete hook', 12)] });
     const parsed = JSON.parse(readFileSync(file, 'utf8'));
     assert.deepEqual(parsed.hooks.SessionStart, [before, oboeteHandler('oboete hook', 12), after]);
     assert.equal(parsed.model, 'opus', 'unrelated keys survive');
@@ -207,7 +207,7 @@ test('applyJsonHandlers replaces oboete entries in place and leaves the user ent
     assert.equal(statSync(file + BACKUP_SUFFIX).mode & 0o777, 0o644, 'a plain backup keeps the mode');
 
     const written = readFileSync(file, 'utf8');
-    applyJsonHandlers(file, ['hooks'], { SessionStart: [oboeteHandler('oboete hook', 12)] });
+    applyJsonHandlers(file, { SessionStart: [oboeteHandler('oboete hook', 12)] });
     assert.equal(readFileSync(file, 'utf8'), written, 'a repeated setup writes the same bytes');
   });
 });
@@ -215,19 +215,19 @@ test('applyJsonHandlers replaces oboete entries in place and leaves the user ent
 test('a developer edit made after setup survives the next setup and the removal', async () => {
   await withTempHome(async (home) => {
     const file = agentFile(home, '.claude/settings.json', '{}\n', 0o644);
-    applyJsonHandlers(file, ['hooks'], { SessionStart: [oboeteHandler('oboete hook', 12)] });
+    applyJsonHandlers(file, { SessionStart: [oboeteHandler('oboete hook', 12)] });
 
     const edited = JSON.parse(readFileSync(file, 'utf8'));
     edited.hooks.SessionStart.push(userHandler);
     edited.model = 'sonnet';
     writeFileSync(file, `${JSON.stringify(edited, null, 2)}\n`);
 
-    applyJsonHandlers(file, ['hooks'], { SessionStart: [oboeteHandler('oboete hook', 12)] });
+    applyJsonHandlers(file, { SessionStart: [oboeteHandler('oboete hook', 12)] });
     const reapplied = JSON.parse(readFileSync(file, 'utf8'));
     assert.deepEqual(reapplied.hooks.SessionStart, [oboeteHandler('oboete hook', 12), userHandler]);
     assert.equal(reapplied.model, 'sonnet');
 
-    removeJsonHandlers(file, ['hooks']);
+    removeJsonHandlers(file);
     const removed = JSON.parse(readFileSync(file, 'utf8'));
     assert.deepEqual(removed.hooks.SessionStart, [userHandler], 'only oboete entries are stripped');
     assert.equal(removed.model, 'sonnet');
@@ -242,19 +242,19 @@ test('removeJsonHandlers drops the arrays and the container it emptied and resto
     const original = `${JSON.stringify(settings, null, 4)}\n`;
     const file = agentFile(home, '.claude/settings.json', original, 0o644);
 
-    applyJsonHandlers(file, ['hooks'], {
+    applyJsonHandlers(file, {
       SessionStart: [oboeteHandler('oboete hook', 12)],
       Stop: [oboeteHandler('oboete hook stop', 3)],
     });
     assert.ok(readFileSync(file, 'utf8').includes('SessionStart'));
 
-    removeJsonHandlers(file, ['hooks']);
+    removeJsonHandlers(file);
     const restored = readFileSync(file, 'utf8');
     assert.deepEqual(JSON.parse(restored), settings, 'removal restores the pre-setup settings');
     assert.equal(restored.includes('oboete'), false, 'and leaves no trace of oboete behind');
     assert.equal(existsSync(file + BACKUP_SUFFIX), false);
 
-    removeJsonHandlers(file, ['hooks']);
+    removeJsonHandlers(file);
     assert.equal(readFileSync(file, 'utf8'), restored, 'a second removal changes nothing');
   });
 });
@@ -263,17 +263,34 @@ test('applyJsonHandlers refuses a root that is not an object and a handler witho
   await withTempHome(async (home) => {
     const list = agentFile(home, '.claude/settings.json', '[]\n');
     assert.throws(
-      () => applyJsonHandlers(list, ['hooks'], { SessionStart: [oboeteHandler('oboete hook', 12)] }),
+      () => applyJsonHandlers(list, { SessionStart: [oboeteHandler('oboete hook', 12)] }),
       isManagedFileError('not_an_object'),
     );
     assert.equal(readFileSync(list, 'utf8'), '[]\n');
 
     const file = agentFile(home, '.claude/other.json', '{}\n');
     assert.throws(
-      () => applyJsonHandlers(file, ['hooks'], { SessionStart: [{ type: 'command', command: 'x' }] }),
+      () => applyJsonHandlers(file, { SessionStart: [{ type: 'command', command: 'x' }] }),
       isManagedFileError('unmarked_handler'),
     );
     assert.equal(readFileSync(file, 'utf8'), '{}\n', 'an unremovable entry is never written');
+  });
+});
+
+test('a `hooks` key that is not an object is reported instead of overwritten', async () => {
+  await withTempHome(async (home) => {
+    // Codex skips a handler whose wiring it cannot read, so a `hooks` the developer left as a
+    // string or a list has to surface as an error rather than be replaced by oboete's container.
+    for (const malformed of ['"off"', '[]']) {
+      const original = `{\n  "hooks": ${malformed}\n}\n`;
+      const file = agentFile(home, `.claude/hooks-${malformed.length}.json`, original);
+      assert.throws(
+        () => applyJsonHandlers(file, { SessionStart: [oboeteHandler('oboete hook', 12)] }),
+        isManagedFileError('not_an_object'),
+      );
+      assert.throws(() => removeJsonHandlers(file), isManagedFileError('not_an_object'));
+      assert.equal(readFileSync(file, 'utf8'), original, 'the developer\'s file is left alone');
+    }
   });
 });
 
@@ -290,7 +307,7 @@ test('a symlink that leaves its directory is refused, one that stays is written 
     mkdirSync(dirname(escapingJson), { recursive: true });
     symlinkSync(agentFile(home, 'dotfiles/settings.json', '{}\n'), escapingJson);
     assert.throws(
-      () => applyJsonHandlers(escapingJson, ['hooks'], { SessionStart: [oboeteHandler('h', 12)] }),
+      () => applyJsonHandlers(escapingJson, { SessionStart: [oboeteHandler('h', 12)] }),
       isManagedFileError('symlink_escape'),
     );
 

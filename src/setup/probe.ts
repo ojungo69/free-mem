@@ -6,8 +6,9 @@ import { tmpdir } from 'node:os';
 import { dirname, join } from 'node:path';
 import { performance } from 'node:perf_hooks';
 import type { DatabaseSync } from 'node:sqlite';
+import { setTimeout as delay } from 'node:timers/promises';
 
-import { isCredentialVariable } from '../log.js';
+import { childEnvironment } from '../log.js';
 import type { AgentDetection, SetupAgent } from './detect.js';
 
 const PROBE_DEADLINE_MS = 90_000;
@@ -40,11 +41,6 @@ type Invocation = {
 type ProcessOutcome =
   | { kind: 'closed'; code: number | null }
   | { kind: 'error'; error: unknown };
-
-/** FR-016: oboete's provider credentials stay on oboete's own request path, never on the agent's. */
-function childEnvironment(env: NodeJS.ProcessEnv): NodeJS.ProcessEnv {
-  return Object.fromEntries(Object.entries(env).filter(([name]) => !isCredentialVariable(name)));
-}
 
 /**
  * The probe only needs one turn with no tool, so it runs with the agent's own guardrails on and in
@@ -157,21 +153,6 @@ function elapsed(now: () => number, started: number): number {
   return Math.max(0, Math.round(now() - started));
 }
 
-/** Resolves true when the interval passed, false when the shared deadline ended the wait. */
-function waitBeforeRetry(signal: AbortSignal): Promise<boolean> {
-  return new Promise((resolve) => {
-    const onAbort = (): void => {
-      clearTimeout(timer);
-      resolve(false);
-    };
-    const timer = setTimeout(() => {
-      signal.removeEventListener('abort', onAbort);
-      resolve(true);
-    }, PROBE_POLL_INTERVAL_MS);
-    signal.addEventListener('abort', onAbort, { once: true });
-  });
-}
-
 /**
  * The marker can reach storage after the CLI exits (Codex runs its async handler then, Pi captures
  * in a detached child), so a clean run keeps looking until the shared deadline (R12).
@@ -193,7 +174,12 @@ async function lookupBeforeDeadline(
     }
     if (found) return 'found';
     if (!retry) return 'missing';
-    if (!(await waitBeforeRetry(signal))) return 'timeout';
+    // The shared deadline aborts the wait, and timers/promises reports that as a rejection.
+    try {
+      await delay(PROBE_POLL_INTERVAL_MS, undefined, { signal });
+    } catch {
+      return 'timeout';
+    }
   }
 }
 

@@ -27,13 +27,6 @@ const SYNTHETIC_REMOTE = "https://example.invalid/oboete-e2e.git";
 const HERE = path.dirname(fileURLToPath(import.meta.url));
 const REPO_ROOT = path.resolve(HERE, "../..");
 
-export class UsageError extends Error {
-  constructor(message) {
-    super(message);
-    this.name = "UsageError";
-  }
-}
-
 class PreconditionError extends Error {
   constructor(message) {
     super(message);
@@ -59,7 +52,7 @@ export function enumeratePairs(spec) {
     return AGENTS.flatMap((from) => AGENTS.filter((to) => to !== from).map((to) => ({ from, to })));
   }
   if (typeof spec !== "string" || spec.trim() === "") {
-    throw new UsageError("--pairs must be 'all' or a comma-separated A:B list");
+    throw new Error("--pairs must be 'all' or a comma-separated A:B list");
   }
 
   const pairs = [];
@@ -67,15 +60,15 @@ export function enumeratePairs(spec) {
   for (const item of spec.split(",")) {
     const parts = item.split(":").map((value) => value.trim().toLowerCase());
     if (parts.length !== 2 || parts.some((value) => value === "")) {
-      throw new UsageError(`invalid pair '${item}'; expected A:B`);
+      throw new Error(`invalid pair '${item}'; expected A:B`);
     }
     const [from, to] = parts;
     if (!AGENT_SET.has(from) || !AGENT_SET.has(to)) {
-      throw new UsageError(`unknown agent in pair '${item}'; use ${AGENTS.join(", ")}`);
+      throw new Error(`unknown agent in pair '${item}'; use ${AGENTS.join(", ")}`);
     }
-    if (from === to) throw new UsageError(`pair '${item}' must name two distinct agents`);
+    if (from === to) throw new Error(`pair '${item}' must name two distinct agents`);
     const key = `${from}:${to}`;
-    if (seen.has(key)) throw new UsageError(`duplicate pair '${key}'`);
+    if (seen.has(key)) throw new Error(`duplicate pair '${key}'`);
     seen.add(key);
     pairs.push({ from, to });
   }
@@ -83,33 +76,30 @@ export function enumeratePairs(spec) {
 }
 
 export function parseArguments(argv) {
-  let values;
-  try {
-    ({ values } = parseNodeArgs({
-      args: argv,
-      strict: true,
-      options: {
-        pairs: { type: "string", default: "all" },
-        "no-credentials": { type: "boolean", default: false },
-        daily: { type: "boolean", default: false },
-        timeout: { type: "string", default: String(DEFAULT_TIMEOUT_MS / 1000) },
-        "run-dir": { type: "string" },
-        help: { type: "boolean", short: "h", default: false },
-      },
-    }));
-  } catch (error) {
-    throw new UsageError(error instanceof Error ? error.message : String(error));
-  }
+  // main() turns anything thrown here into the usage message and exit 2, so the message Node's
+  // own parseArgs writes for an unknown option is the one the developer sees.
+  const { values } = parseNodeArgs({
+    args: argv,
+    strict: true,
+    options: {
+      pairs: { type: "string", default: "all" },
+      "no-credentials": { type: "boolean", default: false },
+      daily: { type: "boolean", default: false },
+      timeout: { type: "string", default: String(DEFAULT_TIMEOUT_MS / 1000) },
+      "run-dir": { type: "string" },
+      help: { type: "boolean", short: "h", default: false },
+    },
+  });
 
   if (!/^[1-9]\d*$/.test(values.timeout)) {
-    throw new UsageError("--timeout must be a positive integer number of seconds");
+    throw new Error("--timeout must be a positive integer number of seconds");
   }
   const timeoutMs = Number(values.timeout) * 1000;
   if (!Number.isSafeInteger(timeoutMs)) {
-    throw new UsageError("--timeout must be a positive integer number of seconds");
+    throw new Error("--timeout must be a positive integer number of seconds");
   }
   if (values["run-dir"] !== undefined && values["run-dir"].trim() === "") {
-    throw new UsageError("--run-dir must not be empty");
+    throw new Error("--run-dir must not be empty");
   }
 
   return {
@@ -182,15 +172,6 @@ function recallPrompt(agent, noCredentials) {
   ].join("\n");
 }
 
-function replaceRunMarker(value) {
-  if (typeof value === "string") return value.replaceAll("<repo>", "<run>");
-  if (Array.isArray(value)) return value.map(replaceRunMarker);
-  if (value && typeof value === "object") {
-    return Object.fromEntries(Object.entries(value).map(([key, item]) => [key, replaceRunMarker(item)]));
-  }
-  return value;
-}
-
 export function createReport({
   runId,
   runDir,
@@ -231,7 +212,7 @@ export function createReport({
       ...(result.searchAttempts === undefined ? {} : { search_attempts: result.searchAttempts }),
     })),
   };
-  return replaceRunMarker(redactValue(report, runDir));
+  return redactValue(report, runDir, "<run>");
 }
 
 function configuredHome(env, name, fallback) {
@@ -377,7 +358,7 @@ function prepareAgent(agent, directory, homes, prompt, repo) {
       };
     }
     default:
-      throw new UsageError(`unknown agent: ${agent}`);
+      throw new Error(`unknown agent: ${agent}`);
   }
 }
 
@@ -403,13 +384,7 @@ async function launchAgent(agent, directory, repo, prompt, options, homes, depen
   return { ...proc, stdoutPath, stderrPath };
 }
 
-function rowsFromSearch(value) {
-  if (Array.isArray(value)) return value;
-  if (!value || typeof value !== "object") return [];
-  const nested = Object.values(value).flatMap((item) => rowsFromSearch(item));
-  return nested.length === 0 ? [value] : nested;
-}
-
+/** `oboete search --json` always answers with `{ memories: [...] }` (src/memories-cli.ts). */
 function searchContainsFacts(output, facts) {
   let parsed;
   try {
@@ -417,7 +392,7 @@ function searchContainsFacts(output, facts) {
   } catch {
     return false;
   }
-  return rowsFromSearch(parsed).some((row) => assertAgentOutput(JSON.stringify(row), facts).pass);
+  return (parsed?.memories ?? []).some((row) => assertAgentOutput(JSON.stringify(row), facts).pass);
 }
 
 async function waitForSummary(repo, directory, facts, options, dependencies, env) {
