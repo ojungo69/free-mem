@@ -5,6 +5,7 @@ import { fileURLToPath } from "node:url";
 import {
   GROK_EVENTS,
   GROK_ISOLATION_ENV,
+  agentPath,
   childEnv,
   compactionIdentity,
   finalText,
@@ -232,7 +233,9 @@ async function tuiTwoCompact(dir, { home, repo }) {
       name,
       command: `grok --cwd ${shellQuote(repo)} --yolo`,
       cwd: repo,
-      env: childEnv({ GROK_HOME: home, ...GROK_ISOLATION_ENV, TERM: "xterm-256color" }),
+      // The command is a bare `grok`, so the pane needs the probe PATH as well; see the note in
+      // probes/claude.mjs for why this is a named list rather than the whole environment.
+      env: { GROK_HOME: home, ...GROK_ISOLATION_ENV, TERM: "xterm-256color", PATH: agentPath() },
     });
     await tmux.waitFor(/Grok|Ask|❯|›|session|\//i, 90_000);
     tmux.send("say hi then wait");

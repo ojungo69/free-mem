@@ -317,9 +317,13 @@ test('the agent CLI is spawned by the absolute path detection resolved, never by
     // `spawn` resolves a bare name through PATH itself, and a PATH holding '.' or an empty entry
     // would run a file called `claude` out of the developer's repository -- the reason
     // src/setup/detect.ts refuses a relative PATH entry when it resolves the CLI in the first place.
+    // Registration removes before it adds, because `claude mcp add` refuses a name it already
+    // holds; both removals name the scope the registration writes, or claude refuses that too once
+    // an older local-scope entry is there as well.
     assert.deepEqual(context.calls, [
+      [join(bin, 'claude'), 'mcp', 'remove', 'oboete', '--scope', 'user'],
       [join(bin, 'claude'), 'mcp', 'add', 'oboete', '--scope', 'user', '--', NODE, BUNDLE, 'mcp'],
-      [join(bin, 'claude'), 'mcp', 'remove', 'oboete'],
+      [join(bin, 'claude'), 'mcp', 'remove', 'oboete', '--scope', 'user'],
     ]);
   });
 });

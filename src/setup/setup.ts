@@ -33,7 +33,7 @@ import {
 } from './detect.js';
 import { ManagedFileError } from './managed-block.js';
 import { probeEventStored, runProbes, type ProbeResult } from './probe.js';
-import { removeClaude, writeClaude } from './write-claude.js';
+import { MCP_REMOVE_ARGS, removeClaude, writeClaude } from './write-claude.js';
 import { removeCodex, writeCodex } from './write-codex.js';
 import { removeGrok, writeGrok } from './write-grok.js';
 import { piLoaderPath, removePi, writePi } from './write-pi.js';
@@ -88,7 +88,9 @@ function defaults(): SetupDeps {
       const result = spawnSync(command[0] ?? '', command.slice(1), {
         encoding: 'utf8',
         env,
-        stdio: 'ignore',
+        // The agent CLI explains its own refusals ("already exists in user config", "exists in
+        // multiple scopes"); discarding that leaves the developer with an exit status to guess at.
+        stdio: ['ignore', 'pipe', 'pipe'],
         timeout: 60_000,
       });
       if (result.error !== undefined) {
@@ -98,7 +100,14 @@ function defaults(): SetupDeps {
           reason: missing ? `${command[0]} is not there any more` : describe(result.error),
         };
       }
-      return { ok: result.status === 0, reason: `it exited with status ${result.status}` };
+      const said = `${result.stdout ?? ''}\n${result.stderr ?? ''}`
+        .split('\n')
+        .map((line) => line.trim())
+        .find((line) => line !== '');
+      return {
+        ok: result.status === 0,
+        reason: said ?? `it exited with status ${result.status}`,
+      };
     },
     write: (text) => process.stdout.write(text),
     node: process.execPath,
@@ -350,6 +359,10 @@ function wire(
     switch (detection.agent) {
       case 'claude': {
         const result = writeClaude(home, { nodePath: deps.node, bundlePath: deps.bundle });
+        // `claude mcp add` refuses a name it already holds, and setup is a command a developer runs
+        // again (after an upgrade, or to repair a file). The removal makes the pair idempotent and
+        // repoints an entry left by an older bundle path; it fails harmlessly when there is none.
+        runAgentCli(detection, MCP_REMOVE_ARGS, deps);
         const mcp = runAgentCli(detection, result.mcpArgs, deps);
         if (!mcp.ok) {
           note(
@@ -404,7 +417,7 @@ function unwire(
     switch (detection.agent) {
       case 'claude': {
         removeClaude(home);
-        const mcp = runAgentCli(detection, ['mcp', 'remove', 'oboete'], deps);
+        const mcp = runAgentCli(detection, MCP_REMOVE_ARGS, deps);
         if (!mcp.ok) {
           note(`claude: the memory tools could not be unregistered because ${mcp.reason}.`);
         }

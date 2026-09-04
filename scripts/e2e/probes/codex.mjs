@@ -212,7 +212,9 @@ async function withTui(dir, { home, repo, extra = [], run }) {
   const name = "obc-" + Date.now().toString(36) + "-" + Math.random().toString(36).slice(2, 6);
   let tui;
   try {
-    tui = tmuxSession({ name, command: tuiCmd(home, extra), cwd: repo, env: childEnv({ TERM: "xterm-256color" }) });
+    // tuiCmd already sets CODEX_HOME, PATH, HOME and TERM on the command itself, so the session
+    // needs no variables of its own; see the note in probes/claude.mjs.
+    tui = tmuxSession({ name, command: tuiCmd(home, extra), cwd: repo });
     return await run(tui, name);
   } finally {
     try {

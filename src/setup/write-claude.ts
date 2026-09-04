@@ -79,13 +79,21 @@ export function writeClaude(claudeConfigDir: string, options: WriteClaudeOptions
   applyJsonHandlers(file, handlers, { credentialBearing: true });
   return {
     file,
-    // `claude mcp add` defaults to local scope, which registers the tools only for the directory
-    // setup happened to run in; contracts/mcp.md registers oboete for the user, the way the Codex
-    // and Grok writers do (verified against claude 2.x: without the flag `claude mcp get oboete`
-    // answers "No MCP server named" from any other directory).
-    mcpArgs: ['mcp', 'add', 'oboete', '--scope', 'user', '--', options.nodePath, options.bundlePath, 'mcp'],
+    mcpArgs: ['mcp', 'add', 'oboete', ...MCP_SCOPE, '--', options.nodePath, options.bundlePath, 'mcp'],
   };
 }
+
+/**
+ * `claude mcp add` and `claude mcp remove` both default to local scope, which registers the tools
+ * for the directory setup happened to run in and nowhere else; contracts/mcp.md registers oboete
+ * for the user, the way the Codex and Grok writers do. Verified against claude 2.1.260: without the
+ * flag `claude mcp get oboete` answers "No MCP server named" from any other directory, and a
+ * scope-less `remove` refuses with "exists in multiple scopes" once both scopes hold an entry.
+ */
+const MCP_SCOPE = ['--scope', 'user'] as const;
+
+/** The removal that matches the registration above; `oboete setup --remove` runs it. */
+export const MCP_REMOVE_ARGS = ['mcp', 'remove', 'oboete', ...MCP_SCOPE] as const;
 
 /**
  * Takes the oboete handlers back out of `settings.json` and leaves everything else as it was. What

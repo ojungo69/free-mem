@@ -369,6 +369,15 @@ Task: "T023 src/repo-identity.ts + tests"
 - `oboete setup` registers the Claude, Codex and Grok MCP servers while `oboete mcp` is still the
   T077 stub, so `claude mcp get oboete` reports "Failed to connect" until T077 lands. Decide whether
   the registration waits for T077 or the setup output says so.
+- `oboete setup --remove` unregisters the Claude tools in user scope only. An alpha install made
+  before the scope fix registered them in the directory setup ran in, and that entry survives the
+  removal (found in the isolated account, cleared by hand). Either setup names those directories in
+  its output, or the first release note says to run `claude mcp remove oboete --scope local` there.
+- The isolated run passes without the Pi tool surface working: the 2026-09-04 run was measured with
+  every Pi tool answering "oboete could not run that command", and the Pi pairs still passed,
+  because delivery goes through the `before_agent_start` injection. The harness therefore cannot
+  detect a broken tool surface -- that defect was found by hand. A pair that asks the receiving
+  agent to use a tool would close it.
 - The isolated user runs pi-coding-agent 0.84.4 and this machine's developer account 0.85.0; the
   `ToolDefinition.execute(toolCallId, params, signal, onUpdate, ctx)` declaration is identical in
   both, so the T051 signature fix covers the two versions the project has seen.

@@ -5,7 +5,6 @@ import { setTimeout as sleep } from "node:timers/promises";
 import {
   CLAUDE_EVENTS,
   binVersion,
-  childEnv,
   compactionIdentity,
   finalText,
   gitInit,
@@ -201,11 +200,16 @@ async function tuiTwoCompacts(dir, repo) {
     { mode: 0o755 },
   );
   const name = `pbc${process.pid}${Date.now().toString(36)}`.replace(/[^a-zA-Z0-9]/g, "").slice(0, 24);
+  // tmuxSession turns each variable into a `-e NAME=VALUE` argument of the tmux client, and a
+  // command line is world-readable in /proc, so a pane is handed the variables it needs rather
+  // than a copy of the developer's environment. The pane inherits the rest from the tmux server,
+  // which probe-lib/tmux.mjs already strips of credentials.
   const tmux = tmuxSession({
     name,
     command: launch,
     cwd: repo,
-    env: childEnv({ TERM: "xterm-256color" }),
+    // The launch script above exports the PATH the agent needs.
+    env: { TERM: "xterm-256color" },
   });
   const paneLog = path.join(dir, "tmux-pane.txt");
   const dump = (label) => {

@@ -45,7 +45,11 @@ errors; protocol errors (`-32602`) are reserved for invalid arguments.
 
 ## Registration (verified by the R13 probe and the E2E run)
 
-- Claude Code: `claude mcp add oboete -- "<node>" "<bundle>" mcp` (user scope)
+- Claude Code: `claude mcp add oboete --scope user -- "<node>" "<bundle>" mcp`, and
+  `claude mcp remove oboete --scope user` to take it back. Both default to local scope, which
+  reaches only the directory setup ran in, and a scope-less removal refuses outright once an
+  entry exists in more than one scope. Setup removes before it adds, because `add` refuses a
+  name that is already registered.
 - Codex: `[mcp_servers.oboete] command = "<node>" args = ["<bundle>", "mcp"]` inside the managed
   block of `~/.codex/config.toml`
 - Grok Build: its MCP server configuration as confirmed by the probe

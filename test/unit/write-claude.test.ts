@@ -3,7 +3,7 @@ import { chmodSync, existsSync, mkdirSync, readFileSync, statSync, writeFileSync
 import { join } from 'node:path';
 import { test } from 'node:test';
 
-import { removeClaude, writeClaude } from '../../src/setup/write-claude.js';
+import { MCP_REMOVE_ARGS, removeClaude, writeClaude } from '../../src/setup/write-claude.js';
 import { withTempHome } from '../helpers/home.js';
 
 const NODE = '/opt/node/bin/node';
@@ -63,6 +63,7 @@ test('writeClaude returns the MCP registration arguments and quotes a path the s
 
     // No shell is involved in the registration, so its arguments carry no quoting...
     assert.deepEqual(result.mcpArgs, ['mcp', 'add', 'oboete', '--scope', 'user', '--', NODE, bundle, 'mcp']);
+    assert.deepEqual(MCP_REMOVE_ARGS, ['mcp', 'remove', 'oboete', '--scope', 'user']);
     // ...while the handler is a command line an agent hands to a shell: src/setup/shell-quote.ts
     // closes the word, escapes the quote and reopens it, for all three writers alike.
     const hooks = settingsOf(home).hooks as Record<string, { hooks: { command: string }[] }[]>;

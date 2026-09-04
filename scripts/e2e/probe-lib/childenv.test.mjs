@@ -41,9 +41,10 @@ test("childEnv keeps oboete credentials from every agent CLI and hands them over
 
     const agent = childEnv(isolation);
     // The names are written out rather than tested with the predicate the filter itself uses: a
-    // predicate that stopped recognising a variable would otherwise agree with the leak.
+    // predicate that stopped recognising a variable would otherwise agree with the leak. A blanket
+    // rule over the OBOETE_ prefix would be wrong here: OBOETE_TEST_FAULT and OBOETE_HOME are
+    // documented variables a shell may legitimately carry into a probe.
     for (const name of Object.keys(credentials)) assert.equal(agent[name], undefined, name);
-    for (const name of Object.keys(agent)) assert.ok(!name.startsWith("OBOETE_") || name === "OBOETE_HOME", name);
     for (const [name, value] of Object.entries(isolation)) assert.equal(agent[name], value, name);
     assert.ok(agent.PATH);
 

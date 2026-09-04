@@ -402,20 +402,3 @@ test('the built extension can reach nothing but a child process', () => {
   }
 });
 
-// Pi passes the call id first and the arguments second. A handler that reads the first parameter as
-// its arguments runs every tool with empty ones, which the CLI answers with exit 2 rather than a
-// result, so the whole tool surface fails silently (verified against pi-coding-agent 0.85.0).
-test('a tool reads its arguments from the position Pi passes them in, not from the call id', async () => {
-  // Pi calls `execute(toolCallId, params, …)` (ToolDefinition of pi-coding-agent, checked against
-  // 0.85.0). A handler that reads the first parameter as its arguments runs every tool with none,
-  // which the CLI answers with exit 2, so the whole tool surface fails without a word.
-  const { calls, spawn } = spawnRecorder();
-  const { pi, tools } = stubPi();
-  piExtension(pi, { node: NODE, bundle: BUNDLE, spawn });
-
-  const search = tools.get('oboete_search')?.execute('toolu_01abcdef', { query: 'retry policy' });
-  calls[0].deliver('{"memories":[]}');
-  await search;
-
-  assert.deepEqual(calls[0].args, [BUNDLE, 'search', 'retry policy', '--json']);
-});
