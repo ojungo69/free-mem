@@ -42,3 +42,23 @@ one of those three agents. SC-001 stays open until the balance is restored and t
 The Codex legs run with `--dangerously-bypass-hook-trust`, because the harness copies `hooks.json`
 into the pair directory while a Codex trust key names the absolute path of the original file. So
 this run does not gate the trust-hash rule; that gap is being closed separately.
+
+## 2026-09-05 wiring re-verification (isolated user, after 037a5bb)
+
+The two defects 037a5bb fixed were found by driving the real CLIs, so the fixes were re-checked the
+same way. The bundle built from 037a5bb was installed for the isolated user
+(`npm i -g` of `npm pack`, so the shipped bundle rather than the worktree source), and
+`oboete setup --yes --accept-egress` reported all four agents `wired` with a passing probe.
+
+| check | command | result |
+|---|---|---|
+| Claude MCP scope | `claude mcp get oboete` from a temporary directory that is not the setup directory | `Scope: User config (available in all your projects)`; the entry is under the top-level `mcpServers` of `~/.claude.json` |
+| Pi tool arguments | `pi -p 'Call the oboete_search tool with query "cedar" and limit 3 …'` in a fresh repository | the tool returned `{"memories":[],"reason":"No memories matched this query in the current repository.",…}` — the query reached `oboete search`, where before the fix every tool answered "oboete could not run that command" |
+
+`claude mcp get oboete` also reports `Status: ✘ Failed to connect`, which is expected: `oboete mcp`
+is still the T077 stub and answers "oboete mcp is not implemented yet". The registration is what
+this check covers.
+
+The isolated user runs pi-coding-agent 0.84.4 and this machine's developer account runs 0.85.0; the
+`ToolDefinition.execute(toolCallId, params, signal, onUpdate, ctx)` declaration is identical in both,
+so the fix matches both versions.
