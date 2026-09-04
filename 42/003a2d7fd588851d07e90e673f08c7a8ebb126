@@ -1,0 +1,19 @@
+scripts/e2e/isolated-user.mjs
+  s_d9e42b4587fc81::t_f282e6712fbe3c 482-484,563-571,575-586
+---
+{
+  "schema_version": "authorship/3.0.0",
+  "git_ai_version": "1.6.16",
+  "base_commit_sha": "42003a2d7fd588851d07e90e673f08c7a8ebb126",
+  "prompts": {},
+  "sessions": {
+    "s_d9e42b4587fc81": {
+      "agent_id": {
+        "tool": "claude",
+        "id": "c71a1c70-4032-4f69-bbf0-857b7e13b519",
+        "model": "claude-opus-5"
+      },
+      "human_author": "ojungo69 <210335670+ojungo69@users.noreply.github.com>"
+    }
+  }
+}
