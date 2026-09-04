@@ -1,0 +1,50 @@
+src/events.ts
+  s_661e64b5f7a2a8::t_f8e54ced155c66 168
+specs/007-oboete-m1-alpha/tasks.md
+  s_661e64b5f7a2a8::t_6e4f109c6daa61 135
+test/unit/probe.test.ts
+  s_661e64b5f7a2a8::t_8254e0f1d7d974 185-188,190-218
+  s_661e64b5f7a2a8::t_d632683f4c415f 107,111-118
+  s_661e64b5f7a2a8::t_c7b7bf6c363c0a 1-106,108-110,119-130,133-184,219-256
+  s_661e64b5f7a2a8::t_5b24abb6535050 131-132
+  s_661e64b5f7a2a8::t_67c3f6755cb968 189
+src/setup/detect.ts
+  s_661e64b5f7a2a8::t_a20240659912f8 3-15,18,20,27-43,46-118,120-121,129,132-150,152-161,163-176,178-181,187,189-191,193-218,220,223-272,275,279,283-284
+  s_661e64b5f7a2a8::t_66b2a0baac3cca 276-278,280-282
+  s_661e64b5f7a2a8::t_9f9ff3207e67e0 19
+  s_661e64b5f7a2a8::t_e0d1d8314eb747 1-2,21-26,119,122-128,130-131,219,221-222,273-274
+  s_661e64b5f7a2a8::t_547cc5eac10fa8 44-45,151,177,184-186,192
+  s_661e64b5f7a2a8::t_c356fe62e0db9e 182-183,188
+  s_661e64b5f7a2a8::t_f8e54ced155c66 16-17,162
+src/setup/probe.ts
+  s_661e64b5f7a2a8::t_a20240659912f8 2,4-11,13-43,45-48,58-63,73-106,108-112,133-142,165-197,214-215,221-242,248-275
+  s_661e64b5f7a2a8::t_8e7bd8e6917483 156,243-247
+  s_661e64b5f7a2a8::t_d632683f4c415f 49-57,64-72
+  s_661e64b5f7a2a8::t_fe8668e4610a72 107
+  s_661e64b5f7a2a8::t_9f9ff3207e67e0 12
+  s_661e64b5f7a2a8::t_bf6c2fbef6deaf 44
+  s_661e64b5f7a2a8::t_547cc5eac10fa8 125-127,129-130,143-155,157-164,198-213,216-220
+  s_661e64b5f7a2a8::t_66b2a0baac3cca 1
+  s_661e64b5f7a2a8::t_e0d1d8314eb747 3,113-124,128,131-132
+test/unit/detect.test.ts
+  s_661e64b5f7a2a8::t_fe8668e4610a72 20,24-33
+  s_661e64b5f7a2a8::t_c7b7bf6c363c0a 1-10,15-19,22,34-196
+  s_661e64b5f7a2a8::t_21e590ba2b66ff 11-14,21
+  s_661e64b5f7a2a8::t_9f9ff3207e67e0 23
+---
+{
+  "schema_version": "authorship/3.0.0",
+  "git_ai_version": "1.6.16",
+  "base_commit_sha": "a0fe91e2d41f37b01f2958fb7d6ab5c4eb45b0e5",
+  "prompts": {},
+  "sessions": {
+    "s_661e64b5f7a2a8": {
+      "agent_id": {
+        "tool": "codex",
+        "id": "01a06bd5-3dc4-7b83-af16-e3f6521368b7",
+        "model": "gpt-5.6-sol"
+      },
+      "human_author": "ojungo69 <210335670+ojungo69@users.noreply.github.com>"
+    }
+  }
+}
