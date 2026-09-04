@@ -35,13 +35,17 @@ jobs:
         run: npm ci
       - name: Engine coverage
         # package.json test:coverage enables --experimental-test-coverage but has no lcov reporter.
+        # The scripts/e2e harness tests belong in this step: sonar.sources is scripts/, and Sonar
+        # charges lines_to_cover for every source file whether or not the lcov report names it
+        # (measured 2026-09-04: probe-lib/agents.mjs at 0% / 404 uncovered with no lcov entry at
+        # all), so running them uninstrumented would report 0%, not exclude them.
         run: |
           npm run build
           mkdir -p coverage
           node --test --enable-source-maps --experimental-test-coverage \
             --test-reporter=spec --test-reporter-destination=stdout \
             --test-reporter=lcov --test-reporter-destination=coverage/lcov.info \
-            'build/test/unit/**/*.test.mjs' 'build/test/migrations/**/*.test.mjs' 'scripts/e2e/*.test.mjs'
+            'build/test/unit/**/*.test.mjs' 'build/test/migrations/**/*.test.mjs' 'scripts/e2e/**/*.test.mjs'
       - name: End-to-end bundle tests
         # The hook tests time the real bundle against its 300 ms deadline, so they run alone and
         # without coverage instrumentation, the way `npm test` runs them.
