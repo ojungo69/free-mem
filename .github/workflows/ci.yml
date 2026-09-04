@@ -41,7 +41,7 @@ jobs:
           node --test --enable-source-maps --experimental-test-coverage \
             --test-reporter=spec --test-reporter-destination=stdout \
             --test-reporter=lcov --test-reporter-destination=coverage/lcov.info \
-            'build/test/unit/**/*.test.mjs' 'build/test/migrations/**/*.test.mjs'
+            'build/test/unit/**/*.test.mjs' 'build/test/migrations/**/*.test.mjs' 'scripts/e2e/*.test.mjs'
       - name: End-to-end bundle tests
         # The hook tests time the real bundle against its 300 ms deadline, so they run alone and
         # without coverage instrumentation, the way `npm test` runs them.

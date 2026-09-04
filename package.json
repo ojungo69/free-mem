@@ -21,7 +21,7 @@
     "build": "node scripts/build.mjs",
     "typecheck": "tsc --noEmit",
     "lint": "eslint .",
-    "test": "npm run build && node --test --enable-source-maps 'build/test/unit/**/*.test.mjs' 'build/test/migrations/**/*.test.mjs' && node --test --enable-source-maps --test-concurrency=1 'build/test/e2e-*.test.mjs'",
+    "test": "npm run build && node --test --enable-source-maps 'build/test/unit/**/*.test.mjs' 'build/test/migrations/**/*.test.mjs' 'scripts/e2e/*.test.mjs' && node --test --enable-source-maps --test-concurrency=1 'build/test/e2e-*.test.mjs'",
     "test:coverage": "npm run build && node --test --enable-source-maps --experimental-test-coverage 'build/test/**/*.test.mjs'"
   },
   "dependencies": {
