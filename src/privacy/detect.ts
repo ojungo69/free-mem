@@ -196,6 +196,23 @@ function withForwardSlashes(value: string): string {
 }
 
 /**
+ * Why a rule cannot be compiled, or null when it can. A bracket expression is compiled to a
+ * regular expression, so a body that is invalid there (`[z-a]`, say) throws -- and it throws
+ * inside the detector, where the blanket catch turns every event carrying a path into
+ * `detector_error`. The rule is therefore compiled once where the configuration is read, in the
+ * form `matchSecretPath` will compile it, so a malformed rule is refused with its own reason
+ * instead of disabling detection for everything (research.md R4: a malformed config fails closed).
+ */
+export function globRuleError(rule: string): string | null {
+  try {
+    compileGlob(withForwardSlashes(rule));
+    return null;
+  } catch (error) {
+    return error instanceof Error ? error.message : String(error);
+  }
+}
+
+/**
  * The repository path rule that this path matches, or null. The path is tested in its
  * repository-relative form (when it lies inside the repository) and in its raw form; a match makes
  * the whole event a path-rule hit, which is stored as metadata only (R4).

@@ -62,7 +62,13 @@ function envBlock() {
 }
 
 function pipe(s) {
-  return String(s || "").replace(/\|/g, "\\|").replace(/\s+/g, " ").trim();
+  // The backslash goes first: escaping only the bar turns an evidence string that already holds
+  // `\\|` into `\\\\|`, which renders as a literal backslash followed by a live column separator.
+  return String(s || "")
+    .replace(/\\/g, "\\\\")
+    .replace(/\|/g, "\\|")
+    .replace(/\s+/g, " ")
+    .trim();
 }
 
 function markdownSection(runId, env, results) {

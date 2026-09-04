@@ -1,6 +1,6 @@
 import assert from 'node:assert/strict';
 import { readFileSync, statSync, writeFileSync } from 'node:fs';
-import { homedir } from 'node:os';
+import { homedir, tmpdir } from 'node:os';
 import { join } from 'node:path';
 import { test } from 'node:test';
 
@@ -53,6 +53,21 @@ test('resolveHome honours OBOETE_HOME and otherwise falls back to ~/.oboete', as
   });
   assert.equal(resolveHome({}), join(homedir(), '.oboete'));
   assert.equal(resolveHome({ OBOETE_HOME: '   ' }), join(homedir(), '.oboete'));
+});
+
+// Every process resolves the data directory for itself: the hook in the agent's working directory,
+// the worker in its own. A relative override anchored to the current directory would give them
+// different directories, and FR-039 has exactly one.
+test('a relative OBOETE_HOME is the same directory whatever the working directory is', () => {
+  const fromHere = resolveHome({ OBOETE_HOME: 'memories' });
+  assert.equal(fromHere, join(homedir(), 'memories'));
+  const previous = process.cwd();
+  process.chdir(tmpdir());
+  try {
+    assert.equal(resolveHome({ OBOETE_HOME: 'memories' }), fromHere);
+  } finally {
+    process.chdir(previous);
+  }
 });
 
 test('ensureDirectories creates the data directories and keeps the home directory private', async () => {
@@ -112,6 +127,29 @@ test('a complete config file round-trips through loadConfig', async () => {
       privacy: { secret_paths: ['deploy/*.pem', '**/.env'] },
       consent: { hash: WORKERS_AI_CONSENT, accepted_at: 1756900000000 },
     });
+  });
+});
+
+// A rule that cannot be compiled reaches the detector otherwise, where the blanket catch answers
+// `detector_error` for every event that carries a path: one bad rule would blank every capture.
+test('a path rule that cannot be compiled is refused where it is read', async () => {
+  await withTempHome((home) => {
+    const paths = oboetePaths(home);
+    writeFileSync(paths.config, '[privacy]\nsecret_paths = ["deploy/[z-a].pem"]\n');
+    assert.throws(
+      () => loadConfig(paths),
+      (error: unknown) => error instanceof ConfigError && error.code === 'config_malformed',
+    );
+
+    writeFileSync(join(home, '.oboete.toml'), '[privacy]\nsecret_paths = ["[z-a]"]\n');
+    assert.throws(
+      () => loadRepoRules(home),
+      (error: unknown) => error instanceof RepoConfigError && error.code === 'repo_config_malformed',
+    );
+
+    // The rule the broken one was trying to be still loads.
+    writeFileSync(join(home, '.oboete.toml'), '[privacy]\nsecret_paths = ["[a-z].pem"]\n');
+    assert.deepEqual(loadRepoRules(home), { secretPaths: ['[a-z].pem'] });
   });
 });
 

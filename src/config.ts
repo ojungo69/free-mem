@@ -4,6 +4,7 @@ import { parse as parseToml } from 'smol-toml';
 import { z } from 'zod';
 
 import { sha256Json } from './hash.js';
+import { globRuleError } from './privacy/detect.js';
 import type { OboetePaths } from './paths.js';
 
 const PRESET_NAMES = ['workers-ai', 'ollama', 'nim', 'openrouter', 'gemini', 'agent-cli'] as const;
@@ -120,8 +121,20 @@ const injectionSchema = z.strictObject({
   threshold: z.number().gte(0).lte(1).default(0.3),
 });
 
+/**
+ * A path rule is compiled where it is read, not where it is used: the detector compiles it inside
+ * the blanket catch that answers `detector_error`, so one malformed rule would blank the content of
+ * every event that carries a path instead of naming itself.
+ */
+function secretPathRule(rule: z.ZodString): z.ZodType<string> {
+  return rule.superRefine((value, context) => {
+    const error = globRuleError(value);
+    if (error !== null) context.addIssue({ code: 'custom', message: `is not a usable path rule (${error})` });
+  });
+}
+
 const privacySchema = z.strictObject({
-  secret_paths: z.array(z.string().min(1)).default([]),
+  secret_paths: z.array(secretPathRule(z.string().min(1))).default([]),
 });
 
 const consentSchema = z.strictObject({
@@ -150,7 +163,7 @@ const repoRulesSchema = z.strictObject({
   privacy: z
     .strictObject({
       secret_paths: z
-        .array(z.string().min(1).max(MAX_REPO_SECRET_PATH_LENGTH))
+        .array(secretPathRule(z.string().min(1).max(MAX_REPO_SECRET_PATH_LENGTH)))
         .max(MAX_REPO_SECRET_PATHS)
         .default([]),
     })

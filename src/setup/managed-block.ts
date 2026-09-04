@@ -21,7 +21,6 @@ import {
   rmSync,
   statSync,
   writeFileSync,
-  writeSync,
 } from 'node:fs';
 import type { Stats } from 'node:fs';
 import { dirname } from 'node:path';
@@ -218,7 +217,9 @@ function writeManaged(
   // so the rare leftover of a killed run with this pid surfaces as EEXIST naming the exact file.
   const handle = openSync(temporary, 'wx', mode);
   try {
-    writeSync(handle, content);
+    // `writeFileSync` on the handle loops until every byte is written; `writeSync` can return
+    // after a partial write and leave a truncated file that the verification below has to catch.
+    writeFileSync(handle, content);
     fsyncSync(handle);
   } finally {
     closeSync(handle);
