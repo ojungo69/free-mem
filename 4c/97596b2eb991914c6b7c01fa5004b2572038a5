@@ -1,0 +1,23 @@
+scripts/e2e/probe-lib/childenv.test.mjs
+  s_d9e42b4587fc81::t_1f9df9a83ee6f3 10-11
+scripts/e2e/probe-lib/tmux.mjs
+  s_d9e42b4587fc81::t_1768b714020f9d 28-42,45
+scripts/e2e/probe-lib/tmux.test.mjs
+  s_d9e42b4587fc81::t_34cee92631ce89 1-37
+---
+{
+  "schema_version": "authorship/3.0.0",
+  "git_ai_version": "1.6.16",
+  "base_commit_sha": "4c97596b2eb991914c6b7c01fa5004b2572038a5",
+  "prompts": {},
+  "sessions": {
+    "s_d9e42b4587fc81": {
+      "agent_id": {
+        "tool": "claude",
+        "id": "c71a1c70-4032-4f69-bbf0-857b7e13b519",
+        "model": "claude-opus-5"
+      },
+      "human_author": "ojungo69 <210335670+ojungo69@users.noreply.github.com>"
+    }
+  }
+}
