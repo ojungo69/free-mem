@@ -1,0 +1,44 @@
+test/unit/pi-extension.test.ts
+  s_c3a3aca6da7be1::t_926219e506a51b 355-364
+  s_c3a3aca6da7be1::t_931749fd2a337e 50,52
+  s_c3a3aca6da7be1::t_1d0ce3ed7af070 171-185
+  s_c3a3aca6da7be1::t_e1207958ee0060 337-354,365-366
+  s_c3a3aca6da7be1::t_bff34654d4d3e8 24-25
+  s_c3a3aca6da7be1::t_744184acdd2090 1-23,28-31,33,35,38-46,51,53-170,186-203,205-266,291-299,301-336,367-387
+  s_c3a3aca6da7be1::t_8f15e5a2270bc5 32,34,36-37
+  s_c3a3aca6da7be1::t_681f3946c59cd8 204
+  s_c3a3aca6da7be1::t_6aa0fb39da396d 47-49
+  s_c3a3aca6da7be1::t_ea627bbfedbd7a 267-277,289-290
+  s_c3a3aca6da7be1::t_8ed88ecd9186d1 26-27
+  s_c3a3aca6da7be1::t_3a95a0bd3a8b3d 278-288
+  s_c3a3aca6da7be1::t_7ace0004317bd9 300
+src/pi-extension.ts
+  s_c3a3aca6da7be1::t_3af167336dc6a4 89-98,103,106,109-110
+  s_c3a3aca6da7be1::t_2297a00926d251 177,184-187
+  s_c3a3aca6da7be1::t_a53ca89228c724 220
+  s_c3a3aca6da7be1::t_8065488ae3af0b 1-88,99-102,104-105,107-108,111-176,178-183,188-210,213,219,223-273
+  s_c3a3aca6da7be1::t_0e358f20848d98 211-212,214-218,221-222
+scripts/build.mjs
+  s_c3a3aca6da7be1::t_2691c79e0e71c1 44-54
+test/unit/write-pi.test.ts
+  s_c3a3aca6da7be1::t_3dea4abee02d02 1-100
+  s_c3a3aca6da7be1::t_71172cef3fd551 101
+src/setup/write-pi.ts
+  s_c3a3aca6da7be1::t_151e3544d74ef6 1-61
+---
+{
+  "schema_version": "authorship/3.0.0",
+  "git_ai_version": "1.6.16",
+  "base_commit_sha": "c1fce0d98e0bf92c1d3a0f70348da47f5da50203",
+  "prompts": {},
+  "sessions": {
+    "s_c3a3aca6da7be1": {
+      "agent_id": {
+        "tool": "claude",
+        "id": "7392a577-3272-4376-9b89-f4c55b10c247",
+        "model": "claude-fable-5-1"
+      },
+      "human_author": "ojungo69 <210335670+ojungo69@users.noreply.github.com>"
+    }
+  }
+}
