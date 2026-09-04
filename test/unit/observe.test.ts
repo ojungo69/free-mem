@@ -582,6 +582,23 @@ test('maxRunMs releases the lease and leaves pending work for the next hook', as
   });
 });
 
+test('a session of lifecycle rows only is no queued work and the run ends empty', async () => {
+  await withFixture(async (fixture) => {
+    writeConfig(fixture, 'none');
+    // No summarizer can use a lifecycle row, so the queue check must not read it as work; an
+    // advancing clock makes a wrong answer end the run as max_run instead of hanging the test.
+    await fixture.capture('SessionStart', { ...eventBase('lifecycle-session'), source: 'startup' });
+    let clock = NOW;
+    assert.equal(await runObserveForFixture(fixture, { now: () => clock++, maxRunMs: 5_000 }), 0);
+
+    fixture.withDb((db) => {
+      assert.equal(db.prepare('SELECT owner_token FROM worker_lease WHERE id = 1').get()?.owner_token, null);
+      assert.equal(Number(db.prepare('SELECT COUNT(*) AS n FROM raw_events').get()?.n), 1);
+    });
+    assert.match(readFileSync(fixture.paths.observeLog, 'utf8'), /run end .*reason=empty/);
+  });
+});
+
 test('the loop purges expired terminal rows and folds Pi done acknowledgements', async () => {
   await withFixture(async (fixture) => {
     writeConfig(fixture, 'none');

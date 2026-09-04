@@ -13,7 +13,7 @@ import { promoteSensitivity, strictest } from '../../src/privacy/classify.js';
 import {
   detectInWorker,
   detectSync,
-  globToRegExp,
+  compileGlob,
   matchSecretPath,
   redactSecrets,
   stripPrivate,
@@ -148,30 +148,30 @@ test('fail-closed: a private span never reaches the detector result', async () =
   assert.equal(detected.sensitivity, 'local_only');
 });
 
-test('globToRegExp follows gitignore semantics and keeps a single star inside one path segment', () => {
+test('compileGlob follows gitignore semantics and keeps a single star inside one path segment', () => {
   // A rule without a slash matches the file name at any depth, which is how the same rule is
   // written in .gitignore and how an agent sends the path (FR-039, R4).
-  assert.equal(globToRegExp('*.pem').test('server.pem'), true);
-  assert.equal(globToRegExp('*.pem').test('config/server.pem'), true);
-  assert.equal(globToRegExp('*.pem').test('a/x.pem'), true);
-  assert.equal(globToRegExp('*.pem').test('x.pem.bak'), false);
-  assert.equal(globToRegExp('**/.env').test('.env'), true);
-  assert.equal(globToRegExp('**/.env').test('app/.env'), true);
-  assert.equal(globToRegExp('**/*.pem').test('x.pem'), true);
-  assert.equal(globToRegExp('deploy/**/key.pem').test('deploy/key.pem'), true);
-  assert.equal(globToRegExp('deploy/**/key.pem').test('deploy/eu/west/key.pem'), true);
-  assert.equal(globToRegExp('secrets/**').test('secrets/k.txt'), true);
-  assert.equal(globToRegExp('secrets/**').test('secrets/aws/key.json'), true);
-  assert.equal(globToRegExp('secrets/**').test('other/secrets/key.json'), false);
-  assert.equal(globToRegExp('.env*').test('.env.local'), true);
-  assert.equal(globToRegExp('.env*').test('app.env'), false);
-  assert.equal(globToRegExp('key?.pem').test('key1.pem'), true);
-  assert.equal(globToRegExp('key?.pem').test('key10.pem'), false);
-  assert.equal(globToRegExp('key[0-9].pem').test('key7.pem'), true);
-  assert.equal(globToRegExp('key[0-9].pem').test('keyx.pem'), false);
+  assert.equal(compileGlob('*.pem').test('server.pem'), true);
+  assert.equal(compileGlob('*.pem').test('config/server.pem'), true);
+  assert.equal(compileGlob('*.pem').test('a/x.pem'), true);
+  assert.equal(compileGlob('*.pem').test('x.pem.bak'), false);
+  assert.equal(compileGlob('**/.env').test('.env'), true);
+  assert.equal(compileGlob('**/.env').test('app/.env'), true);
+  assert.equal(compileGlob('**/*.pem').test('x.pem'), true);
+  assert.equal(compileGlob('deploy/**/key.pem').test('deploy/key.pem'), true);
+  assert.equal(compileGlob('deploy/**/key.pem').test('deploy/eu/west/key.pem'), true);
+  assert.equal(compileGlob('secrets/**').test('secrets/k.txt'), true);
+  assert.equal(compileGlob('secrets/**').test('secrets/aws/key.json'), true);
+  assert.equal(compileGlob('secrets/**').test('other/secrets/key.json'), false);
+  assert.equal(compileGlob('.env*').test('.env.local'), true);
+  assert.equal(compileGlob('.env*').test('app.env'), false);
+  assert.equal(compileGlob('key?.pem').test('key1.pem'), true);
+  assert.equal(compileGlob('key?.pem').test('key10.pem'), false);
+  assert.equal(compileGlob('key[0-9].pem').test('key7.pem'), true);
+  assert.equal(compileGlob('key[0-9].pem').test('keyx.pem'), false);
   // Regular expression metacharacters in a glob are literal text.
-  assert.equal(globToRegExp('note(1)+.txt').test('note(1)+.txt'), true);
-  assert.equal(globToRegExp('note(1)+.txt').test('note(1).txt'), false);
+  assert.equal(compileGlob('note(1)+.txt').test('note(1)+.txt'), true);
+  assert.equal(compileGlob('note(1)+.txt').test('note(1).txt'), false);
 });
 
 test('fail-closed: a path rule matches the repository-relative and the raw form', () => {
@@ -191,6 +191,22 @@ test('fail-closed: a path rule matches the repository-relative and the raw form'
   assert.equal(matchSecretPath('/etc/ssl/server.pem', ['/etc/**'], null), '/etc/**');
   assert.equal(matchSecretPath('/etc/ssl/server.pem', ['*.pem'], null), '*.pem');
   assert.equal(matchSecretPath('server.pem', [], root), null);
+});
+
+test('a full repository rule list keeps one path match bounded', () => {
+  // R4: `.oboete.toml` is repository-supplied, so its rules may be written to be expensive. The
+  // list is bounded by loadRepoRules and the matcher sweeps the path once per token, so the work
+  // stays linear instead of backtracking over every way to split the path.
+  const rules = Array.from({ length: 64 }, (_, index) =>
+    index % 2 === 0 ? `${'*'.repeat(254)}x` : `${'a*'.repeat(127)}x`,
+  );
+  const path = `${'a/'.repeat(2_000)}b`;
+  const started = process.hrtime.bigint();
+  assert.equal(matchSecretPath(path, rules, null), null);
+  const elapsedMs = Number(process.hrtime.bigint() - started) / 1e6;
+  // What is measured is linear against exponential: this takes about 70 ms here, while the same
+  // rules compiled into one backtracking expression do not finish at all.
+  assert.ok(elapsedMs < 500, `matching 64 rules against a 4 KiB path took ${elapsedMs.toFixed(0)} ms`);
 });
 
 test('fail-closed: a path rule hit keeps metadata only, even for harmless text', async () => {

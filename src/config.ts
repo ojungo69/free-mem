@@ -138,8 +138,23 @@ export const configSchema = z.strictObject({
 
 export type OboeteConfig = z.infer<typeof configSchema>;
 
+/**
+ * R4: `.oboete.toml` is repository-supplied, so its rule list is bounded before anything compiles
+ * it. A repository that writes more or longer rules than this gets a RepoConfigError, which the
+ * hook stores as a malformed-configuration row.
+ */
+export const MAX_REPO_SECRET_PATHS = 64;
+export const MAX_REPO_SECRET_PATH_LENGTH = 256;
+
 const repoRulesSchema = z.strictObject({
-  privacy: privacySchema.prefault({}),
+  privacy: z
+    .strictObject({
+      secret_paths: z
+        .array(z.string().min(1).max(MAX_REPO_SECRET_PATH_LENGTH))
+        .max(MAX_REPO_SECRET_PATHS)
+        .default([]),
+    })
+    .prefault({}),
 });
 
 export class ConfigError extends Error {

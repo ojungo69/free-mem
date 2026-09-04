@@ -119,15 +119,29 @@ function seedMemory(
 function seedMixedBatch(db: DatabaseSync): void {
   seedRepoAndSession(db, 12);
   seedEvent(db, { id: 'r1', kind: 'prompt', content: 'Add a retry to the uploader.', turn: 1 });
+  // The shape capture writes: the free text of the call lives in `content`, and `payload_json`
+  // keeps the normalized fields without it (src/capture.ts payloadJson).
   seedEvent(db, {
     id: 'r2',
     kind: 'tool_call',
     content: 'grep -rn uploader src',
-    payload: {
-      tool_name: 'grep',
-      input: { paths: ['src/uploader.ts'], command: 'grep -rn uploader src' },
-    },
+    payload: { tool_name: 'grep', input: { paths: ['src/uploader.ts'] } },
     turn: 2,
+  });
+  seedEvent(db, {
+    id: 'r13',
+    kind: 'tool_call',
+    content: 'git log --oneline -5',
+    payload: { tool_name: 'bash', input: { paths: [] } },
+    turn: 2,
+  });
+  seedEvent(db, {
+    id: 'r14',
+    kind: 'tool_call',
+    content: 'BASHLOCALMARKER cat .env',
+    payload: { tool_name: 'bash', input: { paths: [] } },
+    sensitivity: 'local_only',
+    turn: 5,
   });
   seedEvent(db, { id: 'r3', kind: 'tool_result', content: 'three matches in the uploader', turn: 3 });
   seedEvent(db, {
@@ -247,9 +261,20 @@ test('the outbound body of a mixed batch carries the eligible rows and nothing e
     assert.equal(body.includes('three matches in the uploader'), true);
     assert.equal(body.includes('The uploader now retries three times.'), true);
     assert.equal(body.includes('src/uploader.ts'), true);
+    // The command and the free text of a tool call live in `content`, so the request has to put
+    // them back or the summarizer sees paths where the call had a command (FR-015).
+    assert.equal(body.includes('grep -rn uploader src'), true);
+    assert.equal(body.includes('git log --oneline -5'), true);
 
     // Fail closed: SC-006, nothing below `eligible` appears anywhere in the body.
-    for (const marker of ['LOCALONLYMARKER', 'PRIVATEMARKER', 'SECRETMARKER', 'PARTIALMARKER', 'PARTIALPATH']) {
+    for (const marker of [
+      'LOCALONLYMARKER',
+      'PRIVATEMARKER',
+      'SECRETMARKER',
+      'PARTIALMARKER',
+      'PARTIALPATH',
+      'BASHLOCALMARKER',
+    ]) {
       assert.equal(body.includes(marker), false, `${marker} must not reach a remote observer`);
     }
     assert.deepEqual(
@@ -258,7 +283,7 @@ test('the outbound body of a mixed batch carries the eligible rows and nothing e
     );
     assert.deepEqual(
       built.dropped.filter((item) => item.reason === 'sensitivity').map((item) => item.rowId).sort(),
-      ['m-local', 'm-secret', 'r5', 'r6', 'r7'],
+      ['m-local', 'm-secret', 'r14', 'r5', 'r6', 'r7'],
     );
 
     // R10: the repository travels as an opaque id, never as its identity or a path.
@@ -289,6 +314,7 @@ test('a local observer receives the local-only and private rows and their nearby
 
     assert.equal(body.includes('LOCALONLYMARKER'), true);
     assert.equal(body.includes('PRIVATEMARKER'), true);
+    assert.equal(body.includes('BASHLOCALMARKER cat .env'), true);
     // FR-020: a secret row reaches no destination at all, local or remote.
     assert.equal(body.includes('SECRETMARKER'), false);
     assert.equal(body.includes('PARTIALMARKER'), false);

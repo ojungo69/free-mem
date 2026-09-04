@@ -4,9 +4,14 @@
 // SC-006. Security-owned (plan.md "Structure Decision"): no other module assembles a request, and
 // every field here states which rule admitted it.
 import type { NearbyCandidate } from '../db/queries.js';
-import { toolInputSchema } from '../events.js';
 import { isAllowed, type DestinationRules } from '../privacy/egress.js';
-import { payloadOf, type RawEventRow, type SessionRow, type TurnRow } from '../worker/batches.js';
+import {
+  payloadOf,
+  toolInputOf,
+  type RawEventRow,
+  type SessionRow,
+  type TurnRow,
+} from '../worker/batches.js';
 import { dominantScript } from './classify.js';
 import { excerptInput, observerInputSchema, type ObserverInput } from './contract.js';
 
@@ -84,12 +89,11 @@ function eventFor(row: RawEventRow): ObserverEvent | null {
       // after the detector ran (data-model.md raw_events, FR-018), and anything the schema does not
       // name stays on this machine.
       const payload = payloadOf(row);
-      const parsed = toolInputSchema.safeParse(payload?.input);
       return {
         id: row.id,
         kind: 'tool_call',
         tool_name: typeof payload?.tool_name === 'string' ? payload.tool_name : 'other',
-        input: parsed.success ? parsed.data : { paths: [] },
+        input: toolInputOf(row),
       };
     }
     default:

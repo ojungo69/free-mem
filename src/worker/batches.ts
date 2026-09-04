@@ -8,6 +8,7 @@ import type { DatabaseSync, SQLOutputValue } from 'node:sqlite';
 
 import type { ProviderPreset } from '../config.js';
 import { isBusyError } from '../db/open.js';
+import { toolInputSchema, type ToolInput } from '../events.js';
 import type { OboetePaths } from '../paths.js';
 import { promoteSensitivity, strictest } from '../privacy/classify.js';
 import type { DetectorResult } from '../privacy/detect.js';
@@ -107,6 +108,16 @@ const SUMMARIZABLE_KINDS: ReadonlySet<string> = new Set([
   'compaction_summary',
 ]);
 
+/** The same kinds where the rule has to be applied in SQL: purge and the worker's queue check. */
+export const SUMMARIZABLE_KINDS_SQL = [...SUMMARIZABLE_KINDS].map((kind) => `'${kind}'`).join(', ');
+/**
+ * SQLite's `TRIM` strips spaces only, so the characters it has to strip to answer "has content"
+ * the way `isSummarizableRow` does are named here. The set is the ASCII whitespace `trim()`
+ * removes, which keeps SQL's idea of a blank row a subset of this module's: SQL may leave a row
+ * for the worker, never delete one the worker would still summarize.
+ */
+export const BLANK_CHARACTERS_SQL = "' ' || char(9) || char(10) || char(11) || char(12) || char(13)";
+
 const DESTINATION_ORDER: readonly BatchDestination[] = [
   'remote_observer',
   'local_observer',
@@ -119,7 +130,7 @@ function asRawEventRows(rows: Record<string, SQLOutputValue>[]): RawEventRow[] {
 }
 
 /** `payload_json` as the normalized-fields object capture wrote, or null when it is unreadable. */
-export function payloadOf(row: RawEventRow): Record<string, unknown> | null {
+export function payloadOf(row: { payload_json: string | null }): Record<string, unknown> | null {
   if (row.payload_json === null) return null;
   try {
     const parsed: unknown = JSON.parse(row.payload_json);
@@ -148,6 +159,28 @@ export function toolInputText(row: RawEventRow): string {
   if (typeof input !== 'object' || input === null) return '';
   const { command, text } = input as { command?: unknown; text?: unknown };
   return [command, text].filter((value): value is string => typeof value === 'string').join('\n');
+}
+
+/**
+ * The normalized tool input of a stored tool call with its text put back. Capture moves a shell
+ * tool's `command` and any other tool's `text` out of `payload_json` into `raw_events.content`
+ * (src/capture.ts payloadJson, data-model.md raw_events), so a reader that goes straight to
+ * `payload_json` sees paths and line counts where the call had a command. Every reader of a stored
+ * tool call goes through this one function (contracts/observer.md "Input", FR-015).
+ */
+export function toolInputOf(row: {
+  content: string | null;
+  payload_json: string | null;
+  classification_state?: ClassificationState | null;
+}): ToolInput {
+  const payload = payloadOf(row);
+  const parsed = toolInputSchema.safeParse(payload?.input);
+  const input: ToolInput = parsed.success ? parsed.data : { paths: [] };
+  const stored = row.content ?? '';
+  // A7: a partial row hands over its paths and never the text it holds.
+  if (stored === '' || row.classification_state === 'partial') return input;
+  if (input.command !== undefined || input.text !== undefined) return input;
+  return payload?.tool_name === 'bash' ? { ...input, command: stored } : { ...input, text: stored };
 }
 
 /** events.ts `isSummarizable` over a stored row: the same kinds and the same "has content" rule. */

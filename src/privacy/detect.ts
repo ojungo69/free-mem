@@ -87,44 +87,107 @@ export function stripPrivate(text: string): { text: string; removed: number } {
 }
 
 /**
- * Compiles one `.oboete.toml` path rule with gitignore semantics, because that is the form the
- * rules are written in: a pattern without a slash matches the file name at any depth, `**` crosses
- * directories (`**\/x` matches `x` at the root too), and `*` and `?` never cross one.
+ * One compiled glob token. `one` consumes a single character (a literal, `?` or a `[...]` class,
+ * which keeps its regular-expression body so its semantics are unchanged); the three star tokens
+ * are the parts that may consume any number of characters.
  */
-export function globToRegExp(glob: string): RegExp {
-  let pattern = glob.includes('/') ? '' : '(?:.*/)?';
+type GlobToken =
+  | { kind: 'one'; test: (character: string) => boolean }
+  | { kind: 'segmentStar' }
+  | { kind: 'anyStar' }
+  | { kind: 'anyDirectories' };
+
+export type GlobMatcher = { test(path: string): boolean };
+
+function tokenize(glob: string): GlobToken[] {
+  const tokens: GlobToken[] = [];
+  // A rule without a slash matches the file name at any depth, as it does in .gitignore.
+  if (!glob.includes('/')) tokens.push({ kind: 'anyDirectories' });
   for (let index = 0; index < glob.length; index += 1) {
     const character = glob[index] as string;
     if (character === '*') {
       if (glob[index + 1] === '*') {
         // `**/` is zero or more directories, so `a/**/b` matches `a/b` as well as `a/x/b`.
         if (glob[index + 2] === '/') {
-          pattern += '(?:.*/)?';
+          tokens.push({ kind: 'anyDirectories' });
           index += 2;
         } else {
-          pattern += '.*';
+          tokens.push({ kind: 'anyStar' });
           index += 1;
         }
       } else {
-        pattern += '[^/]*';
+        tokens.push({ kind: 'segmentStar' });
       }
       continue;
     }
     if (character === '?') {
-      pattern += '[^/]';
+      tokens.push({ kind: 'one', test: (candidate) => candidate !== '/' });
       continue;
     }
     if (character === '[') {
       const end = glob.indexOf(']', index + 1);
       if (end !== -1) {
-        pattern += `[${glob.slice(index + 1, end).replace(/^[!^]/, '^')}]`;
+        const body = glob.slice(index + 1, end).replace(/^[!^]/, '^');
+        const expression = new RegExp(`^[${body}]$`);
+        tokens.push({ kind: 'one', test: (candidate) => expression.test(candidate) });
         index = end;
         continue;
       }
     }
-    pattern += character.replace(/[.*+?^${}()|[\]\\]/g, '\\$&');
+    tokens.push({ kind: 'one', test: (candidate) => candidate === character });
   }
-  return new RegExp(`^${pattern}$`);
+  return tokens;
+}
+
+/**
+ * Compiles one `.oboete.toml` path rule with gitignore semantics, because that is the form the
+ * rules are written in: a pattern without a slash matches the file name at any depth, `**` crosses
+ * directories (`**\/x` matches `x` at the root too), and `*` and `?` never cross one.
+ *
+ * The rule is repository-supplied input (R4), so it is not compiled into one regular expression:
+ * several wildcards in one expression make a non-matching path take exponential time, which would
+ * hang the capture hook. Each token instead sweeps the path once and marks the positions it can
+ * reach, so a match costs the length of the rule times the length of the path.
+ */
+export function compileGlob(glob: string): GlobMatcher {
+  const tokens = tokenize(glob);
+  return {
+    test(path: string): boolean {
+      let reached = new Uint8Array(path.length + 1);
+      let next = new Uint8Array(path.length + 1);
+      reached[0] = 1;
+      for (const token of tokens) {
+        next.fill(0);
+        let any = false;
+        if (token.kind === 'one') {
+          for (let at = 0; at < path.length; at += 1) {
+            if (reached[at] === 1 && token.test(path[at] as string)) {
+              next[at + 1] = 1;
+              any = true;
+            }
+          }
+        } else {
+          // `open` is "some earlier reachable position can still slide to here"; a `*` stops at a
+          // separator, `**` does not, and `**/` lands only just after one.
+          let open = false;
+          for (let at = 0; at <= path.length; at += 1) {
+            const afterSeparator = open && at > 0 && path[at - 1] === '/';
+            if (reached[at] === 1) open = true;
+            const here =
+              token.kind === 'anyDirectories' ? reached[at] === 1 || afterSeparator : open;
+            if (here) {
+              next[at] = 1;
+              any = true;
+            }
+            if (token.kind === 'segmentStar' && path[at] === '/') open = false;
+          }
+        }
+        if (!any) return false;
+        [reached, next] = [next, reached];
+      }
+      return reached[path.length] === 1;
+    },
+  };
 }
 
 /** FR-039: a rule is written with forward slashes, so a Windows path is compared in that form. */
@@ -154,7 +217,7 @@ export function matchSecretPath(
   }
 
   for (const rule of rules) {
-    const pattern = globToRegExp(withForwardSlashes(rule));
+    const pattern = compileGlob(withForwardSlashes(rule));
     if (candidates.some((candidate) => pattern.test(candidate))) return rule;
   }
   return null;

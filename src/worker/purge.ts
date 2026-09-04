@@ -3,19 +3,29 @@ import { existsSync, readdirSync, statSync, unlinkSync } from 'node:fs';
 import { join } from 'node:path';
 import type { DatabaseSync } from 'node:sqlite';
 
+import { BLANK_CHARACTERS_SQL, SUMMARIZABLE_KINDS_SQL } from './batches.js';
 import { assertLease, transactionImmediate } from './lease.js';
 
 const PI_HANG_AFTER_MS = 30_000;
 const PI_ACK_REMOVE_AFTER_MS = 24 * 60 * 60 * 1000;
 
-// Rows in pending or running batches, and unbatched rows that are not failed/secret, are never
-// deleted here: forcing them into a fallback batch is batches.ts (T031), which runs before purge
-// in the worker loop.
+// A row of a pending or running batch is never deleted here: forcing it into a fallback batch is
+// batches.ts (T031), which runs before purge in the worker loop. An unbatched row goes when it is
+// past `expires_at` and batches.ts will never take it — a failed or secret row, a lifecycle kind,
+// or a content-less row of a kind that carries nothing else — because FR-008 bounds retention and
+// nothing else deletes it. A tool call keeps its input in `payload_json`, which this query does
+// not read, so an empty-content tool call is left alone.
+// ponytail: a tool call with neither content nor input is the one shape that still accumulates;
+// read payload_json here if one ever turns up.
 const DELETE_EXPIRED = `DELETE FROM raw_events WHERE id IN (
   SELECT r.id FROM raw_events r
   LEFT JOIN observation_batches b ON b.id = r.batch_id
   WHERE r.expires_at <= ?
-    AND (b.state IN ('applied', 'fallback') OR r.classification_state = 'failed' OR r.sensitivity = 'secret')
+    AND (b.state IN ('applied', 'fallback') OR r.classification_state = 'failed' OR r.sensitivity = 'secret'
+      OR (r.batch_id IS NULL AND (
+        r.kind NOT IN (${SUMMARIZABLE_KINDS_SQL})
+        OR (r.kind <> 'tool_call' AND TRIM(COALESCE(r.content, ''), ${BLANK_CHARACTERS_SQL}) = '')
+      )))
   LIMIT ?
 )`;
 

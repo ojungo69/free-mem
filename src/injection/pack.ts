@@ -16,6 +16,7 @@ import type { AgentName } from '../events.js';
 import { isCjk } from '../retrieval/fts.js';
 import { searchCandidates } from '../retrieval/query.js';
 import { rankCandidates } from '../retrieval/rank.js';
+import { toolInputOf } from '../worker/batches.js';
 import { charBudget } from './budget.js';
 import {
   alreadyIncluded,
@@ -250,14 +251,15 @@ function activityLine(row: Record<string, SQLOutputValue>): string {
   const content = typeof row.content === 'string' ? row.content : '';
   if (row.kind === 'prompt') return content.slice(0, PROMPT_EXCERPT);
 
-  // Tool activity is named by its tool and the paths it touched, never by its output (R12: bodies
-  // are never verbatim tool output).
-  const record = parseJson(row.payload_json) as { tool_name?: unknown; input?: { paths?: unknown } };
+  // Tool activity is named by its tool and by what the call itself said — the paths it touched, or
+  // the command capture moved into `content` — never by its output (R12: bodies are never verbatim
+  // tool output).
+  const record = parseJson(row.payload_json) as { tool_name?: unknown };
   const tool = typeof record.tool_name === 'string' ? record.tool_name : 'tool';
-  const paths = Array.isArray(record.input?.paths)
-    ? record.input.paths.filter((path): path is string => typeof path === 'string')
-    : [];
-  return paths.length === 0 ? tool : `${tool} ${paths.join(', ')}`;
+  const payloadJson = typeof row.payload_json === 'string' ? row.payload_json : null;
+  const input = toolInputOf({ content, payload_json: payloadJson });
+  const named = input.paths.length > 0 ? input.paths.join(', ') : (input.command ?? input.text ?? '');
+  return named === '' ? tool : `${tool} ${named.slice(0, PROMPT_EXCERPT)}`;
 }
 
 /**

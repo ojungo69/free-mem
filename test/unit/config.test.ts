@@ -17,6 +17,8 @@ import {
   loadConfig,
   loadRepoRules,
   readCredentials,
+  MAX_REPO_SECRET_PATHS,
+  MAX_REPO_SECRET_PATH_LENGTH,
 } from '../../src/config.js';
 import { appendLog, scrubCredentials } from '../../src/log.js';
 import { ensureDirectories, oboetePaths, resolveHome } from '../../src/paths.js';
@@ -291,6 +293,34 @@ test('loadRepoRules accepts path rules only', async () => {
     );
 
     writeFileSync(join(home, '.oboete.toml'), '[privacy\n');
+    assert.throws(
+      () => loadRepoRules(home),
+      (error: unknown) => error instanceof RepoConfigError && error.code === 'repo_config_malformed',
+    );
+
+    // R4: the rules are compiled and matched on the hook path, so the repository cannot hand over
+    // an unbounded list or an unbounded rule.
+    const rule = 'a'.repeat(MAX_REPO_SECRET_PATH_LENGTH);
+    const atTheBound = Array.from({ length: MAX_REPO_SECRET_PATHS }, () => rule);
+    writeFileSync(
+      join(home, '.oboete.toml'),
+      `[privacy]\nsecret_paths = ${JSON.stringify(atTheBound)}\n`,
+    );
+    assert.equal(loadRepoRules(home).secretPaths.length, MAX_REPO_SECRET_PATHS);
+
+    writeFileSync(
+      join(home, '.oboete.toml'),
+      `[privacy]\nsecret_paths = ${JSON.stringify([...atTheBound, rule])}\n`,
+    );
+    assert.throws(
+      () => loadRepoRules(home),
+      (error: unknown) => error instanceof RepoConfigError && error.code === 'repo_config_malformed',
+    );
+
+    writeFileSync(
+      join(home, '.oboete.toml'),
+      `[privacy]\nsecret_paths = ${JSON.stringify([`${rule}a`])}\n`,
+    );
     assert.throws(
       () => loadRepoRules(home),
       (error: unknown) => error instanceof RepoConfigError && error.code === 'repo_config_malformed',

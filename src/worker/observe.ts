@@ -13,7 +13,6 @@ import {
 } from '../config.js';
 import { openDatabase, isBusyError } from '../db/open.js';
 import { nearbyCandidates, type NearbyCandidate } from '../db/queries.js';
-import { toolInputSchema } from '../events.js';
 import {
   checkCommits,
   checkPaths,
@@ -46,7 +45,10 @@ import {
   payloadOf,
   reclaimStale,
   recoverSpool,
+  toolInputOf,
   toolInputText,
+  BLANK_CHARACTERS_SQL,
+  SUMMARIZABLE_KINDS_SQL,
   type BatchInput,
   type BatchRow,
 } from './batches.js';
@@ -159,22 +161,15 @@ function fallbackEvents(input: BatchInput): FallbackEvent[] {
       case 'compaction_summary':
         events.push({ ...base, kind: row.kind, text: row.content ?? '' });
         break;
-      case 'tool_call': {
-        const parsed = toolInputSchema.safeParse(payload.input);
-        const parsedInput = parsed.success ? parsed.data : { paths: [] };
-        const visibleInput =
-          row.classification_state === 'partial' || (parsedInput.command ?? parsedInput.text) !== undefined
-            ? parsedInput
-            : { ...parsedInput, text: row.content ?? undefined };
+      case 'tool_call':
         events.push({
           ...base,
           kind: 'tool_call',
           ...(toolCallId === undefined ? {} : { tool_call_id: toolCallId }),
           tool_name: typeof payload.tool_name === 'string' ? payload.tool_name : 'other',
-          input: visibleInput,
+          input: toolInputOf(row),
         });
         break;
-      }
       case 'tool_result':
         events.push({
           ...base,
@@ -574,6 +569,20 @@ function pendingSummaries(db: DatabaseSync): string[] {
     .map((row) => String(row.id));
 }
 
+// `isSummarizableRow` over the unbatched rows, in SQL: a pass asks whether one exists instead of
+// reading every unbatched row (FR-002, the worker runs beside the hooks). The one part SQL cannot
+// see is a tool call's input, which lives in `payload_json`, so only content-less tool calls are
+// read back — the rest of the rule is the indexed test below.
+const UNBATCHED_WITH_CONTENT = `SELECT 1 AS work FROM raw_events
+   WHERE batch_id IS NULL AND kind IN (${SUMMARIZABLE_KINDS_SQL})
+     AND classification_state IS NOT 'failed' AND sensitivity <> 'secret'
+     AND TRIM(COALESCE(content, ''), ${BLANK_CHARACTERS_SQL}) <> '' LIMIT 1`;
+const UNBATCHED_EMPTY_TOOL_CALLS = `SELECT kind, content, payload_json, classification_state, sensitivity
+   FROM raw_events
+   WHERE batch_id IS NULL AND kind = 'tool_call'
+     AND classification_state IS NOT 'failed' AND sensitivity <> 'secret'
+     AND TRIM(COALESCE(content, ''), ${BLANK_CHARACTERS_SQL}) = ''`;
+
 function queueIsEmpty(db: DatabaseSync, paths: OboetePaths): boolean {
   if (
     db.prepare("SELECT 1 AS work FROM observation_batches WHERE state IN ('pending', 'running') LIMIT 1").get() !==
@@ -581,10 +590,11 @@ function queueIsEmpty(db: DatabaseSync, paths: OboetePaths): boolean {
   ) {
     return false;
   }
-  const unbatched = db
-    .prepare('SELECT * FROM raw_events WHERE batch_id IS NULL ORDER BY captured_at, id')
+  if (db.prepare(UNBATCHED_WITH_CONTENT).get() !== undefined) return false;
+  const toolCalls = db
+    .prepare(UNBATCHED_EMPTY_TOOL_CALLS)
     .all() as unknown as Parameters<typeof isSummarizableRow>[0][];
-  if (unbatched.some(isSummarizableRow)) return false;
+  if (toolCalls.some(isSummarizableRow)) return false;
   try {
     if (
       readdirSync(paths.spool, { withFileTypes: true }).some(

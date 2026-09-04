@@ -53,13 +53,26 @@ function insertEvent(
     batchId: string | null;
     sensitivity?: string;
     classification?: string;
+    kind?: string;
+    content?: string | null;
+    payload?: unknown;
   },
 ): void {
   db.prepare(
     `INSERT INTO raw_events
-       (id, repo_id, session_id, kind, sensitivity, classification_state, captured_at, expires_at, batch_id)
-     VALUES (?, 'repo1', 'sess1', 'prompt', ?, ?, 1, ?, ?)`,
-  ).run(row.id, row.sensitivity ?? 'local_only', row.classification ?? 'done', row.expiresAt, row.batchId);
+       (id, repo_id, session_id, kind, content, payload_json, sensitivity, classification_state,
+        captured_at, expires_at, batch_id)
+     VALUES (?, 'repo1', 'sess1', ?, ?, ?, ?, ?, 1, ?, ?)`,
+  ).run(
+    row.id,
+    row.kind ?? 'prompt',
+    row.content === undefined ? 'a captured prompt' : row.content,
+    row.payload === undefined ? null : JSON.stringify(row.payload),
+    row.sensitivity ?? 'local_only',
+    row.classification ?? 'done',
+    row.expiresAt,
+    row.batchId,
+  );
 }
 
 function eventIds(db: DatabaseSync): string[] {
@@ -107,6 +120,41 @@ test('expired unbatched failed and secret rows are deleted; expired unbatched lo
     assert.equal(result.leaseLost, false);
     assert.equal(result.deleted, 2);
     assert.deepEqual(eventIds(db), ['e-local']);
+  });
+});
+
+test('expired unbatched rows no summarizer can use are purged and the ones it can use survive', async () => {
+  await withOpened((db) => {
+    const now = 1_757_000_000_000;
+    const token = claimLease(db, { pid: 1, now });
+    if (token === null) assert.fail('expected a lease token');
+    seedGraph(db);
+    // FR-008: batches.ts never picks these up, so purge is the only thing that bounds them.
+    insertEvent(db, { id: 'e-session-start', expiresAt: now, batchId: null, kind: 'session_start' });
+    insertEvent(db, { id: 'e-turn-end', expiresAt: now, batchId: null, kind: 'turn_end' });
+    insertEvent(db, {
+      id: 'e-empty-summary',
+      expiresAt: now,
+      batchId: null,
+      kind: 'compaction_summary',
+      content: null,
+    });
+    // A tool call keeps its input in payload_json, so an empty content is not an empty row.
+    insertEvent(db, {
+      id: 'e-tool-call',
+      expiresAt: now,
+      batchId: null,
+      kind: 'tool_call',
+      content: '',
+      payload: { tool_name: 'read', input: { paths: ['src/a.ts'] } },
+    });
+    insertEvent(db, { id: 'e-blank', expiresAt: now, batchId: null, content: ' \n\t ' });
+    insertEvent(db, { id: 'e-prompt', expiresAt: now, batchId: null });
+
+    const result = purgeExpiredEvents(db, token, now);
+    assert.equal(result.leaseLost, false);
+    assert.equal(result.deleted, 4);
+    assert.deepEqual(eventIds(db), ['e-prompt', 'e-tool-call']);
   });
 });
 

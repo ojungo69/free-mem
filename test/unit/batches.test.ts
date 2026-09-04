@@ -13,6 +13,7 @@ import {
   loadBatchInput,
   recoverSpool,
   reclaimStale,
+  toolInputOf,
 } from '../../src/worker/batches.js';
 import { claimLease } from '../../src/worker/lease.js';
 import { withTempHome } from '../helpers/home.js';
@@ -572,6 +573,36 @@ test('a tool call whose only content is its command still enters a batch', async
     createBatches(db, token, NOW, { preset: 'none' });
     assert.notEqual(db.prepare('SELECT batch_id FROM raw_events WHERE id = ?').get('bash1')?.batch_id, null);
   });
+});
+
+test('a stored tool call gives its command back to a shell tool and its text to any other', () => {
+  // The shape capture writes: the free text of the call is in `content`, not in `payload_json`.
+  assert.deepEqual(
+    toolInputOf({
+      content: 'npm test',
+      payload_json: JSON.stringify({ tool_name: 'bash', input: { paths: [] } }),
+    }),
+    { paths: [], command: 'npm test' },
+  );
+  assert.deepEqual(
+    toolInputOf({
+      content: 'before\n→\nafter',
+      payload_json: JSON.stringify({
+        tool_name: 'edit',
+        input: { paths: ['src/a.ts'], lines_added: 1, lines_removed: 1 },
+      }),
+    }),
+    { paths: ['src/a.ts'], lines_added: 1, lines_removed: 1, text: 'before\n→\nafter' },
+  );
+  // A7: a partial row hands over its paths and never the text it holds.
+  assert.deepEqual(
+    toolInputOf({
+      content: 'the payload was cut',
+      payload_json: JSON.stringify({ tool_name: 'bash', input: { paths: [] } }),
+      classification_state: 'partial',
+    }),
+    { paths: [] },
+  );
 });
 
 test('the batch input keeps the row order and strips a partial row to its metadata', async () => {

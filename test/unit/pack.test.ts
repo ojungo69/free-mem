@@ -393,6 +393,14 @@ test('a pending summary waits once and then injects the latest raw activity', as
         state: 'done',
       },
       {
+        // A shell call keeps its command in `content`; the activity line has nothing else to name.
+        id: 'e2b',
+        kind: 'tool_call',
+        content: 'npm test -- retrieval',
+        payload: { kind: 'tool_call', tool_name: 'bash', input: { paths: [] } },
+        state: 'done',
+      },
+      {
         id: 'e3',
         kind: 'tool_result',
         content: 'VERBATIM-TOOL-OUTPUT that must never be injected',
@@ -446,6 +454,7 @@ test('a pending summary waits once and then injects the latest raw activity', as
     );
     assert.ok(pack!.text.includes('Please finish the retrieval module.'));
     assert.ok(pack!.text.includes('src/retrieval/rank.ts'));
+    assert.ok(pack!.text.includes('bash npm test -- retrieval'), pack!.text);
     assert.equal(pack!.text.includes('VERBATIM-TOOL-OUTPUT'), false);
     assert.equal(pack!.text.includes('A prompt of a failed classification.'), false);
 
