@@ -21,7 +21,8 @@ const skip = gitAvailable ? false : 'git is not installed, so the commit stalene
 const temporaryRoots: string[] = [];
 
 after(() => {
-  // A git child of a fixture (background maintenance) can still hold the directory for a moment.
+  // A git wrapper on PATH (git-ai writes .git/ai after the command returned) can still be adding to
+  // the directory for a moment, so the removal is retried.
   for (const root of temporaryRoots) {
     rmSync(root, { recursive: true, force: true, maxRetries: 5, retryDelay: 50 });
   }
