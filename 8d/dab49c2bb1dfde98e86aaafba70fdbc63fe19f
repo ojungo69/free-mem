@@ -1,0 +1,27 @@
+.github/workflows/ci.yml
+  s_c3a3aca6da7be1::t_49411da615bde0 38-41,48
+package.json
+  s_c3a3aca6da7be1::t_7d12774a4e05dc 24
+scripts/e2e/isolated-user.mjs
+  s_c3a3aca6da7be1::t_3ea55054094ab1 15,202,214,216-221,261-289,327-335,384-386,397-398,491-492,627
+scripts/e2e/isolated-user.test.mjs
+  s_c3a3aca6da7be1::t_013c8035618780 6,15-16,134,160,181,189-408
+scripts/e2e/probe-lib/agents.mjs
+  s_c3a3aca6da7be1::t_9c140538369a08 112-120
+---
+{
+  "schema_version": "authorship/3.0.0",
+  "git_ai_version": "1.6.16",
+  "base_commit_sha": "8ddab49c2bb1dfde98e86aaafba70fdbc63fe19f",
+  "prompts": {},
+  "sessions": {
+    "s_c3a3aca6da7be1": {
+      "agent_id": {
+        "tool": "claude",
+        "id": "7392a577-3272-4376-9b89-f4c55b10c247",
+        "model": "claude-opus-5"
+      },
+      "human_author": "ojungo69 <210335670+ojungo69@users.noreply.github.com>"
+    }
+  }
+}
