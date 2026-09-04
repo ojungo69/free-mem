@@ -12,9 +12,11 @@ export type RepoIdentity = {
   root: string;
 };
 
-// A hook must return within 300 ms (FR-002), so git gets a fixed slice of it: one call may take
+// A hook must return within 300 ms (FR-002), so git gets a slice of it: one call may take
 // GIT_TIMEOUT_MS and the whole identity may take GIT_BUDGET_MS, after which the remaining calls are
-// skipped and the identity falls back to the git common directory or the working directory.
+// skipped and the identity falls back to the git common directory or the working directory. The
+// caller lowers the budget to what is left of its own deadline (`options.budgetMs`), because a slow
+// git (cold disk, WSL /mnt/c, NFS) would otherwise leave the detector nothing to run in.
 const GIT_TIMEOUT_MS = 120;
 const GIT_BUDGET_MS = 250;
 
@@ -120,14 +122,18 @@ function identity(
  * FR-004: the repository identity is derived here from the repository's remote or its location.
  * Nothing is ever taken from an event payload or an environment variable.
  */
-export function resolveRepoIdentity(cwd: string, options?: { spawn?: GitSpawn }): RepoIdentity {
+export function resolveRepoIdentity(
+  cwd: string,
+  options?: { spawn?: GitSpawn; budgetMs?: number },
+): RepoIdentity {
   const spawn = options?.spawn ?? spawnSync;
+  const budget = Math.min(GIT_BUDGET_MS, options?.budgetMs ?? GIT_BUDGET_MS);
   const startedAt = performance.now();
   const run = (args: string[]): string | null => {
     // The budget bounds the whole identity, so the last call gets whatever is left of it.
     // performance.now() is fractional and spawnSync demands an unsigned integer timeout, so the
     // remainder is floored: a fractional value raises RangeError instead of falling back.
-    const remaining = Math.floor(GIT_BUDGET_MS - (performance.now() - startedAt));
+    const remaining = Math.floor(budget - (performance.now() - startedAt));
     return remaining < 1 ? null : git(spawn, cwd, args, Math.min(GIT_TIMEOUT_MS, remaining));
   };
 

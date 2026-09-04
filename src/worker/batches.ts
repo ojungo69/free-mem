@@ -7,6 +7,7 @@ import { randomUUID } from 'node:crypto';
 import type { DatabaseSync, SQLOutputValue } from 'node:sqlite';
 
 import type { ProviderPreset } from '../config.js';
+import { isBusyError } from '../db/open.js';
 import type { OboetePaths } from '../paths.js';
 import { promoteSensitivity, strictest } from '../privacy/classify.js';
 import type { DetectorResult } from '../privacy/detect.js';
@@ -207,22 +208,7 @@ function ensureSessionRows(
       .get(entry.session.agent, entry.session.native_session_id)?.id,
   );
 
-  let turnId = entry.row.turn_id;
-  if (entry.turn !== undefined) {
-    db.prepare(
-      'INSERT OR IGNORE INTO turns (id, session_id, ordinal, started_at, ended_at) VALUES (?, ?, ?, ?, ?)',
-    ).run(entry.turn.id, sessionId, entry.turn.ordinal, entry.turn.started_at, entry.turn.ended_at);
-    turnId = String(
-      db
-        .prepare('SELECT id FROM turns WHERE session_id = ? AND ordinal = ?')
-        .get(sessionId, entry.turn.ordinal)?.id,
-    );
-    // The trigger rules read `turn_count`, so a recovered turn has to move it (FR-010).
-    db.prepare('UPDATE sessions SET turn_count = MAX(turn_count, ?) WHERE id = ?').run(
-      entry.turn.ordinal,
-      sessionId,
-    );
-  }
+  const turnId = placeRecoveredInTurn(db, sessionId, entry);
   if (entry.row.kind === 'session_end') {
     // Without this the recovered session would never reach the session-end trigger (FR-010).
     db.prepare(
@@ -231,6 +217,43 @@ function ensureSessionRows(
     ).run(entry.row.captured_at, sessionId);
   }
   return { sessionId, turnId };
+}
+
+/**
+ * The turn a recovered row belongs to, derived here the way capture's `placeInTurn` derives it on
+ * the direct path: the hook could not read the database, so the spool entry carries no turn at all.
+ * A recovered prompt opens the next turn and moves `turn_count` (the ten-turn trigger of FR-010 and
+ * every later event of the session read it); any other kind attaches to the open turn, and a
+ * recovered `turn_end` closes it.
+ */
+function placeRecoveredInTurn(db: DatabaseSync, sessionId: string, entry: SpoolEntry): string | null {
+  const turnCount = Number(
+    db.prepare('SELECT turn_count FROM sessions WHERE id = ?').get(sessionId)?.turn_count ?? 0,
+  );
+  if (entry.row.kind === 'prompt') {
+    const ordinal = turnCount + 1;
+    const id = randomUUID();
+    db.prepare('INSERT INTO turns (id, session_id, ordinal, started_at) VALUES (?, ?, ?, ?)').run(
+      id,
+      sessionId,
+      ordinal,
+      entry.row.captured_at,
+    );
+    db.prepare('UPDATE sessions SET turn_count = ? WHERE id = ?').run(ordinal, sessionId);
+    return id;
+  }
+  if (turnCount === 0) return null;
+  const open = db
+    .prepare('SELECT id FROM turns WHERE session_id = ? AND ordinal = ?')
+    .get(sessionId, turnCount);
+  const turnId = open === undefined ? null : String(open.id);
+  if (entry.row.kind === 'turn_end' && turnId !== null) {
+    db.prepare('UPDATE turns SET ended_at = COALESCE(ended_at, ?) WHERE id = ?').run(
+      entry.row.captured_at,
+      turnId,
+    );
+  }
+  return turnId;
 }
 
 /**
@@ -257,39 +280,55 @@ export function recoverSpool(
       continue;
     }
 
-    const outcome = transactionImmediate(db, () => {
-      if (!assertLease(db, token, now)) {
-        db.exec('ROLLBACK');
-        return 'lease_lost';
-      }
-      const parents = ensureSessionRows(db, entry);
-      const changes = Number(
-        db
-          .prepare(
-            `INSERT OR IGNORE INTO raw_events
-               (id, repo_id, session_id, turn_id, agent, kind, content, truncated, payload_json,
-                content_hash, sensitivity, classification_state, captured_at, expires_at, batch_id, via_spool)
-             VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, NULL, 1)`,
-          )
-          .run(
-            entry.row.id,
-            entry.row.repo_id,
-            parents.sessionId,
-            parents.turnId,
-            entry.row.agent,
-            entry.row.kind,
-            entry.row.content,
-            entry.row.truncated,
-            entry.row.payload_json,
-            entry.row.content_hash,
-            entry.row.sensitivity,
-            entry.row.classification_state,
-            entry.row.captured_at,
-            entry.row.expires_at,
-          ).changes,
-      );
-      return changes === 0 ? 'skipped' : 'inserted';
-    });
+    let outcome: 'lease_lost' | 'inserted' | 'skipped';
+    try {
+      outcome = transactionImmediate(db, () => {
+        if (!assertLease(db, token, now)) {
+          db.exec('ROLLBACK');
+          return 'lease_lost';
+        }
+        // Recovery is idempotent (FR-003), and the parent rows carry side effects a second pass must
+        // not repeat: a row that is already stored ends here, before any turn is opened.
+        if (db.prepare('SELECT 1 AS present FROM raw_events WHERE id = ?').get(entry.row.id) !== undefined) {
+          return 'skipped';
+        }
+        const parents = ensureSessionRows(db, entry);
+        const changes = Number(
+          db
+            .prepare(
+              `INSERT OR IGNORE INTO raw_events
+                 (id, repo_id, session_id, turn_id, agent, kind, content, truncated, payload_json,
+                  content_hash, sensitivity, classification_state, captured_at, expires_at, batch_id, via_spool)
+               VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, NULL, 1)`,
+            )
+            .run(
+              entry.row.id,
+              entry.row.repo_id,
+              parents.sessionId,
+              parents.turnId,
+              entry.row.agent,
+              entry.row.kind,
+              entry.row.content,
+              entry.row.truncated,
+              entry.row.payload_json,
+              entry.row.content_hash,
+              entry.row.sensitivity,
+              entry.row.classification_state,
+              entry.row.captured_at,
+              entry.row.expires_at,
+            ).changes,
+        );
+        return changes === 0 ? 'skipped' : 'inserted';
+      });
+    } catch (error) {
+      // A busy database is the caller's retry (R6); anything else means the database refused this
+      // entry (a foreign key it cannot satisfy, a value the schema rejects), so the file is moved
+      // aside rather than replayed on every run (FR-003).
+      if (isBusyError(error)) throw error;
+      quarantineSpoolEntry(paths, name);
+      failed += 1;
+      continue;
+    }
 
     if (outcome === 'lease_lost') return { inserted, skipped, failed };
     if (outcome === 'inserted') inserted += 1;
@@ -516,16 +555,31 @@ export function createBatches(
         byDestination.set(destination, list);
       }
 
+      const taken = db.prepare(
+        `SELECT 1 AS present FROM observation_batches
+         WHERE session_id = ? AND through_event_id = ? AND destination = ?`,
+      );
+
       for (const destination of DESTINATION_ORDER) {
         const list = byDestination.get(destination);
         // A batch is created only if it would carry at least one row.
         if (list === undefined || list.length === 0) continue;
 
+        const id = randomUUID();
+        // data-model.md UNIQUE (session_id, through_event_id, destination). An earlier round can
+        // already own that key: rows detached from a pending provider batch past `expires_at` are
+        // batched again, and the fallback batch of the first round may still be there. Those are
+        // different rows, so the second round carries its own key rather than failing the run.
+        const through =
+          taken.get(sessionId, throughEventId, destination) === undefined
+            ? throughEventId
+            : `${throughEventId}:${id}`;
+
         const batch: BatchRow = {
-          id: randomUUID(),
+          id,
           repo_id: session.repo_id,
           session_id: sessionId,
-          through_event_id: throughEventId,
+          through_event_id: through,
           destination,
           trigger,
           state: 'pending',

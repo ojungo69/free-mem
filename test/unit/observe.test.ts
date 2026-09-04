@@ -17,7 +17,7 @@ import type { ObserverOutput } from '../../src/observer/contract.js';
 import { ensureDirectories, oboetePaths, type OboetePaths } from '../../src/paths.js';
 import { detectSync } from '../../src/privacy/detect.js';
 import { claimLease } from '../../src/worker/lease.js';
-import { runObserve, type ObserveDeps } from '../../src/worker/observe.js';
+import { isStorageError, runObserve, type ObserveDeps } from '../../src/worker/observe.js';
 import { withTempHome } from '../helpers/home.js';
 
 const NOW = Date.UTC(2026, 8, 4, 0, 0, 0);
@@ -225,6 +225,28 @@ function runObserveForFixture(
     ...overrides,
   });
 }
+
+test('a constraint violation is a worker error, not unavailable storage', () => {
+  const unique = Object.assign(new Error('UNIQUE constraint failed'), {
+    code: 'ERR_SQLITE_ERROR',
+    errcode: 2067,
+  });
+  const foreignKey = Object.assign(new Error('FOREIGN KEY constraint failed'), {
+    code: 'ERR_SQLITE_ERROR',
+    errcode: 787,
+  });
+  const readOnly = Object.assign(new Error('attempt to write a readonly database'), {
+    code: 'ERR_SQLITE_ERROR',
+    errcode: 8,
+  });
+
+  // contracts/cli.md: exit 3 means the data directory could not be used, which a rejected write is
+  // not; treating it as one made every later run exit 3 as well.
+  assert.equal(isStorageError(unique), false);
+  assert.equal(isStorageError(foreignKey), false);
+  assert.equal(isStorageError(readOnly), true);
+  assert.equal(isStorageError(Object.assign(new Error('no space'), { code: 'ENOSPC' })), true);
+});
 
 test('no preset applies one fallback batch, writes a degraded session summary, releases, and checkpoints', async () => {
   await withFixture(async (fixture) => {

@@ -37,15 +37,6 @@ export const spoolEntrySchema = z.strictObject({
     started_at: timestamp.nullable().default(null),
     status: z.enum(['active', 'ended']),
   }),
-  turn: z
-    .strictObject({
-      id: identifier,
-      session_id: identifier,
-      ordinal: z.int(),
-      started_at: timestamp.nullable().default(null),
-      ended_at: timestamp.nullable().default(null),
-    })
-    .optional(),
   row: z.strictObject({
     id: identifier,
     repo_id: identifier,

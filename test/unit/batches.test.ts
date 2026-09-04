@@ -294,6 +294,38 @@ test('an expired row in a pending provider batch is forced into a fallback batch
   });
 });
 
+test('a second round over the same range does not collide with a finished batch', async () => {
+  await withOpened((db, _home, token) => {
+    seedRepo(db);
+    seedSession(db, 'sess1', { turns: 1, turnCount: 1 });
+    // The fallback batch of the first round is finished, and the provider batch of the same range
+    // is still pending, so its expired row is detached and batched again (R6 retention).
+    db.prepare(
+      `INSERT INTO observation_batches (id, repo_id, session_id, through_event_id, destination, trigger, state, owner_token, provider_attempts, claimed_at)
+       VALUES ('b-done', 'repo1', 'sess1', 'p1', 'fallback', 'retention', 'fallback', ?, 0, ?)`,
+    ).run(token, NOW - DAY);
+    db.prepare(
+      `INSERT INTO observation_batches (id, repo_id, session_id, through_event_id, destination, trigger, state, owner_token, provider_attempts, claimed_at)
+       VALUES ('b-stuck', 'repo1', 'sess1', 'p1', 'remote_observer', 'ten_turns', 'pending', ?, 0, ?)`,
+    ).run(token, NOW - DAY);
+    seedEvent(db, { id: 'p1', turn: 1, batchId: 'b-stuck', expiresAt: NOW - 1 });
+
+    const result = createBatches(db, token, NOW, { preset: 'remote' });
+
+    assert.equal(result.leaseLost, false);
+    assert.equal(result.created.length, 1);
+    const created = result.created[0];
+    assert.equal(created.destination, 'fallback');
+    assert.deepEqual(rowsOfBatch(db, created.id), ['p1']);
+    assert.notEqual(created.through_event_id, 'p1', 'the second round carries its own key');
+    assert.deepEqual(
+      batchRows(db).map((batch) => batch.id).sort(),
+      ['b-done', created.id].sort(),
+      'the empty provider batch is gone and the finished one is untouched',
+    );
+  });
+});
+
 test('a foreign token writes nothing and reports the lost lease', async () => {
   await withOpened((db, _home, token) => {
     seedMixedSession(db);
@@ -326,12 +358,12 @@ test('spool recovery is idempotent and quarantines a file it cannot read', async
         started_at: NOW - DAY,
         status: 'active',
       },
-      turn: { id: 'sess-spool-t1', session_id: 'sess-spool', ordinal: 1, started_at: NOW - DAY, ended_at: null },
       row: {
         id: 'spooled-1',
         repo_id: 'repo1',
         session_id: 'sess-spool',
-        turn_id: 'sess-spool-t1',
+        // The hook could not read the database, so a spool entry carries no turn (R7).
+        turn_id: null,
         agent: 'claude',
         kind: 'prompt',
         content: 'a prompt that was spooled',
@@ -355,8 +387,13 @@ test('spool recovery is idempotent and quarantines a file it cannot read', async
     const first = recoverSpool(db, paths, token, NOW);
     assert.equal(first.inserted, 1);
     assert.equal(first.failed, 2);
-    const stored = db.prepare('SELECT via_spool FROM raw_events WHERE id = ?').get('spooled-1');
+    const stored = db.prepare('SELECT via_spool, turn_id FROM raw_events WHERE id = ?').get('spooled-1');
     assert.equal(Number(stored?.via_spool), 1);
+    // FR-010: the recovered prompt opens the turn it would have opened on the direct path.
+    const turn = db.prepare('SELECT id, ordinal FROM turns WHERE session_id = ?').get('sess-spool');
+    assert.equal(Number(turn?.ordinal), 1);
+    assert.equal(stored?.turn_id, turn?.id);
+    assert.equal(Number(db.prepare('SELECT turn_count FROM sessions WHERE id = ?').get('sess-spool')?.turn_count), 1);
     assert.deepEqual(readdirSync(paths.spoolFailed).sort(), [
       `${NOW - DAY}-broken.json`,
       `${NOW - DAY}-shaped.json`,
@@ -368,6 +405,66 @@ test('spool recovery is idempotent and quarantines a file it cannot read', async
     assert.equal(second.inserted, 0);
     assert.equal(second.skipped, 1);
     assert.equal(Number(db.prepare('SELECT COUNT(*) AS n FROM raw_events').get()?.n), 1);
+    assert.equal(
+      Number(db.prepare('SELECT COUNT(*) AS n FROM turns').get()?.n),
+      1,
+      'a repeated recovery opens no second turn',
+    );
+    assert.deepEqual(readdirSync(paths.spool).filter((name) => name.endsWith('.json')), []);
+  });
+});
+
+test('a spool entry the database refuses is quarantined and the run continues', async () => {
+  await withOpened(async (db, home, token) => {
+    const paths = oboetePaths(home);
+    mkdirSync(paths.spool, { recursive: true });
+    const entry = (id: string, repoId: string): unknown => ({
+      repo: {
+        id: 'repo-spool',
+        identity_kind: 'common_dir',
+        normalized_identity: '/tmp/oboete-refused',
+        display_root: '/tmp/oboete-refused',
+      },
+      session: {
+        id: `sess-${id}`,
+        repo_id: 'repo-spool',
+        agent: 'claude',
+        native_session_id: `native-${id}`,
+        conversation_id: `sess-${id}`,
+        started_at: NOW - DAY,
+        status: 'active',
+      },
+      row: {
+        // FR-003: the row's repository is the one the hook derived; an unknown one fails the
+        // foreign key of raw_events, which must not stop the recovery of the other entries.
+        id,
+        repo_id: repoId,
+        session_id: `sess-${id}`,
+        turn_id: null,
+        agent: 'claude',
+        kind: 'prompt',
+        content: `text of ${id}`,
+        truncated: 0,
+        payload_json: null,
+        content_hash: `hash-${id}`,
+        sensitivity: 'local_only',
+        classification_state: 'done',
+        captured_at: NOW - DAY,
+        expires_at: NOW + 7 * DAY,
+      },
+    });
+    writeFileSync(join(paths.spool, `${NOW - DAY}-refused.json`), JSON.stringify(entry('refused', 'ghost-repo')));
+    writeFileSync(join(paths.spool, `${NOW - DAY}-sound.json`), JSON.stringify(entry('sound', 'repo-spool')));
+
+    const result = recoverSpool(db, paths, token, NOW);
+
+    assert.equal(result.failed, 1);
+    assert.equal(result.inserted, 1, 'the entry after the refused one is still recovered');
+    assert.deepEqual(readdirSync(paths.spoolFailed), [`${NOW - DAY}-refused.json`]);
+    assert.deepEqual(
+      db.prepare('SELECT id FROM raw_events').all().map((row) => String(row.id)),
+      ['sound'],
+    );
     assert.deepEqual(readdirSync(paths.spool).filter((name) => name.endsWith('.json')), []);
   });
 });

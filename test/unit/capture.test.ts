@@ -18,6 +18,7 @@ import { fileURLToPath } from 'node:url';
 
 import {
   CAPTURE_DEADLINE_MS,
+  INJECTION_DEADLINE_MS,
   RAW_EVENT_TTL_MS,
   SPOOL_RESERVE_MS,
   STDIN_READ_BOUND,
@@ -34,6 +35,7 @@ import { openDatabase } from '../../src/db/open.js';
 import { eventIdKey, type AgentName, type NormalizedEvent } from '../../src/events.js';
 import { ensureDirectories, oboetePaths, type OboetePaths } from '../../src/paths.js';
 import { detectSync, type DetectorInput } from '../../src/privacy/detect.js';
+import type { GitSpawn } from '../../src/repo-identity.js';
 import { listSpool, readSpoolEntry, spoolEntrySchema } from '../../src/spool.js';
 import { recoverSpool } from '../../src/worker/batches.js';
 import { claimLease } from '../../src/worker/lease.js';
@@ -330,6 +332,48 @@ test('Grok load with the same session id keeps the root, a new id starts one', a
   });
 });
 
+test('a resumed session is reopened, so its later work is summarized again (FR-024)', async () => {
+  await withCapture(async (context) => {
+    const base = { session_id: 'session-reopen', cwd: context.repo };
+    await context.capture('claude', 'SessionStart', { ...base, source: 'startup' });
+    await context.capture('claude', 'SessionEnd', { ...base, reason: 'clear' });
+
+    // The worker summarized that run: summary_state is done and the memory is recorded.
+    const opened = openDatabase({ path: context.paths.db, timeoutMs: 2_000 });
+    opened.db
+      .prepare("UPDATE sessions SET summary_state = 'done', latest_summary_memory_id = ?")
+      .run('m_first');
+    opened.db.close();
+
+    await context.capture('claude', 'SessionStart', { ...base, source: 'resume' });
+    const resumed = context.all(
+      'SELECT status, ended_at, summary_state, latest_summary_memory_id FROM sessions',
+    )[0] as Json;
+    assert.equal(resumed.status, 'active', 'a resumed session is active again');
+    assert.equal(resumed.ended_at, null);
+    assert.equal(resumed.summary_state, null, 'the finished summary does not cover the new work');
+    assert.equal(resumed.latest_summary_memory_id, 'm_first', 'the old summary still stands');
+
+    await context.capture('claude', 'SessionEnd', { ...base, reason: 'exit' });
+    const ended = context.all('SELECT status, summary_state FROM sessions')[0] as Json;
+    assert.equal(ended.status, 'ended');
+    assert.equal(ended.summary_state, 'pending', 'the resumed run is summarized again');
+  });
+});
+
+test('a re-delivered SessionEnd does not reopen the session', async () => {
+  await withCapture(async (context) => {
+    const payload = { session_id: 'session-redelivered-end', cwd: context.repo, reason: 'clear' };
+    await context.capture('claude', 'SessionEnd', payload);
+    await context.capture('claude', 'SessionEnd', payload);
+
+    const rows = context.all('SELECT status, summary_state FROM sessions');
+    assert.equal(rows.length, 1);
+    assert.equal(rows[0]?.status, 'ended');
+    assert.equal(rows[0]?.summary_state, 'pending');
+  });
+});
+
 test('Pi keeps the root of a session id it already knows', async () => {
   await withCapture(async (context) => {
     const envelope = {
@@ -496,6 +540,28 @@ for (const reason of ['deadline', 'detector_error'] as const) {
     });
   });
 }
+
+test('a Claude compaction whose PostCompact commits first advances the epoch once', async () => {
+  await withCapture(async (context) => {
+    const session = 'session-compact-reordered';
+    const base = { session_id: session, cwd: context.repo };
+    await context.capture('claude', 'SessionStart', { ...base, source: 'startup' });
+
+    // The two hooks fire about 24 ms apart and are serialized only by BEGIN IMMEDIATE, so
+    // PostCompact can commit first (A16); one compaction still opens exactly one epoch.
+    await context.capture('claude', 'PostCompact', {
+      ...base,
+      compact_summary: 'the conversation so far',
+    });
+    await context.capture('claude', 'SessionStart', { ...base, source: 'compact' });
+    assert.equal((context.all('SELECT context_epoch FROM sessions')[0] as Json).context_epoch, 1);
+
+    // The next compaction still opens the next epoch, in either order.
+    await context.capture('claude', 'PostCompact', { ...base, compact_summary: 'and later' });
+    await context.capture('claude', 'SessionStart', { ...base, source: 'compact' });
+    assert.equal((context.all('SELECT context_epoch FROM sessions')[0] as Json).context_epoch, 2);
+  });
+});
 
 test('fail-closed: a malformed .oboete.toml makes the event a failed row', async () => {
   await withCapture(async (context) => {
@@ -666,6 +732,50 @@ test('two Grok session starts of one session get one id per turn ordinal (R7)', 
   });
 });
 
+test('a slow git leaves the detector its slice of the deadline (FR-002)', async () => {
+  await withCapture(async (context) => {
+    // A cold WSL /mnt/c, an NFS checkout or a cold disk: every git call burns its whole timeout.
+    const gitSpawn: GitSpawn = (_file, _args, options) => {
+      Atomics.wait(new Int32Array(new SharedArrayBuffer(4)), 0, 0, Number(options.timeout ?? 0));
+      return {
+        pid: 0,
+        output: [],
+        stdout: '',
+        stderr: '',
+        status: null,
+        signal: 'SIGTERM',
+        error: new Error('git timed out'),
+      };
+    };
+
+    let cutoff = 0;
+    const started = performance.now();
+    const outcome = await context.capture(
+      'claude',
+      'PostToolUse',
+      claudePostToolUse(context.repo, 'notes'),
+      {
+        deps: {
+          gitSpawn,
+          elapsedMs: () => performance.now() - started,
+          detect: (input, cutoffMs) => {
+            cutoff = cutoffMs;
+            return detectSync(input);
+          },
+        },
+      },
+    );
+
+    assert.ok(cutoff > 0, `the detector was left ${cutoff} ms to run in`);
+    assert.equal(outcome.outcome, 'stored');
+    const row = context.all('SELECT content, classification_state FROM raw_events')[0] as Json;
+    assert.equal(row.classification_state, 'done', 'a slow git is not a classification failure');
+    assert.match(row.content as string, /notes/);
+    // FR-004: without git the identity is still derived here, from the working directory.
+    assert.equal(context.all('SELECT identity_kind FROM repos')[0]?.identity_kind, 'common_dir');
+  });
+});
+
 test('the event goes to the spool when the database file is missing', async () => {
   await withCapture(
     async (context) => {
@@ -815,6 +925,56 @@ test('the spool path recovers the row the direct path would have written', async
       },
       { database: false },
     );
+  });
+});
+
+test('a recovered prompt opens the next turn, and later events attach to it (FR-003)', async () => {
+  await withCapture(async (context) => {
+    const base = { session_id: 'session-spooled-turn', cwd: context.repo };
+    await context.capture('claude', 'UserPromptSubmit', { ...base, prompt_id: 'p1', prompt: 'one' });
+    await context.capture('claude', 'UserPromptSubmit', { ...base, prompt_id: 'p2', prompt: 'two' });
+    assert.equal(context.all('SELECT turn_count FROM sessions')[0]?.turn_count, 2);
+
+    // The third prompt has nothing left after the detector and goes to the spool instead.
+    let elapsed = 0;
+    const spooled = await context.capture(
+      'claude',
+      'UserPromptSubmit',
+      { ...base, prompt_id: 'p3', prompt: 'three' },
+      {
+        deps: {
+          detect: async (input) => {
+            elapsed = INJECTION_DEADLINE_MS - SPOOL_RESERVE_MS + 10;
+            return detectSync(input);
+          },
+          elapsedMs: () => elapsed,
+        },
+      },
+    );
+    assert.equal(spooled.outcome, 'spooled');
+    assert.equal(recoverInto(context.paths).inserted, 1);
+
+    assert.equal(
+      context.all('SELECT turn_count FROM sessions')[0]?.turn_count,
+      3,
+      'the recovered prompt opened the third turn',
+    );
+    const third = context.all('SELECT id FROM turns WHERE ordinal = 3')[0] as Json;
+    assert.equal(
+      context.all(`SELECT turn_id FROM raw_events WHERE kind = 'prompt' ORDER BY captured_at, id`)
+        .map((row) => row.turn_id)
+        .filter((id) => id === third.id).length,
+      1,
+      'the recovered prompt itself belongs to the third turn',
+    );
+
+    // A later direct-path event of the same session attaches to that turn, not to the second one.
+    await context.capture('claude', 'PostToolUse', {
+      ...claudePostToolUse(context.repo, 'notes'),
+      session_id: base.session_id,
+    });
+    const tool = context.all(`SELECT turn_id FROM raw_events WHERE kind = 'tool_result'`)[0] as Json;
+    assert.equal(tool.turn_id, third.id);
   });
 });
 
@@ -1080,6 +1240,66 @@ test('the worker is spawned at the end of a turn only while the lease is free', 
       last_assistant_message: 'done again',
     });
     assert.equal(context.spawned, 1, 'a held lease means no second worker');
+  });
+});
+
+test('a data directory that cannot be created still exits 0 and reports the count (FR-002)', async (t) => {
+  if (process.getuid?.() === 0) {
+    t.skip('the root user writes into a directory without write permission');
+    return;
+  }
+  await withTempHome(async (home) => {
+    // Nothing exists yet, so creating the data directory is the first thing that fails.
+    chmodSync(home, 0o500);
+    const written: string[] = [];
+    const original = process.stderr.write.bind(process.stderr);
+    process.stderr.write = ((chunk: string) => {
+      written.push(String(chunk));
+      return true;
+    }) as typeof process.stderr.write;
+    let code: number;
+    try {
+      code = await runHook(['--agent', 'claude-or-grok', '--event', 'PostToolUse'], {
+        deps: {
+          detect: (input) => detectSync(input),
+          now: () => NOW,
+          elapsedMs: () => 0,
+          spawnWorker: () => undefined,
+        },
+        readStdin: () => ({
+          text: JSON.stringify(claudePostToolUse(home, 'notes')),
+          truncated: false,
+        }),
+      });
+    } finally {
+      process.stderr.write = original;
+      chmodSync(home, 0o700);
+    }
+    assert.equal(code, 0, 'contracts/cli.md: the hook always exits 0');
+    assert.match(written.join(''), /1 event/, 'the loss is reported to stderr');
+  });
+});
+
+test('a worker spawn that throws leaves the stored rows alone', async () => {
+  await withCapture(async (context) => {
+    const base = { session_id: 'session-spawn-throws', cwd: context.repo, prompt_id: 'prompt-1' };
+    const outcome = await context.capture(
+      'claude',
+      'Stop',
+      { ...base, last_assistant_message: 'done' },
+      {
+        deps: {
+          spawnWorker: () => {
+            throw new Error('spawn failed');
+          },
+        },
+      },
+    );
+
+    assert.equal(outcome.outcome, 'stored', 'the rows are stored, whatever the spawn did');
+    assert.deepEqual(listSpool(context.paths), [], 'stored rows are never spooled again');
+    const kinds = context.all('SELECT kind FROM raw_events ORDER BY kind').map((row) => row.kind);
+    assert.deepEqual(kinds, ['last_assistant_message', 'turn_end']);
   });
 });
 

@@ -103,9 +103,19 @@ function errorCode(error: unknown): string {
   return error instanceof Error ? error.name : 'unknown';
 }
 
-function isStorageError(error: unknown): boolean {
+/**
+ * Whether the run must exit 3 (contracts/cli.md: storage unavailable). A constraint violation is a
+ * defect in what was written, not an unwritable data directory, so it ends the run with the ordinary
+ * worker error and the next run starts again rather than reporting broken storage on every pass.
+ */
+export function isStorageError(error: unknown): boolean {
   if (isBusyError(error)) return true;
   if (typeof error !== 'object' || error === null) return false;
+  // SQLITE_CONSTRAINT is 19; its extended codes (UNIQUE 2067, FOREIGN KEY 787, ...) keep it in the
+  // low byte.
+  if ('errcode' in error && typeof error.errcode === 'number' && (error.errcode & 0xff) === 19) {
+    return false;
+  }
   if ('errcode' in error && typeof error.errcode === 'number') return true;
   if (!('code' in error) || typeof error.code !== 'string') return false;
   return (

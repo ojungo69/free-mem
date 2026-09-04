@@ -42,7 +42,7 @@ import {
 import { appendLog } from './log.js';
 import { ensureDirectories, oboetePaths, resolveHome, type OboetePaths } from './paths.js';
 import { detectInWorker, type DetectorInput, type DetectorResult } from './privacy/detect.js';
-import { resolveRepoIdentity, type RepoIdentity } from './repo-identity.js';
+import { resolveRepoIdentity, type GitSpawn, type RepoIdentity } from './repo-identity.js';
 import { writeSpoolEntry, type SpoolEntry } from './spool.js';
 import { isLeaseFree, transactionImmediate } from './worker/lease.js';
 import type { HookContext } from './injection/inject.js';
@@ -55,6 +55,12 @@ export const INJECTION_DEADLINE_MS = 1_300;
 export const SPOOL_RESERVE_MS = 40;
 /** Between the detector's hard cutoff and the spool reserve: building and inserting the rows. */
 export const ROW_BUILD_MARGIN_MS = 20;
+/**
+ * The slice the detector keeps whatever git does. Repository identity is resolved before the
+ * detector runs, so a slow git (cold disk, WSL `/mnt/c`, NFS) would otherwise push the detector
+ * cutoff to zero and store a content-less `failed` row although the database was writable.
+ */
+export const DETECTOR_MIN_MS = 60;
 /**
  * How much of stdin the hook reads before it stops (A7 with the A14 default, 2026-09-04). The
  * secret-dense worst case of the full detector measures 406-665 ms per 1 MB on Node 22 and 24, so
@@ -73,6 +79,13 @@ const STDIN_WAIT_LIMIT = 100;
 const UNKNOWN_SESSION = 'unknown';
 /** The key that records "this epoch was opened by Claude Code's SessionStart(compact)" (A16). */
 const CLAUDE_COMPACT_START_KEY = 'session_start:compact';
+/**
+ * The same record for the other order: Claude Code's two compaction hooks fire about 24 ms apart
+ * and are serialized only by `BEGIN IMMEDIATE`, so `PostCompact` can commit first. The prefix marks
+ * an epoch its `PostCompact` opened, so the companion `SessionStart(compact)` confirms it instead of
+ * advancing a second time (A16).
+ */
+const CLAUDE_COMPACT_POST_PREFIX = 'post_compact:';
 
 // The normalized kind of an event name, used where no adapter runs: the partial row of an
 // oversized payload and the rows of an unreadable payload keep the kind of the fixed `--event`
@@ -122,7 +135,18 @@ export type CaptureDeps = {
   /** Milliseconds since this process started, which is where the absolute deadline is measured from. */
   elapsedMs(): number;
   spawnWorker(): void;
+  /** The git child repository identity runs; a test injects its own (FR-004, repo-identity.ts). */
+  gitSpawn?: GitSpawn;
 };
+
+/** What is left of the hook's deadline for git, with the detector's slice held back (FR-002). */
+function gitOptions(deps: CaptureDeps, deadlineMs: number): { spawn?: GitSpawn; budgetMs: number } {
+  return {
+    spawn: deps.gitSpawn,
+    budgetMs:
+      deadlineMs - deps.elapsedMs() - SPOOL_RESERVE_MS - ROW_BUILD_MARGIN_MS - DETECTOR_MIN_MS,
+  };
+}
 
 export type CaptureInput = {
   agent: AgentName;
@@ -224,20 +248,35 @@ export function applyCompaction(
   state: CompactionState,
   eventIdentity: string,
 ): CompactionState | null {
+  const stored = state.lastCompactionKey;
+  // The compaction the current epoch belongs to, whichever of Claude Code's two hooks opened it.
+  const openedKey =
+    stored !== null && stored.startsWith(CLAUDE_COMPACT_POST_PREFIX)
+      ? stored.slice(CLAUDE_COMPACT_POST_PREFIX.length)
+      : stored;
+
   if (agent === 'claude' && event.kind === 'session_start' && event.source === 'compact') {
-    if (state.lastCompactionKey === CLAUDE_COMPACT_START_KEY) return null;
+    if (stored === CLAUDE_COMPACT_START_KEY) return null;
+    // The `PostCompact` of this same compaction committed first and already opened the epoch, so
+    // this hook only consumes the marker; the next `PostCompact` opens the next epoch (A16).
+    if (openedKey !== stored) return { contextEpoch: state.contextEpoch, lastCompactionKey: openedKey };
     return { contextEpoch: state.contextEpoch + 1, lastCompactionKey: CLAUDE_COMPACT_START_KEY };
   }
   if (event.kind !== 'compaction_summary') return null;
 
   const key = event.compaction_key !== '' ? event.compaction_key : eventIdentity;
-  if (state.lastCompactionKey === key) return null;
+  if (openedKey === key) return null;
   // The companion hook already opened this epoch, so PostCompact only records its own key, which
   // is what lets the next SessionStart(compact) open the next epoch.
-  if (agent === 'claude' && state.lastCompactionKey === CLAUDE_COMPACT_START_KEY) {
+  if (agent === 'claude' && stored === CLAUDE_COMPACT_START_KEY) {
     return { contextEpoch: state.contextEpoch, lastCompactionKey: key };
   }
-  return { contextEpoch: state.contextEpoch + 1, lastCompactionKey: key };
+  return {
+    contextEpoch: state.contextEpoch + 1,
+    // ponytail: the marker is the record that this epoch is still waiting for its companion hook;
+    // a Claude session whose SessionStart(compact) never arrives keeps it until the next compaction.
+    lastCompactionKey: agent === 'claude' ? `${CLAUDE_COMPACT_POST_PREFIX}${key}` : key,
+  };
 }
 
 function deterministicId(parts: string[]): string {
@@ -336,12 +375,13 @@ type SessionRow = {
   turnCount: number;
   contextEpoch: number;
   lastCompactionKey: string | null;
+  status: 'active' | 'ended';
 };
 
 function readSession(db: DatabaseSync, agent: AgentName, nativeSessionId: string): SessionRow | undefined {
   const row = db
     .prepare(
-      'SELECT id, conversation_id, turn_count, context_epoch, last_compaction_key FROM sessions WHERE agent = ? AND native_session_id = ?',
+      'SELECT id, conversation_id, turn_count, context_epoch, last_compaction_key, status FROM sessions WHERE agent = ? AND native_session_id = ?',
     )
     .get(agent, nativeSessionId);
   if (row === undefined) return undefined;
@@ -351,7 +391,23 @@ function readSession(db: DatabaseSync, agent: AgentName, nativeSessionId: string
     turnCount: Number(row.turn_count ?? 0),
     contextEpoch: Number(row.context_epoch ?? 0),
     lastCompactionKey: row.last_compaction_key === null ? null : String(row.last_compaction_key),
+    status: row.status === 'ended' ? 'ended' : 'active',
   };
+}
+
+/**
+ * FR-024 and FR-010: a resumed session keeps its row (Claude `resume`, Grok `load`, a Codex or Pi
+ * resume on the same id), so the first new event after `SessionEnd` reopens it. Without this the
+ * row stays `ended` with its summary `done`, the finished summary keeps standing for the new work
+ * and the worker cuts a session-end batch on every pass. `latest_summary_memory_id` stays until the
+ * next summary replaces it.
+ */
+function reopenSession(db: DatabaseSync, session: SessionRow): void {
+  if (session.status !== 'ended') return;
+  db.prepare(
+    `UPDATE sessions SET status = 'active', ended_at = NULL, summary_state = NULL WHERE id = ?`,
+  ).run(session.id);
+  session.status = 'active';
 }
 
 function upsertSession(db: DatabaseSync, row: RowDraft, repoId: string): SessionRow {
@@ -368,7 +424,14 @@ function upsertSession(db: DatabaseSync, row: RowDraft, repoId: string): Session
       `INSERT INTO sessions (id, repo_id, agent, native_session_id, conversation_id, model, started_at, status, turn_count, context_epoch)
        VALUES (?, ?, ?, ?, ?, ?, ?, 'active', 0, 0)`,
     ).run(id, repoId, row.agent, row.nativeSessionId, id, row.model ?? null, row.capturedAt);
-    return { id, conversationId: id, turnCount: 0, contextEpoch: 0, lastCompactionKey: null };
+    return {
+      id,
+      conversationId: id,
+      turnCount: 0,
+      contextEpoch: 0,
+      lastCompactionKey: null,
+      status: 'active',
+    };
   }
 
   // An agent that reports a fresh conversation on a session id oboete already knows (Grok `new`)
@@ -492,6 +555,8 @@ function storeRows(
     // nothing else either - no second turn, no second epoch.
     if (seen.get(id) !== undefined) continue;
 
+    // Only a row this session has not seen reopens it: a re-delivered `session_end` must not.
+    reopenSession(db, session);
     advanceEpoch(db, session, row, id);
     const turnId = placeInTurn(db, session, row);
     if (row.kind === 'session_end') {
@@ -766,10 +831,15 @@ async function write(
           opened.db,
           !sessionExisted,
         );
-        if (stored.trigger && remaining() >= SPAWN_MIN_REMAINING_MS && isLeaseFree(opened.db, Date.now())) {
-          // R6: a hook spawns the detached worker only when the lease is free or stale. The lease
-          // is compared against the real clock, which is the clock its heartbeats are written on.
-          deps.spawnWorker();
+        try {
+          if (stored.trigger && remaining() >= SPAWN_MIN_REMAINING_MS && isLeaseFree(opened.db, Date.now())) {
+            // R6: a hook spawns the detached worker only when the lease is free or stale. The lease
+            // is compared against the real clock, which is the clock its heartbeats are written on.
+            deps.spawnWorker();
+          }
+        } catch {
+          // The rows are committed already, so a failed spawn must not lose the outcome or the pack:
+          // it is best-effort and the next hook retries it (FR-002, R6).
         }
         return {
           outcome: rows.length === 0 ? 'dropped' : 'stored',
@@ -797,7 +867,12 @@ export async function captureEvent(deps: CaptureDeps, input: CaptureInput): Prom
   const { paths } = input;
   // R12: the paused marker is read before stdin and before the database.
   if (isPaused(paths)) return { outcome: 'paused', rows: 0 };
-  ensureDirectories(paths);
+  try {
+    ensureDirectories(paths);
+  } catch {
+    // FR-002: an unwritable data directory is an availability problem. The database and the spool
+    // are tried anyway, so the loss is counted and reported on stderr instead of raising here.
+  }
 
   const capturedAt = deps.now();
   const deadlineMs = hookDeadlineMs(input.agent, input.eventName);
@@ -836,7 +911,7 @@ export async function captureEvent(deps: CaptureDeps, input: CaptureInput): Prom
             }),
           ];
     // FR-004: the repository comes from the directory the hook runs in, never from a payload.
-    return persist(resolveRepoIdentity(process.cwd()), rows, diagnostics);
+    return persist(resolveRepoIdentity(process.cwd(), gitOptions(deps, deadlineMs)), rows, diagnostics);
   }
 
   const agent: AdapterAgent = input.agent;
@@ -867,7 +942,7 @@ export async function captureEvent(deps: CaptureDeps, input: CaptureInput): Prom
     const sessionId = adapted.metadata.nativeSessionId;
     if (sessionId === null || kindFromName === undefined) {
       diagnostics.push({ kind: 'unreadable_payload', agent, messageCode: input.eventName || 'none' });
-      return persist(resolveRepoIdentity(process.cwd()), [], diagnostics);
+      return persist(resolveRepoIdentity(process.cwd(), gitOptions(deps, deadlineMs)), [], diagnostics);
     }
     const row = metadataRow({
       agent,
@@ -882,14 +957,14 @@ export async function captureEvent(deps: CaptureDeps, input: CaptureInput): Prom
         tool_name: adapted.metadata.toolName ?? undefined,
       },
     });
-    return persist(resolveRepoIdentity(process.cwd()), [row], diagnostics);
+    return persist(resolveRepoIdentity(process.cwd(), gitOptions(deps, deadlineMs)), [row], diagnostics);
   }
 
   const events = adapted.events;
   const first = events[0];
   if (first === undefined) return { outcome: 'not_captured', rows: 0 };
   // FR-004: the payload's `cwd` is used as a directory to run git in, never as an identity.
-  const identity = resolveRepoIdentity(first.cwd);
+  const identity = resolveRepoIdentity(first.cwd, gitOptions(deps, deadlineMs));
 
   const settings = readSettings(paths, identity.root);
   if (settings === null) {
@@ -957,7 +1032,7 @@ async function captureUnparsed(
   const { paths } = input;
   const scanned = scanPartialPrefix(context.agent, context.stdin.text);
   // FR-004: the repository is derived from where the hook runs, because the payload is unreadable.
-  const identity = resolveRepoIdentity(process.cwd());
+  const identity = resolveRepoIdentity(process.cwd(), gitOptions(deps, CAPTURE_DEADLINE_MS));
 
   if (scanned.nativeSessionId === null || context.kindFromName === undefined) {
     // A7: without a recoverable session id nothing is stored and a counter is incremented.
@@ -1140,6 +1215,20 @@ function option(values: Record<string, unknown>, name: string): string | undefin
   return typeof value === 'string' && value !== '' ? value : undefined;
 }
 
+/** FR-002: the hook exits 0 even when the log itself cannot be written. */
+function logQuietly(
+  file: string,
+  level: 'info' | 'error',
+  message: string,
+  fields: Record<string, string | number>,
+): void {
+  try {
+    appendLog(file, level, message, fields);
+  } catch {
+    // An unwritable data directory must not turn a captured event into a non-zero exit.
+  }
+}
+
 async function runCaptureCommand(
   input: Omit<CaptureInput, 'readStdin'>,
   runtime: CaptureRuntime,
@@ -1149,7 +1238,7 @@ async function runCaptureCommand(
     outcome = await captureEvent(runtime.deps, { ...input, readStdin: runtime.readStdin });
   } catch (error) {
     // FR-002: the agent is never blocked, so every failure ends as one log line and exit 0.
-    appendLog(input.paths.hookLog, 'error', 'capture failed', {
+    logQuietly(input.paths.hookLog, 'error', 'capture failed', {
       agent: input.agent,
       event: input.eventName,
       reason: error instanceof Error ? error.message.split('\n')[0] : String(error),
@@ -1158,7 +1247,7 @@ async function runCaptureCommand(
   }
 
   if (outcome.outcome !== 'paused') {
-    appendLog(input.paths.hookLog, 'info', 'capture', {
+    logQuietly(input.paths.hookLog, 'info', 'capture', {
       agent: input.agent,
       event: input.eventName,
       outcome: outcome.outcome,
