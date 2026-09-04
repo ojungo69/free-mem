@@ -479,7 +479,9 @@ async function runPair(pair, context) {
     }
 
     const notes = path.join(repo, "NOTES.md");
-    const noteCheck = assertAgentOutput(fs.existsSync(notes) ? fs.readFileSync(notes, "utf8") : "", facts);
+    // Read and answer "not there" in one step: asking first and reading after is a check the file
+    // can outlive, and the agent that writes this file is still exiting.
+    const noteCheck = assertAgentOutput(readIfPresent(notes), facts);
     if (!noteCheck.pass) {
       return finish("fail", noteCheck.missingFacts, { reason: "seed_file_missing_facts" });
     }
@@ -558,13 +560,30 @@ function markdownSection(report) {
   return `${markdown}\n`;
 }
 
+/** The file's content, or an empty string when it is not there. */
+function readIfPresent(file) {
+  try {
+    return fs.readFileSync(file, "utf8");
+  } catch {
+    return "";
+  }
+}
+
 function writeDaily(report, repoRoot) {
   const destination = path.join(repoRoot, "docs", "evidence", "m1-dogfood.md");
   fs.mkdirSync(path.dirname(destination), { recursive: true });
-  const heading = fs.existsSync(destination)
-    ? ""
-    : "# oboete M1 dogfood evidence\n\nIsolated-user cross-agent runs for SC-001, SC-004, and SC-007.\n\n";
-  fs.appendFileSync(destination, heading + markdownSection(report));
+  // One handle answers both questions: whether the file already has content, and where to append.
+  // Asking with existsSync and appending afterwards is the same check-then-write race as above.
+  const handle = fs.openSync(destination, "a+");
+  try {
+    const heading =
+      fs.fstatSync(handle).size > 0
+        ? ""
+        : "# oboete M1 dogfood evidence\n\nIsolated-user cross-agent runs for SC-001, SC-004, and SC-007.\n\n";
+    fs.writeFileSync(handle, heading + markdownSection(report));
+  } finally {
+    fs.closeSync(handle);
+  }
 }
 
 export async function runHarness(options, overrides = {}) {
