@@ -729,6 +729,92 @@ test('the session summary keeps request and next_steps limits separate while tri
   });
 });
 
+const TRIM_PATHS = Array.from(
+  { length: 20 },
+  (_, index) => `src/features/summary-request-truncation/path-${String(index).padStart(2, '0')}.ts`,
+);
+
+/** A title of the maximum length, so ten of them cannot share the body with a full request. */
+function learnedTitle(index: number): string {
+  return `Learned finding ${String(index).padStart(2, '0')} `.padEnd(120, 'x');
+}
+
+test('a long request gives back characters so the session findings stay in the summary', async () => {
+  await withOpened(async (db, token) => {
+    seedRepo(db);
+    seedSession(db, 'sess1', { status: 'ended', summaryState: 'pending', turns: 2 });
+    seedEvent(db, { id: 'p1', content: 'R'.repeat(1500), turn: 1 });
+    seedEvent(db, {
+      id: 'c1',
+      kind: 'tool_call',
+      content: 'read paths',
+      payload: { tool_name: 'read', input: { paths: TRIM_PATHS } },
+      turn: 1,
+    });
+    seedEvent(db, {
+      id: 'c2',
+      kind: 'tool_call',
+      content: 'edit paths',
+      payload: { tool_name: 'edit', input: { paths: TRIM_PATHS } },
+      turn: 1,
+    });
+    seedEvent(db, { id: 'p2', content: 'N'.repeat(300), turn: 2 });
+    for (let index = 0; index < 10; index += 1) {
+      const id = `m-learned-${String(index).padStart(2, '0')}`;
+      seedMemory(db, { id, title: learnedTitle(index), body: `Body of ${id}.` });
+      db.prepare(
+        'INSERT INTO memory_sources (memory_id, raw_event_id, source_agent) VALUES (?, ?, ?)',
+      ).run(id, 'p1', 'claude');
+    }
+
+    const result = sessionSummary(db, token, 'sess1', NOW);
+    assert.equal(result.state, 'done');
+    if (result.memoryId === null) assert.fail('expected a summary memory');
+    const body = String(memoryRow(db, result.memoryId)?.body);
+
+    // A20 trim order: the lists stop at five entries each, then the request yields characters.
+    assert.equal(
+      body.split('\n').find((line) => line.startsWith('learned: ')),
+      `learned: ${[9, 8, 7, 6, 5].map(learnedTitle).join(', ')}, ... (+5 omitted)`,
+    );
+    assert.match(body, /^investigated: .*\.\.\. \(\+15 omitted\)$/m);
+    assert.match(body, /^completed: .*\.\.\. \(\+15 omitted\)$/m);
+    assert.match(body, new RegExp(`^next_steps: ${'N'.repeat(200)}$`, 'm'));
+    // The request keeps every character the rest of the body leaves, and never fewer than 200.
+    const request = body.split('\n')[0];
+    assert.match(request, /^request: R+$/);
+    assert.ok(request.length - 'request: '.length > 200, 'the request keeps more than the pre-A20 200');
+    assert.ok(request.length - 'request: '.length < 1000, 'the request gave characters back');
+    assert.equal(body.length, 2000);
+  });
+});
+
+test('a long request keeps its full 1,000 characters when the lists are short', async () => {
+  await withOpened(async (db, token) => {
+    seedRepo(db);
+    seedSession(db, 'sess1', { status: 'ended', summaryState: 'pending', turns: 2 });
+    seedEvent(db, { id: 'p1', content: 'R'.repeat(1500), turn: 1 });
+    seedEvent(db, {
+      id: 'c1',
+      kind: 'tool_call',
+      content: 'read two paths',
+      payload: { tool_name: 'read', input: { paths: TRIM_PATHS.slice(0, 2) } },
+      turn: 1,
+    });
+    seedEvent(db, { id: 'p2', content: 'N'.repeat(300), turn: 2 });
+
+    const result = sessionSummary(db, token, 'sess1', NOW);
+    assert.equal(result.state, 'done');
+    if (result.memoryId === null) assert.fail('expected a summary memory');
+    const body = String(memoryRow(db, result.memoryId)?.body);
+
+    assert.match(body, new RegExp(`^request: ${'R'.repeat(1000)}$`, 'm'));
+    assert.equal(body.includes('omitted'), false);
+    assert.match(body, /^investigated: .*path-00\.ts.*path-01\.ts$/m);
+    assert.ok(body.length <= 2000);
+  });
+});
+
 test('the deterministic session summary carries the five lines and the worst degraded reason', async () => {
   await withOpened(async (db, token) => {
     seedRepo(db);
