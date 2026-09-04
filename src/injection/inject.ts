@@ -12,7 +12,7 @@ import { isPaused, loadConfig, loadRepoRules, type OboeteConfig } from '../confi
 import { latestSessionState } from '../db/queries.js';
 import { openDatabase } from '../db/open.js';
 import type { AgentName, NormalizedEvent } from '../events.js';
-import { appendLog } from '../log.js';
+import { appendLogQuietly } from '../log.js';
 import { ensureDirectories, oboetePaths, resolveHome, type OboetePaths } from '../paths.js';
 import { detectSync } from '../privacy/detect.js';
 import { resolveRepoIdentity, type RepoIdentity } from '../repo-identity.js';
@@ -85,21 +85,8 @@ function sleep(milliseconds: number): void {
   Atomics.wait(new Int32Array(new SharedArrayBuffer(4)), 0, 0, milliseconds);
 }
 
-function safeLog(
-  paths: OboetePaths,
-  level: 'warn' | 'error',
-  message: string,
-  fields: Record<string, string | number | boolean>,
-): void {
-  try {
-    appendLog(paths.hookLog, level, message, fields);
-  } catch {
-    // Agent-facing commands always exit zero even when their diagnostic surface is unavailable.
-  }
-}
-
 function indexUnavailable(context: Pick<HookContext, 'agent' | 'eventName' | 'paths'>): string {
-  safeLog(context.paths, 'warn', 'injection unavailable', {
+  appendLogQuietly(context.paths.hookLog, 'warn', 'injection unavailable', {
     agent: context.agent,
     event: context.eventName,
     degraded: 'index_unavailable',
@@ -458,7 +445,7 @@ export async function injectForHook(context: HookContext): Promise<string> {
     if (context.agent === 'grok') return await injectGrok(context, validation);
     return '';
   } catch (error) {
-    safeLog(context.paths, 'error', 'injection failed', {
+    appendLogQuietly(context.paths.hookLog, 'error', 'injection failed', {
       agent: context.agent,
       event: context.eventName,
       reason: error instanceof Error ? error.message.split('\n')[0] : String(error),
@@ -653,7 +640,7 @@ export async function runInject(
       opened.db.close();
     }
   } catch (error) {
-    safeLog(paths, 'error', 'inject failed', {
+    appendLogQuietly(paths.hookLog, 'error', 'inject failed', {
       agent: 'pi',
       reason: error instanceof Error ? error.message.split('\n')[0] : String(error),
     });

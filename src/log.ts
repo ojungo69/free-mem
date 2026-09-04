@@ -40,3 +40,17 @@ export function appendLog(
   mkdirSync(dirname(file), { recursive: true, mode: 0o700 });
   appendFileSync(file, `${scrubCredentials(parts.join(' '))}\n`, { mode: 0o600 });
 }
+
+/** Appends a line, or nothing: an agent-facing hook exits 0 even with an unwritable data directory. */
+export function appendLogQuietly(
+  file: string,
+  level: 'info' | 'warn' | 'error',
+  message: string,
+  fields: Record<string, string | number | boolean> = {},
+): void {
+  try {
+    appendLog(file, level, message, fields);
+  } catch {
+    // FR-002: the diagnostic surface being unavailable must not change the exit code.
+  }
+}

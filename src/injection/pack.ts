@@ -17,7 +17,7 @@ import { rejectsDirectives } from '../observer/classify.js';
 import { isCjk } from '../retrieval/fts.js';
 import { searchCandidates } from '../retrieval/query.js';
 import { rankCandidates } from '../retrieval/rank.js';
-import { toolInputOf } from '../worker/batches.js';
+import { payloadOf, toolInputOf } from '../worker/batches.js';
 import { transactionImmediate } from '../worker/lease.js';
 import { charBudget } from './budget.js';
 import {
@@ -233,38 +233,19 @@ function lastInjectedAt(db: DatabaseSync, ids: readonly string[]): Map<string, n
   return byMemory;
 }
 
-/** The worker's last citation check of one memory (data-model.md memories); hooks only read it. */
-type CitationCheck = { head: string | null; ok: number | null };
-
-function citationChecks(db: DatabaseSync, ids: readonly string[]): Map<string, CitationCheck> {
-  const byMemory = new Map<string, CitationCheck>();
-  if (ids.length === 0) return byMemory;
+/** The memories whose cited commits the worker checked against this `HEAD` (data-model.md memories). */
+function freshCitations(db: DatabaseSync, ids: readonly string[], head: string): Set<string> {
+  if (ids.length === 0) return new Set();
   const rows = db
     .prepare(
-      `SELECT id, citations_head, citations_ok FROM memories
-       WHERE id IN (${ids.map(() => '?').join(', ')})`,
+      `SELECT id FROM memories
+       WHERE citations_ok = 1 AND citations_head = ? AND id IN (${ids.map(() => '?').join(', ')})`,
     )
-    .all(...(ids as SQLInputValue[]));
-  for (const row of rows) {
-    byMemory.set(String(row.id), {
-      head: row.citations_head === null ? null : String(row.citations_head),
-      ok: (row.citations_ok as number | null) ?? null,
-    });
-  }
-  return byMemory;
+    .all(head, ...(ids as SQLInputValue[]));
+  return new Set(rows.map((row) => String(row.id)));
 }
 
 type ActivityRow = { rawEventId: string; line: string };
-
-function parseJson(value: SQLOutputValue): Record<string, unknown> {
-  if (typeof value !== 'string') return {};
-  try {
-    const parsed: unknown = JSON.parse(value);
-    return typeof parsed === 'object' && parsed !== null ? (parsed as Record<string, unknown>) : {};
-  } catch {
-    return {};
-  }
-}
 
 function activityLine(row: Record<string, SQLOutputValue>): string {
   const content = typeof row.content === 'string' ? row.content : '';
@@ -273,9 +254,9 @@ function activityLine(row: Record<string, SQLOutputValue>): string {
   // Tool activity is named by its tool and by what the call itself said — the paths it touched, or
   // the command capture moved into `content` — never by its output (R12: bodies are never verbatim
   // tool output).
-  const record = parseJson(row.payload_json) as { tool_name?: unknown };
-  const tool = typeof record.tool_name === 'string' ? record.tool_name : 'tool';
   const payloadJson = typeof row.payload_json === 'string' ? row.payload_json : null;
+  const payload = payloadOf({ payload_json: payloadJson });
+  const tool = typeof payload?.tool_name === 'string' ? payload.tool_name : 'tool';
   const input = toolInputOf({ content, payload_json: payloadJson });
   const named = input.paths.length > 0 ? input.paths.join(', ') : (input.command ?? input.text ?? '');
   return named === '' ? tool : `${tool} ${named.slice(0, PROMPT_EXCERPT)}`;
@@ -374,14 +355,12 @@ async function assemble(
   // because a pack never claims a citation it could not check is still current.
   const citesCommit = all.some((citation) => citation.kind === 'commit');
   const repoHead = citesCommit ? repositoryHead(input.repoRoot, input.remainingBudget?.()) : null;
-  const checked = citesCommit ? citationChecks(db, ids) : new Map<string, CitationCheck>();
+  const fresh = repoHead === null ? new Set<string>() : freshCitations(db, ids, repoHead);
 
   const items: PackItem[] = [];
   for (const memory of assembly.memories) {
     const own = citations.get(memory.id) ?? [];
-    const check = checked.get(memory.id);
-    const commitsFresh =
-      repoHead !== null && check !== undefined && check.head === repoHead && check.ok === 1;
+    const commitsFresh = fresh.has(memory.id);
     const stale = own.find((citation) =>
       citation.kind === 'commit' ? !commitsFresh : pathState.get(citation.value) === false,
     );

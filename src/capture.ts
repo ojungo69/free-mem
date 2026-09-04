@@ -39,7 +39,7 @@ import {
   type NormalizedEvent,
   type SessionStartSource,
 } from './events.js';
-import { appendLog } from './log.js';
+import { appendLogQuietly } from './log.js';
 import { ensureDirectories, oboetePaths, resolveHome, type OboetePaths } from './paths.js';
 import { detectInWorker, type DetectorInput, type DetectorResult } from './privacy/detect.js';
 import { resolveRepoIdentity, type GitSpawn, type RepoIdentity } from './repo-identity.js';
@@ -756,15 +756,11 @@ async function injectAfterCapture(
   try {
     return await (await import('./injection/inject.js')).injectForHook(context);
   } catch (error) {
-    try {
-      appendLog(paths.hookLog, 'error', 'injection failed', {
-        agent: seed.event.agent,
-        event: seed.eventName,
-        reason: error instanceof Error ? error.message.split('\n')[0] : String(error),
-      });
-    } catch {
-      // The hook still exits zero when the diagnostic surface is unavailable (FR-002).
-    }
+    appendLogQuietly(paths.hookLog, 'error', 'injection failed', {
+      agent: seed.event.agent,
+      event: seed.eventName,
+      reason: error instanceof Error ? error.message.split('\n')[0] : String(error),
+    });
     return '';
   }
 }
@@ -1215,20 +1211,6 @@ function option(values: Record<string, unknown>, name: string): string | undefin
   return typeof value === 'string' && value !== '' ? value : undefined;
 }
 
-/** FR-002: the hook exits 0 even when the log itself cannot be written. */
-function logQuietly(
-  file: string,
-  level: 'info' | 'error',
-  message: string,
-  fields: Record<string, string | number>,
-): void {
-  try {
-    appendLog(file, level, message, fields);
-  } catch {
-    // An unwritable data directory must not turn a captured event into a non-zero exit.
-  }
-}
-
 async function runCaptureCommand(
   input: Omit<CaptureInput, 'readStdin'>,
   runtime: CaptureRuntime,
@@ -1238,7 +1220,7 @@ async function runCaptureCommand(
     outcome = await captureEvent(runtime.deps, { ...input, readStdin: runtime.readStdin });
   } catch (error) {
     // FR-002: the agent is never blocked, so every failure ends as one log line and exit 0.
-    logQuietly(input.paths.hookLog, 'error', 'capture failed', {
+    appendLogQuietly(input.paths.hookLog, 'error', 'capture failed', {
       agent: input.agent,
       event: input.eventName,
       reason: error instanceof Error ? error.message.split('\n')[0] : String(error),
@@ -1247,7 +1229,7 @@ async function runCaptureCommand(
   }
 
   if (outcome.outcome !== 'paused') {
-    logQuietly(input.paths.hookLog, 'info', 'capture', {
+    appendLogQuietly(input.paths.hookLog, 'info', 'capture', {
       agent: input.agent,
       event: input.eventName,
       outcome: outcome.outcome,
