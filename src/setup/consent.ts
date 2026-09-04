@@ -109,7 +109,9 @@ function updateConfigFile(paths: OboetePaths, apply: (root: Record<string, unkno
   // carries a mode of their own.
   const mode = present ? statSync(paths.config).mode & 0o7777 : 0o600;
   const temporary = `${paths.config}.oboete-tmp-${process.pid}`;
-  writeFileSync(temporary, `${stringifyToml(root)}\n`, { mode });
+  // `wx`: an exclusive create, so a link pre-placed at this predictable name is refused rather than
+  // followed (the rule src/setup/managed-block.ts states for the foreign files).
+  writeFileSync(temporary, `${stringifyToml(root)}\n`, { mode, flag: 'wx' });
   try {
     chmodSync(temporary, mode); // The creation mode is masked by the umask; this is not.
     // R8's temporary file -> re-parse -> rename, so a result oboete could not load again never

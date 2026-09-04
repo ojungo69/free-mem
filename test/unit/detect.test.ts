@@ -251,3 +251,54 @@ test('an empty or relative PATH entry never resolves a CLI from the working dire
     assert.deepEqual(calls, [], 'a script in the working directory is never executed');
   });
 });
+
+test('no oboete credential reaches the agent CLI the version probe spawns', async () => {
+  await withTempHome(async (home) => {
+    const userHome = join(home, 'user');
+    const bin = join(home, 'bin');
+    mkdirSync(bin, { recursive: true });
+    executable(bin, 'claude');
+
+    const environments: NodeJS.ProcessEnv[] = [];
+    const recordingSpawn: VersionSpawn = (_command, _args, options) => {
+      environments.push(options.env ?? {});
+      return {
+        pid: 1,
+        output: [null, '2.1.258\n', ''],
+        stdout: '2.1.258\n',
+        stderr: '',
+        status: 0,
+        signal: null,
+      };
+    };
+
+    // FR-016: oboete's provider credentials stay on oboete's own request path. The probe in
+    // src/setup/probe.ts already strips them (test/unit/probe.test.ts); so must this one, which
+    // runs twice per `oboete setup` -- once before the writes and once after.
+    const credentials = {
+      OBOETE_NIM_API_KEY: 'nim-secret-value',
+      OBOETE_OPENROUTER_API_KEY: 'openrouter-secret-value',
+      OBOETE_CF_API_TOKEN: 'cloudflare-secret-value',
+      OBOETE_CF_ACCOUNT_ID: 'cloudflare-account-value',
+    };
+    detectAgents(
+      {
+        ...credentials,
+        HOME: userHome,
+        PATH: bin,
+        ANTHROPIC_API_KEY: 'the agent CLI keeps its own credentials',
+      },
+      recordingSpawn,
+    );
+
+    assert.equal(environments.length, 1);
+    const env = environments[0] ?? {};
+    for (const [name, value] of Object.entries(credentials)) {
+      assert.equal(env[name], undefined, name);
+      assert.ok(!Object.values(env).includes(value), `${name} value`);
+    }
+    assert.equal(env.HOME, userHome, 'the CLI still runs as the developer');
+    assert.equal(env.PATH, bin);
+    assert.equal(env.ANTHROPIC_API_KEY, 'the agent CLI keeps its own credentials');
+  });
+});

@@ -15,6 +15,7 @@ import {
   removeJsonHandlers,
   removeTomlBlock,
 } from './managed-block.js';
+import { shellQuote } from './shell-quote.js';
 
 export type CodexSetupOptions = {
   /** Absolute path of the node binary that runs the bundle (`process.execPath`). */
@@ -59,6 +60,7 @@ export function writeCodex(home: string, options: CodexSetupOptions): WriteResul
   const hooksPath = resolve(home, 'hooks.json');
   const configPath = resolve(home, 'config.toml');
   const hooksExisted = existsSync(hooksPath);
+  const hooksBackupExisted = existsSync(hooksPath + BACKUP_SUFFIX);
   const backupExisted = existsSync(configPath + BACKUP_SUFFIX);
 
   const groups: Record<string, CodexGroup[]> = {};
@@ -74,7 +76,9 @@ export function writeCodex(home: string, options: CodexSetupOptions): WriteResul
     // Codex skips a handler that has no matching trust row and says nothing, so handlers left
     // behind by a setup that could not write the rows would be wired and silently inert. A setup
     // that fails hands the files back the way it found them instead (FR-031).
-    removeJsonHandlers(hooksPath, ['hooks']);
+    // Same rule as the config.toml backup below: a copy this run took is its own leftover, an
+    // older one is the pre-oboete copy `oboete setup --remove` restores and stays.
+    removeJsonHandlers(hooksPath, ['hooks'], { keepBackup: hooksBackupExisted });
     if (!hooksExisted) rmSync(hooksPath, { force: true });
     // The backup is taken before the parse that rejected the write, so a copy this run made of a
     // file it then left alone is its own leftover; an older one is the pre-oboete copy and stays.
@@ -107,7 +111,7 @@ function group(wiring: Wiring, options: CodexSetupOptions): CodexGroup {
     type: 'command',
     // Codex runs the command through a shell, and the fixed `--agent` selector is what picks the
     // adapter (contracts/agents.md "Agent identity").
-    command: `${quote(options.node)} ${quote(options.bundle)} hook --agent codex --event ${wiring.event}`,
+    command: `${shellQuote(options.node)} ${shellQuote(options.bundle)} hook --agent codex --event ${wiring.event}`,
     timeout: wiring.timeout,
   };
   // 0 disables the 2,500-token spill, which would move the tail of a pack to a file under the
@@ -155,9 +159,4 @@ function mergedGroups(hooksPath: string): Record<string, CodexGroup[]> {
 /** A TOML basic string: the escapes JSON produces are the ones TOML reads. */
 function tomlString(value: string): string {
   return JSON.stringify(value);
-}
-
-/** A single-quoted shell word; a single quote inside one is closed, escaped and reopened. */
-function quote(value: string): string {
-  return `'${value.split("'").join("'\\''")}'`;
 }

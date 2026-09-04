@@ -39,7 +39,9 @@ export function writePi(home: string, options: WritePiOptions): WriteResult {
 
   mkdirSync(dirname(loader), { recursive: true });
   const temporary = `${loader}.oboete-tmp-${process.pid}`;
-  writeFileSync(temporary, content, { mode: 0o600 });
+  // `wx`: an exclusive create, so a link pre-placed at this predictable name is refused rather than
+  // followed (the rule src/setup/managed-block.ts states for the foreign files).
+  writeFileSync(temporary, content, { mode: 0o600, flag: 'wx' });
   renameSync(temporary, loader);
   return { files: [loader] };
 }

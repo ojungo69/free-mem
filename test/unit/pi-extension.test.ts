@@ -214,6 +214,22 @@ test('a failure is counted in memory and handed to the next capture child exactl
   assert.equal(calls[1].args.includes('--prior-failures'), false, 'the counters are drained');
 });
 
+test('the codes a capture child never carried go back to the next one', () => {
+  const { calls, spawn } = spawnRecorder(1);
+  const { pi, fire } = stubPi();
+  piExtension(pi, { node: NODE, bundle: BUNDLE, spawn });
+
+  fire('session_start'); // The spawn throws, so the code is counted in memory.
+  fire('input', { type: 'input', text: 'hello' }); // This child is handed the code...
+  calls[0].fail(); // ...and then turns out never to have started.
+  fire('tool_result', { type: 'tool_result', toolName: 'read', toolCallId: 'c1' });
+
+  // The child process is the only durable record of a failure (Pi keeps none: R12, amendment A8),
+  // so a spawn that failed must not take the codes it was given with it.
+  assert.equal(calls[1].args.at(-2), '--prior-failures');
+  assert.equal(calls[1].args.at(-1), 'capture_failed,capture_spawn_failed');
+});
+
 test('a capture child that fails to start is counted for the next child', () => {
   const { calls, spawn } = spawnRecorder();
   const { pi, fire } = stubPi();

@@ -98,7 +98,7 @@ function defaults(): SetupDeps {
         const missing = (result.error as NodeJS.ErrnoException).code === 'ENOENT';
         return {
           ok: false,
-          reason: missing ? `${command[0]} is not on the PATH` : describe(result.error),
+          reason: missing ? `${command[0]} is not there any more` : describe(result.error),
         };
       }
       return { ok: result.status === 0, reason: `it exited with status ${result.status}` };
@@ -315,6 +315,29 @@ function agentHome(detection: AgentDetection, env: NodeJS.ProcessEnv): string {
   }
 }
 
+/**
+ * One agent command line, run by the absolute path detection resolved on PATH rather than the bare
+ * name: `spawn` resolves a bare name through PATH itself, and a PATH holding '.' or an empty entry
+ * would run a file of that name out of the developer's repository -- the reason src/setup/detect.ts
+ * refuses a relative PATH entry when it resolves the CLI. An agent with no CLI on PATH is reported
+ * per agent and nothing is spawned for it.
+ */
+function runAgentCli(
+  detection: AgentDetection,
+  args: readonly string[],
+  deps: SetupDeps,
+): { ok: boolean; reason: string; command: readonly string[] } {
+  if (detection.cliPath === null) {
+    return {
+      ok: false,
+      reason: `the ${detection.agent} executable is not on the PATH`,
+      command: [detection.agent, ...args],
+    };
+  }
+  const command = [detection.cliPath, ...args];
+  return { ...deps.runCli(command), command };
+}
+
 function wire(
   detection: AgentDetection,
   detected: readonly AgentDetection[],
@@ -330,11 +353,11 @@ function wire(
     switch (detection.agent) {
       case 'claude': {
         const result = writeClaude(home, { nodePath: deps.node, bundlePath: deps.bundle });
-        const mcp = deps.runCli(result.mcpCommand);
+        const mcp = runAgentCli(detection, result.mcpArgs, deps);
         if (!mcp.ok) {
           note(
             `claude: the memory tools could not be registered because ${mcp.reason}. Capture and injection`,
-            `are wired; run \`${result.mcpCommand.join(' ')}\` yourself to add the tools.`,
+            `are wired; run \`${mcp.command.join(' ')}\` yourself to add the tools.`,
           );
         }
         return 'yes';
@@ -384,7 +407,7 @@ function unwire(
     switch (detection.agent) {
       case 'claude': {
         removeClaude(home);
-        const mcp = deps.runCli(['claude', 'mcp', 'remove', 'oboete']);
+        const mcp = runAgentCli(detection, ['mcp', 'remove', 'oboete'], deps);
         if (!mcp.ok) {
           note(`claude: the memory tools could not be unregistered because ${mcp.reason}.`);
         }

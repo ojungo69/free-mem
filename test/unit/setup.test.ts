@@ -1,7 +1,7 @@
 import assert from 'node:assert/strict';
 import type { spawn } from 'node:child_process';
 import { EventEmitter } from 'node:events';
-import { chmodSync, existsSync, mkdirSync, readFileSync, writeFileSync } from 'node:fs';
+import { chmodSync, existsSync, mkdirSync, readFileSync, symlinkSync, writeFileSync } from 'node:fs';
 import { join } from 'node:path';
 import { test } from 'node:test';
 
@@ -101,7 +101,9 @@ test('setup wires the four agents, reports them and prints the viewer line', asy
 
     for (const agent of ['claude', 'codex', 'grok', 'pi']) assert.match(context.output, new RegExp(agent));
     assert.match(context.output, /oboete view --open/);
-    assert.deepEqual(context.calls, [['claude', 'mcp', 'add', 'oboete', '--', NODE, BUNDLE, 'mcp']]);
+    // No `claude` on PATH: setup never hands a bare name to the spawn for PATH to resolve.
+    assert.deepEqual(context.calls, []);
+    assert.match(context.output, /claude: the memory tools could not be registered because the claude/);
     assert.ok(runtimeState(context.paths.db, SETUP_RESULT_KEY) !== undefined, 'doctor can read the result');
   });
 });
@@ -234,7 +236,8 @@ test('--remove restores the foreign files and keeps the consent record', async (
     assert.equal(existsSync(join(context.userHome, '.grok', 'hooks', 'oboete.json')), false);
     assert.equal(existsSync(join(context.userHome, '.codex', 'hooks.json')), false);
     assert.equal(typeof loadConfig(context.paths).consent.hash, 'string', 'consent is kept');
-    assert.deepEqual(context.calls, [['claude', 'mcp', 'remove', 'oboete']]);
+    assert.deepEqual(context.calls, []);
+    assert.match(context.output, /claude: the memory tools could not be unregistered because the claude/);
   });
 });
 
@@ -289,5 +292,45 @@ test('an unknown flag or agent name exits 2 without writing', async () => {
     assert.equal(await context.run(['--nope']), 2);
     assert.equal(await context.run(['--agents', 'emacs']), 2);
     assert.equal(existsSync(join(context.userHome, '.claude', 'settings.json')), false);
+  });
+});
+
+test('the agent CLI is spawned by the absolute path detection resolved, never by the bare name', async () => {
+  await harness(async (context) => {
+    const bin = join(context.home, 'bin');
+    mkdirSync(bin, { recursive: true });
+    writeFileSync(join(bin, 'claude'), '#!/bin/sh\nexit 0\n');
+    chmodSync(join(bin, 'claude'), 0o755);
+    const overrides = {
+      env: { HOME: context.userHome, PATH: bin, OBOETE_HOME: context.home },
+      versionSpawn: (() => ({ status: 0, stdout: '2.1.258\n', stderr: '' })) as unknown as VersionSpawn,
+      spawn: ((): EventEmitter => {
+        const child = new EventEmitter();
+        queueMicrotask(() => child.emit('close', 1, null));
+        return child;
+      }) as unknown as typeof spawn,
+    };
+
+    await context.run(['--provider', 'ollama', '--agents', 'claude'], overrides);
+    await context.run(['--remove', '--agents', 'claude'], overrides);
+
+    // `spawn` resolves a bare name through PATH itself, and a PATH holding '.' or an empty entry
+    // would run a file called `claude` out of the developer's repository -- the reason
+    // src/setup/detect.ts refuses a relative PATH entry when it resolves the CLI in the first place.
+    assert.deepEqual(context.calls, [
+      [join(bin, 'claude'), 'mcp', 'add', 'oboete', '--', NODE, BUNDLE, 'mcp'],
+      [join(bin, 'claude'), 'mcp', 'remove', 'oboete'],
+    ]);
+  });
+});
+
+test('a symbolic link left at the configuration’s temporary path is refused instead of written through', async () => {
+  await harness(async (context) => {
+    const victim = join(context.home, 'victim.toml');
+    writeFileSync(victim, 'stays = true\n');
+    symlinkSync(victim, `${context.paths.config}.oboete-tmp-${process.pid}`);
+
+    await assert.rejects(context.run(['--provider', 'ollama']));
+    assert.equal(readFileSync(victim, 'utf8'), 'stays = true\n', 'the link is never followed');
   });
 });

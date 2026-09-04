@@ -4,7 +4,7 @@
 // touched). The loader is the one file oboete owns outright, so it is written whole rather than as
 // a managed block inside a developer's file (src/setup/managed-block.ts covers those).
 import assert from 'node:assert/strict';
-import { existsSync, mkdirSync, readFileSync, statSync, writeFileSync } from 'node:fs';
+import { existsSync, mkdirSync, readFileSync, statSync, symlinkSync, writeFileSync } from 'node:fs';
 import { dirname, join } from 'node:path';
 import { test } from 'node:test';
 import { fileURLToPath, pathToFileURL } from 'node:url';
@@ -97,5 +97,19 @@ test('a loader oboete did not write is never overwritten or deleted', async () =
     assert.throws(() => writePi(home, { node: NODE, bundle: BUNDLE }), unmarked);
     assert.throws(() => removePi(home), unmarked);
     assert.equal(readFileSync(loader, 'utf8'), theirs);
+  });
+});
+
+test('a symbolic link left at the loader’s temporary path is refused instead of written through', async () => {
+  await withTempHome(async (home) => {
+    const victim = join(home, 'victim.js');
+    writeFileSync(victim, 'stays = true\n');
+    const loader = piLoaderPath(home);
+    mkdirSync(dirname(loader), { recursive: true });
+    symlinkSync(victim, `${loader}.oboete-tmp-${process.pid}`);
+
+    assert.throws(() => writePi(home, { node: NODE, bundle: BUNDLE }));
+    assert.equal(readFileSync(victim, 'utf8'), 'stays = true\n', 'the link is never followed');
+    assert.equal(existsSync(loader), false);
   });
 });

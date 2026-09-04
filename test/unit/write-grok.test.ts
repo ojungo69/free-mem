@@ -1,10 +1,10 @@
 import assert from 'node:assert/strict';
-import { chmodSync, existsSync, mkdirSync, readFileSync, statSync, writeFileSync } from 'node:fs';
+import { chmodSync, existsSync, mkdirSync, readdirSync, readFileSync, statSync, writeFileSync } from 'node:fs';
 import { dirname, join } from 'node:path';
 import { test } from 'node:test';
 import { parse as parseToml } from 'smol-toml';
 
-import { BACKUP_SUFFIX } from '../../src/setup/managed-block.js';
+import { BACKUP_SUFFIX, ManagedFileError } from '../../src/setup/managed-block.js';
 import { removeGrok, writeGrok } from '../../src/setup/write-grok.js';
 import { withTempHome } from '../helpers/home.js';
 
@@ -186,5 +186,51 @@ test('writeGrok reports the Claude handlers the compat layer would run a second 
       claudeSettingsPath: join(home, '.claude', 'absent.json'),
     });
     assert.deepEqual(alone.duplicateClaudeEvents, [], 'no Claude file, nothing to warn about');
+  });
+});
+
+/** The developer registered oboete by hand; appending the block would define the table twice. */
+const HAND_WRITTEN_MCP = '[mcp_servers.oboete]\ncommand = "oboete"\nargs = ["mcp"]\n';
+
+test('a setup that cannot write config.toml leaves no live handler behind', async () => {
+  await withTempHome(async (home) => {
+    write(configFile(home), HAND_WRITTEN_MCP);
+
+    assert.throws(
+      () => writeGrok(grokHome(home), { nodePath: NODE, bundlePath: BUNDLE }),
+      (error: unknown) => error instanceof ManagedFileError && error.code === 'reparse_failed',
+    );
+    // The handlers are written before the MCP block, so a failure at the block would otherwise
+    // leave Grok running oboete's hooks while setup reports `wired: failed` (FR-031).
+    assert.equal(existsSync(hooksFile(home)), false, 'the hooks file of the failed run goes');
+    assert.equal(readFileSync(configFile(home), 'utf8'), HAND_WRITTEN_MCP);
+    // `oboete setup --remove` leaves the directory too; what must be gone is everything in it.
+    assert.deepEqual(readdirSync(dirname(hooksFile(home))), [], 'no backup and no temporary file');
+  });
+});
+
+test('a failing repeat keeps the copy of the hooks file from before oboete', async () => {
+  await withTempHome(async (home) => {
+    const foreign = { hooks: [{ type: 'command', command: 'notify-send hi' }] };
+    const original = `${JSON.stringify({ hooks: { PreCompact: [foreign] } }, null, 2)}\n`;
+    write(hooksFile(home), original);
+
+    writeGrok(grokHome(home), { nodePath: NODE, bundlePath: BUNDLE });
+    assert.equal(readFileSync(hooksFile(home) + BACKUP_SUFFIX, 'utf8'), original);
+    // The developer registers oboete by hand next to the block oboete already wrote.
+    write(configFile(home), readFileSync(configFile(home), 'utf8') + HAND_WRITTEN_MCP);
+
+    assert.throws(
+      () => writeGrok(grokHome(home), { nodePath: NODE, bundlePath: BUNDLE }),
+      (error: unknown) => error instanceof ManagedFileError && error.code === 'reparse_failed',
+    );
+    assert.deepEqual(readHooks(home), { PreCompact: [foreign] }, 'no oboete handler stays live');
+    // The copy from before oboete is what `oboete setup --remove` restores.
+    assert.equal(readFileSync(hooksFile(home) + BACKUP_SUFFIX, 'utf8'), original);
+    assert.equal(
+      existsSync(configFile(home) + BACKUP_SUFFIX),
+      false,
+      'the copy this run took of a file it then left alone is its own leftover',
+    );
   });
 });
