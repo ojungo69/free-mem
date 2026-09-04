@@ -6,7 +6,7 @@
 - Machine: `Linux DESKTOP-PNCJSEO 6.18.33.2-microsoft-standard-WSL2 #1 SMP PREEMPT_DYNAMIC Thu Jun 18 21:54:43 UTC 2026 x86_64 x86_64 x86_64 GNU/Linux`.
 - CPU: `AMD Ryzen 9 5950X 16-Core Processor`.
 - Node: default `$HOME/.nvm/versions/node/v24.16.0/bin/node` (`v24.16.0`) and `$HOME/.nvm/versions/node/v22.23.1/bin/node` (`v22.23.1`). The latter is the local proxy for the CI matrix's pinned `22.16.0`, not an exact 22.16.0 run.
-- Commit: `cfd66d3`.
+- Commit: `a9b51fb`.
 - Bundle: `dist/oboete.mjs`, 1,237,178 bytes after the build below.
 
 Commands executed for the bundle and cold-start measurement:
@@ -48,7 +48,7 @@ The 200 KB cases contain 204,792 bytes of response content; the table reports th
 <!-- measure:start -->
 - Date: 2026-09-03T21:44:35.543Z
 - Node versions: `$HOME/.nvm/versions/node/v24.16.0/bin/node` (v24.16.0); `$HOME/.nvm/versions/node/v22.23.1/bin/node` (v22.23.1)
-- Commit: `cfd66d3`
+- Commit: `a9b51fb`
 - Bundle: `dist/oboete.mjs` (1237178 bytes)
 - Samples: 30 measured runs after 3 warm-up runs per scenario
 - Measurement attempts: run 1 load `1.40 2.43 2.28 2/4249 14`; run 2 load `1.86 2.42 2.28 1/4191 4282`; kept run 1 (lower 1-minute load average)
@@ -99,7 +99,7 @@ The scoped rows are directory aggregates produced by the required glob and overl
 
 Written reason to bring to the owner, not an approved exception: the 2.695 MB excess is dominated by `ai`, `zod`, `@ai-sdk/*`, `hono`, `undici`, and `preact`. Plan Complexity Tracking row 1 keeps the heavy observer/viewer packages external and lazily imported because bundling their CommonJS transitives into ESM throws `Dynamic require` and loading them in the engine's hook path would add megabytes to every capture. The owner must either approve that reason as the over-30-MB exception or require a dependency/packaging reduction; this task makes neither decision.
 
-### Re-measurement after reclassifying the bundled packages (commit after d2f6cd0)
+### Re-measurement after reclassifying the bundled packages (commit after d2b275c)
 
 `preact`, `@secretlint/core`, `@secretlint/secretlint-rule-preset-recommend` and `smol-toml` ride
 inside `dist/oboete.mjs` (scripts/build.mjs bundles the hook-path packages) or only exist at
@@ -133,6 +133,6 @@ Load averages for the source tables: cold start `1.40 2.43 2.28 2/4249 14`; inst
 | R13 row | Status | Evidence | Consequence from research.md |
 |---|---|---|---|
 | Real bundle cold start on 22.16 and 24.x | pass | v22.23.1 local proxy: 52.7 ms max for `--version`, 183.0 ms max hook; v24.16.0: 59.7 ms max for `--version`, 252.1 ms max hook | Not triggered: “blocked; a split entry point needs a constitution amendment first” |
-| Installed size with dependencies | pass (after reclassification; the first measurement at cfd66d3 failed at 32.695 MB) | 29.152 MB / 29,852 `du -k` blocks, 0.848 MB under target once the bundled packages became devDependencies | Not triggered; the first measurement's written reason is kept above for the record |
+| Installed size with dependencies | pass (after reclassification; the first measurement at a9b51fb failed at 32.695 MB) | 29.152 MB / 29,852 `du -k` blocks, 0.848 MB under target once the bundled packages became devDependencies | Not triggered; the first measurement's written reason is kept above for the record |
 
 ## Fixture replay (T068)

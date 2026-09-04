@@ -208,17 +208,18 @@ test('a full repository rule list keeps one path match bounded', () => {
   const rules = Array.from({ length: MAX_REPO_SECRET_PATHS }, (_, index) =>
     index % 2 === 0 ? `${'*'.repeat(stars)}x` : `${'a*'.repeat(Math.floor(stars / 2))}x`,
   );
-  // A path with no slash is the expensive shape: every `*` can reach every position of it.
-  const path = `${'a'.repeat(4_095)}b`;
+  // A path with no slash is the expensive shape: every `*` can reach every position of it. 1 KiB
+  // keeps the sweep (rules x rule length x path length) short enough for coverage-instrumented CI.
+  const path = `${'a'.repeat(1_023)}b`;
   const started = process.hrtime.bigint();
   assert.equal(matchSecretPath(path, rules, null), null);
   const elapsedMs = Number(process.hrtime.bigint() - started) / 1e6;
   // What is measured is linear against exponential: the same rules compiled into one backtracking
-  // expression do not finish at all. Measured at about 250 ms on the machine this was written on,
-  // so the bound leaves room for a slow or loaded one while still failing a return to backtracking.
+  // expression do not finish at all. Measured at about 70 ms here and about twenty times slower
+  // under coverage instrumentation, so the bound only has to fail a return to backtracking.
   assert.ok(
-    elapsedMs < 2_000,
-    `matching ${MAX_REPO_SECRET_PATHS} rules against a 4 KiB path took ${elapsedMs.toFixed(0)} ms`,
+    elapsedMs < 10_000,
+    `matching ${MAX_REPO_SECRET_PATHS} rules against a 1 KiB path took ${elapsedMs.toFixed(0)} ms`,
   );
 });
 
