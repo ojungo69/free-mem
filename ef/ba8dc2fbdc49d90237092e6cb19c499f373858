@@ -1,0 +1,23 @@
+specs/007-oboete-m1-alpha/tasks.md
+  s_9216550c8111e1::t_5e20aedbcadc94 154
+test/fault-storage.test.ts
+  s_9216550c8111e1::t_0e7c97ca5f7a3f 1-339
+test/helpers/fault.ts
+  s_9216550c8111e1::t_1380872ab3b910 1-249
+---
+{
+  "schema_version": "authorship/3.0.0",
+  "git_ai_version": "1.6.16",
+  "base_commit_sha": "efba8dc2fbdc49d90237092e6cb19c499f373858",
+  "prompts": {},
+  "sessions": {
+    "s_9216550c8111e1": {
+      "agent_id": {
+        "tool": "claude",
+        "id": "8fec18e5-07c4-4cab-bf95-7479b7081947",
+        "model": "claude-fable-5-1"
+      },
+      "human_author": "ojungo69 <210335670+ojungo69@users.noreply.github.com>"
+    }
+  }
+}
