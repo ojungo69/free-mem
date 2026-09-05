@@ -409,6 +409,47 @@ test('provider 429/3036 persists exhaustion and falls back without retrying', as
   });
 });
 
+const privateResponseText = 'private-provider-body openrouter-test-key\nsecond line';
+for (const [name, content, detail] of [
+  ['malformed', `not JSON: ${privateResponseText}`, 'provider response was not valid JSON'],
+  ['schema-invalid', JSON.stringify({ observations: [], [privateResponseText]: true }), 'provider response failed observation validation'],
+  ['unknown-source', JSON.stringify(providerOutput(privateResponseText)), 'provider response failed observation validation'],
+] as const) {
+  test(`a ${name} provider response logs the fixed failure detail without its body or credentials`, async () => {
+    await withFixture(async (fixture) => {
+      fixture.env = cleanEnv(fixture.home, { OBOETE_OPENROUTER_API_KEY: 'openrouter-test-key' });
+      writeConfig(fixture, 'openrouter', fixture.env);
+      await captureEndedSession(fixture, {
+        sessionId: 'malformed-session',
+        prompts: ['Record the retry behavior.'],
+        assistant: 'The upload path retries once.',
+      });
+      let calls = 0;
+      const fetchImpl: typeof fetch = async () => {
+        calls += 1;
+        return new Response(JSON.stringify({
+          id: 'malformed-response',
+          model: PRESET_CATALOG.openrouter.defaultModel,
+          choices: [{
+            index: 0,
+            message: { role: 'assistant', content },
+            finish_reason: 'stop',
+          }],
+        }), { status: 200, headers: { 'content-type': 'application/json' } });
+      };
+
+      assert.equal(await runObserveForFixture(fixture, { fetch: fetchImpl }), 1);
+      assert.equal(calls, 2);
+      const log = readFileSync(fixture.paths.observeLog, 'utf8');
+      assert.match(log, /batch .*state=fallback reason=unusable_output detail=/);
+      assert.ok(log.includes(`detail=${JSON.stringify(detail)}\n`));
+      assert.equal(log.includes('private-provider-body'), false);
+      assert.equal(log.includes('openrouter-test-key'), false);
+      assert.equal(log.includes('second line'), false);
+    });
+  });
+}
+
 test('a consent hash mismatch never calls the provider and records consent_changed', async () => {
   await withFixture(async (fixture) => {
     fixture.env = cleanEnv(fixture.home, { OBOETE_OPENROUTER_API_KEY: 'openrouter-test-key' });

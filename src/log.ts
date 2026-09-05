@@ -37,6 +37,14 @@ function formatValue(value: string | number | boolean): string {
   return /[\s"]/.test(text) ? JSON.stringify(text) : text;
 }
 
+/** A log-safe name for an error: its `code` when it has one, else its class name (never its message, which can quote captured content). */
+export function errorCode(error: unknown): string {
+  if (typeof error === 'object' && error !== null && 'code' in error && typeof error.code === 'string') {
+    return error.code;
+  }
+  return error instanceof Error ? error.name : 'unknown';
+}
+
 /** Appends one line `<ISO time> <level> <message> key=value ...` (conventions, "CLI and processes"). */
 export function appendLog(
   file: string,

@@ -22,7 +22,7 @@ import {
   type AncestorCache,
   updateCitationState,
 } from '../injection/staleness.js';
-import { appendLog, appendLogQuietly } from '../log.js';
+import { appendLog, appendLogQuietly, errorCode } from '../log.js';
 import { refreshWorkersAiCatalog } from '../observer/catalog.js';
 import {
   applyObservations,
@@ -87,9 +87,30 @@ type Counts = {
   purged: number;
 };
 
+/**
+ * contracts/cli.md line 35: a log never carries provider content. llm.ts's fixed unusable-output
+ * messages are safe verbatim; a validation detail from contract.ts can echo provider-owned keys or
+ * source ids, so it is replaced. Kept in step with src/observer/llm.ts.
+ */
+const SAFE_UNUSABLE_DETAILS = new Set([
+  'provider response was not valid JSON',
+  'provider output reached its length limit',
+  'provider response contained no text',
+  'provider response exceeded 1 MB',
+  'the agent CLI did not return its documented JSON output',
+  'the agent CLI response was unusable',
+  'provider output was unusable',
+]);
+
+function loggableDetail(reason: DegradedReason, detail: string): string {
+  if (reason !== 'unusable_output' || SAFE_UNUSABLE_DETAILS.has(detail)) return detail;
+  return 'provider response failed observation validation';
+}
+
 type BatchResult = {
   state: 'applied' | 'fallback' | 'lease_lost';
   reason: DegradedReason | null;
+  detail?: string;
   memoryIds: string[];
 };
 
@@ -98,13 +119,6 @@ class LeaseLostError extends Error {
     super('worker lease lost');
     this.name = 'LeaseLostError';
   }
-}
-
-function errorCode(error: unknown): string {
-  if (typeof error === 'object' && error !== null && 'code' in error && typeof error.code === 'string') {
-    return error.code;
-  }
-  return error instanceof Error ? error.name : 'unknown';
 }
 
 /**
@@ -465,7 +479,10 @@ async function processBatch(
 
   if (!outcome.ok) {
     providerState.set(batch.session_id, outcome.reason);
-    return await applyFallback(db, token, input, nearby, outcome.reason, detect, deps.now());
+    return {
+      ...(await applyFallback(db, token, input, nearby, outcome.reason, detect, deps.now())),
+      detail: loggableDetail(outcome.reason, outcome.detail),
+    };
   }
 
   providerState.set(batch.session_id, null);
@@ -870,6 +887,7 @@ export async function runObserve(argv: string[], overrides: Partial<ObserveDeps>
           id: batch.id,
           state: batchResult?.state ?? 'error',
           reason: batchResult?.reason ?? (batchError === undefined ? 'none' : errorCode(batchError)),
+          ...(batchResult?.detail === undefined ? {} : { detail: batchResult.detail.split(/[\r\n]/)[0] }),
         });
       }
       if (leaseLost) break;

@@ -1,6 +1,9 @@
 import { parseArgs } from 'node:util';
 import { isMainThread, workerData } from 'node:worker_threads';
 
+import { appendLogQuietly, errorCode } from './log.js';
+import { oboetePaths, resolveHome } from './paths.js';
+
 const knownCommands = [
   'setup',
   'doctor',
@@ -107,8 +110,23 @@ if (!isMainThread) {
   try {
     process.exitCode = await main(process.argv.slice(2));
   } catch (error) {
-    const message = error instanceof Error ? error.message : String(error);
-    process.stderr.write(`${message.split('\n')[0]}\n`);
-    process.exitCode = 3;
+    const command = process.argv[2];
+    if (command === 'hook' || command === 'capture' || command === 'inject') {
+      // contracts/cli.md: the agent-invoked commands exit 0 and print nothing; the failure is one
+      // hook-log line carrying the error's code, never its message (it can quote captured content).
+      process.exitCode = 0;
+      try {
+        appendLogQuietly(oboetePaths(resolveHome()).hookLog, 'error', 'command failed', {
+          command,
+          reason: errorCode(error),
+        });
+      } catch {
+        // Even the home directory being unresolvable must not change the exit code.
+      }
+    } else {
+      const message = error instanceof Error ? error.message : String(error);
+      process.stderr.write(`${message.split('\n')[0]}\n`);
+      process.exitCode = 3;
+    }
   }
 }

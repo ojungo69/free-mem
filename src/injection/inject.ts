@@ -12,7 +12,7 @@ import { isPaused, loadConfig, loadRepoRules, type OboeteConfig } from '../confi
 import { latestSessionState } from '../db/queries.js';
 import { openDatabase } from '../db/open.js';
 import type { AgentName, NormalizedEvent } from '../events.js';
-import { appendLogQuietly } from '../log.js';
+import { appendLogQuietly, errorCode } from '../log.js';
 import { ensureDirectories, oboetePaths, resolveHome, type OboetePaths } from '../paths.js';
 import { detectSync } from '../privacy/detect.js';
 import { resolveRepoIdentity, type RepoIdentity } from '../repo-identity.js';
@@ -437,7 +437,7 @@ export async function injectForHook(context: HookContext): Promise<string> {
     appendLogQuietly(context.paths.hookLog, 'error', 'injection failed', {
       agent: context.agent,
       event: context.eventName,
-      reason: error instanceof Error ? error.message.split('\n')[0] : String(error),
+      reason: errorCode(error),
     });
     return '';
   }
@@ -631,7 +631,7 @@ export async function runInject(
   } catch (error) {
     appendLogQuietly(paths.hookLog, 'error', 'inject failed', {
       agent: 'pi',
-      reason: error instanceof Error ? error.message.split('\n')[0] : String(error),
+      reason: errorCode(error),
     });
   }
   return 0;

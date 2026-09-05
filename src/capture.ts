@@ -39,7 +39,7 @@ import {
   type NormalizedEvent,
   type SessionStartSource,
 } from './events.js';
-import { appendLogQuietly } from './log.js';
+import { appendLogQuietly, errorCode } from './log.js';
 import { ensureDirectories, oboetePaths, resolveHome, type OboetePaths } from './paths.js';
 import { detectInWorker, type DetectorInput, type DetectorResult } from './privacy/detect.js';
 import { resolveRepoIdentity, type GitSpawn, type RepoIdentity } from './repo-identity.js';
@@ -760,7 +760,7 @@ async function injectAfterCapture(
     appendLogQuietly(paths.hookLog, 'error', 'injection failed', {
       agent: seed.event.agent,
       event: seed.eventName,
-      reason: error instanceof Error ? error.message.split('\n')[0] : String(error),
+      reason: errorCode(error),
     });
     return '';
   }
@@ -1225,7 +1225,7 @@ async function runCaptureCommand(
     appendLogQuietly(input.paths.hookLog, 'error', 'capture failed', {
       agent: input.agent,
       event: input.eventName,
-      reason: error instanceof Error ? error.message.split('\n')[0] : String(error),
+      reason: errorCode(error),
     });
     return 0;
   }

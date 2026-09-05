@@ -18,7 +18,9 @@ import { CAPTURE_DEADLINE_MS, STDIN_READ_BOUND } from '../src/capture.js';
 import {
   claudePayload,
   fixture,
+  observeLog,
   rows,
+  run,
   runHook,
   scenario,
   SELECTOR,
@@ -30,9 +32,9 @@ import {
 
 const EVENT = 'PostToolUse';
 const TOOL_OUTPUT = 'oboete probe repository\nsecond line\n';
-// The harness bound on a recovery run. observe must exit on its own once the spool is replayed
-// (contracts/cli.md: exit 0, or 1 when the fallback was used); a run the harness has to kill is
-// asserted as a failure, not diagnosed away.
+// Bound the recovery harness: a recovered mid-session row remains queued work (FR-009).
+// After SessionEnd, a second observe must exit naturally with 0 or 1 (contracts/cli.md:15),
+// a session_end batch covering the recovered row, and run end reason=empty.
 const OBSERVE_MS = 2_000;
 
 // The capture-only event kinds of src/agents/claude.ts (SessionStart and UserPromptSubmit take
@@ -80,9 +82,9 @@ function assertRecovered(t: TestContext, place: Place, recovered: SpawnResult): 
   t.diagnostic(
     `observe status=${recovered.status} signal=${recovered.signal} elapsed=${recovered.elapsedMs.toFixed(1)} ms`,
   );
-  assert.equal(recovered.signal, null, 'observe must exit on its own, not be killed by the harness bound');
-  assert.ok(recovered.status === 0 || recovered.status === 1, `observe exited ${recovered.status}`);
-  const stored = rows(place, 'SELECT via_spool FROM raw_events');
+  // The recovered row is queued work, so this run may still be up at the harness bound (signal, status null).
+  assert.ok(recovered.status === null || recovered.status === 0 || recovered.status === 1, `observe exited ${recovered.status}`);
+  const stored = rows(place, 'SELECT id, via_spool FROM raw_events');
   assert.equal(
     stored.length,
     1,
@@ -90,6 +92,32 @@ function assertRecovered(t: TestContext, place: Place, recovered: SpawnResult): 
   );
   assert.equal(Number(stored[0]?.via_spool), 1);
   assert.deepEqual(spoolFiles(place), []);
+
+  // Keep SessionEnd from spawning a detached worker, then release the harness-held lease so
+  // the second observe performs the batch itself. The recovery worker may have been SIGTERMed.
+  const now = Date.now();
+  run(place,
+    'UPDATE worker_lease SET owner_token = ?, pid = 1, started_at = ?, heartbeat_at = ? WHERE id = 1',
+    ['storage-recovery-harness', now, now],
+  );
+  runHook(t, place, SELECTOR, 'SessionEnd', claudePayload(place.repo, 'SessionEnd'));
+  run(place,
+    'UPDATE worker_lease SET owner_token = NULL, pid = NULL, started_at = NULL, heartbeat_at = NULL WHERE id = 1',
+  );
+  const ended = recover(place);
+  t.diagnostic(
+    `ended observe status=${ended.status} signal=${ended.signal} elapsed=${ended.elapsedMs.toFixed(1)} ms`,
+  );
+  assert.equal(ended.signal, null, 'observe must exit on its own, not be killed by the harness bound');
+  assert.ok(ended.status === 0 || ended.status === 1, `observe exited ${ended.status}: ${ended.stderr}`);
+  const covered = rows(place,
+    `SELECT r.id, b.trigger FROM raw_events r
+     JOIN observation_batches b ON b.id = r.batch_id WHERE r.via_spool = 1`,
+  );
+  assert.equal(covered.length, stored.length);
+  assert.equal(covered[0]?.id, stored[0]?.id);
+  assert.equal(covered[0]?.trigger, 'session_end');
+  assert.match(observeLog(place), /run end .*reason=empty/);
 }
 
 function stdinAtReadBound(payload: Record<string, unknown>): string {
