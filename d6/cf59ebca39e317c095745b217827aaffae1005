@@ -1,0 +1,21 @@
+test/fault-provider.test.ts
+  s_9216550c8111e1::t_85c283ea768de7 1-887
+test/helpers/fault.ts
+  s_9216550c8111e1::t_7d26c4ce376de7 101-103
+---
+{
+  "schema_version": "authorship/3.0.0",
+  "git_ai_version": "1.6.16",
+  "base_commit_sha": "d6cf59ebca39e317c095745b217827aaffae1005",
+  "prompts": {},
+  "sessions": {
+    "s_9216550c8111e1": {
+      "agent_id": {
+        "tool": "claude",
+        "id": "8fec18e5-07c4-4cab-bf95-7479b7081947",
+        "model": "claude-fable-5-1"
+      },
+      "human_author": "ojungo69 <210335670+ojungo69@users.noreply.github.com>"
+    }
+  }
+}
