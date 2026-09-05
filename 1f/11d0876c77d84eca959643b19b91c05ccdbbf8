@@ -1,0 +1,23 @@
+scripts/e2e/isolated-user.mjs
+  s_b3789d5b729cb5::t_920f9f5843976d 180,1185,1838
+scripts/e2e/isolated-user.test.mjs
+  s_b3789d5b729cb5::t_e0f67240972b06 1487
+scripts/e2e/probe-contracts.mjs
+  s_b3789d5b729cb5::t_ebae23f28482dc 127,129-131,134-135
+---
+{
+  "schema_version": "authorship/3.0.0",
+  "git_ai_version": "1.6.16",
+  "base_commit_sha": "1f11d0876c77d84eca959643b19b91c05ccdbbf8",
+  "prompts": {},
+  "sessions": {
+    "s_b3789d5b729cb5": {
+      "agent_id": {
+        "tool": "claude",
+        "id": "d4a104cd-541b-4ccc-ad9a-0fe14aa83aa6",
+        "model": "claude-fable-5-1"
+      },
+      "human_author": "ojungo69 <210335670+ojungo69@users.noreply.github.com>"
+    }
+  }
+}
