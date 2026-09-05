@@ -1,0 +1,29 @@
+test/fault-grok.test.ts
+  s_9216550c8111e1::t_123fbc8ee2fecc 16
+test/fault-pi.test.ts
+  s_9216550c8111e1::t_5d761990f4ee60 15
+test/fault-provider.test.ts
+  s_9216550c8111e1::t_a70325cdbf37fa 21-23,25-26,82,90,141,334,346,350,355,365,384,405,484,661,668,688,690,722,798,803,812,824,826,834-835
+test/fault-storage.test.ts
+  s_9216550c8111e1::t_c57bd8f3be8271 24
+test/fault-worker.test.ts
+  s_9216550c8111e1::t_34da0bf252223b 7,10,22-23,26,29-30,33,532,585,620
+test/helpers/fault.ts
+  s_9216550c8111e1::t_48745ae1c478c6 17,22,24,64-66,96,201,204,210-239
+---
+{
+  "schema_version": "authorship/3.0.0",
+  "git_ai_version": "1.6.16",
+  "base_commit_sha": "472dd21189cc3e717b57c63cfb55ba9969dfa849",
+  "prompts": {},
+  "sessions": {
+    "s_9216550c8111e1": {
+      "agent_id": {
+        "tool": "claude",
+        "id": "8fec18e5-07c4-4cab-bf95-7479b7081947",
+        "model": "unknown"
+      },
+      "human_author": "ojungo69 <210335670+ojungo69@users.noreply.github.com>"
+    }
+  }
+}
