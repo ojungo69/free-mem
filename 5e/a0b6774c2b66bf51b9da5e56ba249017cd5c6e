@@ -1,0 +1,27 @@
+specs/007-oboete-m1-alpha/contracts/agents.md
+  s_9216550c8111e1::t_19033c2e214e6d 133-135
+specs/007-oboete-m1-alpha/data-model.md
+  s_9216550c8111e1::t_fa117ccdbf5b31 236
+specs/007-oboete-m1-alpha/tasks.md
+  s_9216550c8111e1::t_d1c112801aaf7b 157-158
+test/fault-grok.test.ts
+  s_9216550c8111e1::t_885b715fe3709d 1-300
+test/fault-pi.test.ts
+  s_9216550c8111e1::t_1c0d259a1f0a6c 1-199
+---
+{
+  "schema_version": "authorship/3.0.0",
+  "git_ai_version": "1.6.16",
+  "base_commit_sha": "5ea0b6774c2b66bf51b9da5e56ba249017cd5c6e",
+  "prompts": {},
+  "sessions": {
+    "s_9216550c8111e1": {
+      "agent_id": {
+        "tool": "claude",
+        "id": "8fec18e5-07c4-4cab-bf95-7479b7081947",
+        "model": "claude-fable-5-1"
+      },
+      "human_author": "ojungo69 <210335670+ojungo69@users.noreply.github.com>"
+    }
+  }
+}
