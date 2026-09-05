@@ -12,12 +12,10 @@ import type { TestContext } from 'node:test';
 import { oboetePaths } from '../src/paths.js';
 import { claimLease } from '../src/worker/lease.js';
 import { cleanupPiAck } from '../src/worker/purge.js';
-import { fixture, rows, scenario, spawnEngine, type Place } from './helpers/fault.js';
+import { BUNDLE, fixture, ROOT, rows, scenario, spawnEngine, type Place } from './helpers/fault.js';
 
 type Json = Record<string, unknown>;
 
-const ROOT = process.cwd();
-const BUNDLE = join(ROOT, 'dist', 'oboete.mjs');
 const NOW = Date.now();
 
 /** The envelope the extension pipes to `oboete capture --agent pi` (src/agents/pi.ts). */

@@ -14,12 +14,14 @@ import {
 } from 'node:fs';
 import { tmpdir } from 'node:os';
 import { dirname, join } from 'node:path';
-import { DatabaseSync } from 'node:sqlite';
+import { DatabaseSync, type SQLInputValue } from 'node:sqlite';
 import { test, type TestContext } from 'node:test';
 import { fileURLToPath } from 'node:url';
 
 import { CAPTURE_DEADLINE_MS } from '../../src/capture.js';
+import { PRESET_CATALOG } from '../../src/config.js';
 import { openDatabase } from '../../src/db/open.js';
+import { oboetePaths } from '../../src/paths.js';
 
 export type Place = {
   home: string;
@@ -59,8 +61,9 @@ function repositoryRoot(): string {
   }
 }
 
-const ROOT = repositoryRoot();
-const BUNDLE = join(ROOT, 'dist', 'oboete.mjs');
+export const ROOT = repositoryRoot();
+export const BUNDLE = join(ROOT, 'dist', 'oboete.mjs');
+export const SELECTOR = 'claude-or-grok';
 const CLAUDE_FIXTURE = join(ROOT, 'test', 'contracts', 'claude', 'read.json');
 
 function restoreModes(root: string): void {
@@ -90,7 +93,7 @@ function restoreModes(root: string): void {
   }
 }
 
-function childEnv(opts: SpawnEngineOptions): NodeJS.ProcessEnv {
+export function childEnv(opts: SpawnEngineOptions): NodeJS.ProcessEnv {
   const env = { ...process.env };
   // A recovery or control run must not inherit the matrix name (or Grok's selector) from the
   // test runner. Callers that want a fault or a Grok child pass it explicitly.
@@ -195,13 +198,43 @@ export function runHook(
   return result.elapsedMs;
 }
 
-export function rows(place: Place, sql: string): Record<string, unknown>[] {
+export function withDb<T>(place: Place, fn: (db: DatabaseSync) => T): T {
   const db = new DatabaseSync(place.db, { timeout: 5_000 });
   try {
-    return db.prepare(sql).all() as Record<string, unknown>[];
+    return fn(db);
   } finally {
     db.close();
   }
+}
+
+export function rows(place: Place, sql: string, params: SQLInputValue[] = []): Record<string, unknown>[] {
+  return withDb(place, (db) => db.prepare(sql).all(...params) as Record<string, unknown>[]);
+}
+
+export function run(place: Place, sql: string, params: SQLInputValue[] = []): void {
+  withDb(place, (db) => {
+    db.prepare(sql).run(...params);
+  });
+}
+
+export function observeLog(place: Place): string {
+  const file = oboetePaths(place.home).observeLog;
+  return existsSync(file) ? readFileSync(file, 'utf8') : '';
+}
+
+/** Seed the workers-ai catalog cache so observe does not hit api.cloudflare.com (raw fetch, not faultFetch). */
+export function seedWorkersAiCatalog(place: Place, accountId: string): void {
+  run(place, 'INSERT INTO runtime_state (key, value_json, updated_at) VALUES (?, ?, ?)', [
+    'workers_ai_catalog',
+    JSON.stringify({
+      accountId,
+      models: [PRESET_CATALOG['workers-ai'].defaultModel],
+      defaultModelPresent: true,
+      hasPaidOnlyModels: false,
+      fetchedAt: Date.now() - 1_000,
+    }),
+    Date.now(),
+  ]);
 }
 
 export function spoolFiles(place: Place): string[] {

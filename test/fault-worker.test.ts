@@ -4,36 +4,38 @@
 import assert from 'node:assert/strict';
 import { spawn, type ChildProcess } from 'node:child_process';
 import { randomUUID } from 'node:crypto';
-import { existsSync, readFileSync, statSync, writeFileSync } from 'node:fs';
+import { existsSync, statSync, writeFileSync } from 'node:fs';
 import { createServer, type IncomingMessage } from 'node:http';
 import type { AddressInfo } from 'node:net';
-import { dirname, join } from 'node:path';
-import { DatabaseSync } from 'node:sqlite';
+import { join } from 'node:path';
 import type { TestContext } from 'node:test';
-import { fileURLToPath } from 'node:url';
 
 import {
   configSchema,
   consentHash,
   consentTuple,
-  PRESET_CATALOG,
 } from '../src/config.js';
 import { utcDay } from '../src/observer/reservation.js';
 import { RECLAIM_AFTER_MS } from '../src/worker/batches.js';
 import { claimLease, FUTURE_SKEW_MS, STALE_AFTER_MS } from '../src/worker/lease.js';
 import {
+  BUNDLE,
+  childEnv,
   claudePayload,
   fixture,
+  observeLog,
   rows,
   scenario,
+  seedWorkersAiCatalog,
+  SELECTOR,
   spawnEngine,
   spoolFiles,
+  withDb,
   type Place,
   type SpawnEngineOptions,
   type SpawnResult,
 } from './helpers/fault.js';
 
-const SELECTOR = 'claude-or-grok';
 const CF: NodeJS.ProcessEnv = {
   OBOETE_CF_API_TOKEN: 'fault-worker-token',
   OBOETE_CF_ACCOUNT_ID: 'fault-worker-account',
@@ -43,18 +45,6 @@ const CF: NodeJS.ProcessEnv = {
 const OBSERVE_MS = 8_000;
 const PROVIDER_MS = 15_000;
 const POLL_MS = 5_000;
-
-function repositoryRoot(): string {
-  let directory = fileURLToPath(new URL('.', import.meta.url));
-  for (;;) {
-    if (existsSync(join(directory, 'package.json'))) return directory;
-    const parent = dirname(directory);
-    assert.notEqual(parent, directory, 'the repository root must contain package.json');
-    directory = parent;
-  }
-}
-
-const BUNDLE = join(repositoryRoot(), 'dist', 'oboete.mjs');
 
 function delay(ms: number): Promise<void> {
   return new Promise((resolve) => {
@@ -82,26 +72,6 @@ async function withDeadline<T>(promise: Promise<T>, ms: number, label: string): 
   } finally {
     if (timer !== undefined) clearTimeout(timer);
   }
-}
-
-function childEnv(opts: SpawnEngineOptions): NodeJS.ProcessEnv {
-  // Same scrub as test/helpers/fault.ts: a recovery or control run must not inherit the matrix name.
-  const env = { ...process.env };
-  delete env.OBOETE_TEST_FAULT;
-  delete env.OBOETE_TEST_FAULT_URL;
-  delete env.GROK_HOOK_EVENT;
-  delete env.GROK_SESSION_ID;
-  // Either of these turns src/testing/faults.ts faultFetch off and would send to the real host.
-  delete env.NODE_USE_ENV_PROXY;
-  delete env.NODE_OPTIONS;
-  env.NODE_ENV = 'test';
-  env.OBOETE_HOME = opts.home;
-  if (opts.extraEnv !== undefined) Object.assign(env, opts.extraEnv);
-  if (opts.fault !== undefined) env.OBOETE_TEST_FAULT = opts.fault;
-  else delete env.OBOETE_TEST_FAULT;
-  if (opts.faultUrl !== undefined) env.OBOETE_TEST_FAULT_URL = opts.faultUrl;
-  else delete env.OBOETE_TEST_FAULT_URL;
-  return env;
 }
 
 type ObserveChild = {
@@ -159,15 +129,6 @@ function observe(place: Place, opts: Omit<SpawnEngineOptions, 'home' | 'cwd' | '
   });
 }
 
-function withDb<T>(place: Place, fn: (db: DatabaseSync) => T): T {
-  const db = new DatabaseSync(place.db, { timeout: 5_000 });
-  try {
-    return fn(db);
-  } finally {
-    db.close();
-  }
-}
-
 function writeObserverConfig(place: Place, preset: 'none' | 'workers-ai'): void {
   const parsed = configSchema.parse({ observer: { preset } });
   if (preset === 'none') {
@@ -179,24 +140,6 @@ function writeObserverConfig(place: Place, preset: 'none' | 'workers-ai'): void 
     join(place.home, 'config.toml'),
     `[observer]\npreset = "workers-ai"\n\n[consent]\nhash = "${hash}"\naccepted_at = ${Date.now()}\n`,
   );
-}
-
-function seedCatalog(place: Place): void {
-  // refreshWorkersAiCatalog uses raw fetch (not faultFetch) and would otherwise hit api.cloudflare.com.
-  const value = JSON.stringify({
-    accountId: CF.OBOETE_CF_ACCOUNT_ID,
-    models: [PRESET_CATALOG['workers-ai'].defaultModel],
-    defaultModelPresent: true,
-    hasPaidOnlyModels: false,
-    fetchedAt: Date.now() - 1_000,
-  });
-  withDb(place, (db) => {
-    db.prepare('INSERT INTO runtime_state (key, value_json, updated_at) VALUES (?, ?, ?)').run(
-      'workers_ai_catalog',
-      value,
-      Date.now(),
-    );
-  });
 }
 
 function holdLease(place: Place): string {
@@ -305,11 +248,6 @@ function hookSessionStart(place: Place, source: string): SpawnResult {
     input: JSON.stringify(sessionStartPayload(place.repo, source)),
     timeoutMs: 5_000,
   });
-}
-
-function observeLog(place: Place): string {
-  const file = join(place.home, 'logs', 'observe.log');
-  return existsSync(file) ? readFileSync(file, 'utf8') : '';
 }
 
 function leaseOwner(place: Place): unknown {
@@ -591,7 +529,7 @@ scenario('worker-kill-after-response', async (t: TestContext) => {
   let server: ProviderHandle | undefined;
   try {
     writeObserverConfig(place, 'workers-ai');
-    seedCatalog(place);
+    seedWorkersAiCatalog(place, CF.OBOETE_CF_ACCOUNT_ID ?? 'fault-worker-account');
     seedEndedSession(place);
     server = await startProvider({ output: observerOutput(firstSummarizableId(place)) });
 
@@ -644,7 +582,7 @@ scenario('lease-steal', async (t: TestContext) => {
   let child: ObserveChild | undefined;
   try {
     writeObserverConfig(place, 'workers-ai');
-    seedCatalog(place);
+    seedWorkersAiCatalog(place, CF.OBOETE_CF_ACCOUNT_ID ?? 'fault-worker-account');
     seedEndedSession(place);
     const memoriesBefore = memorySnapshot(place);
     server = await startProvider({ gate: gate.promise, output: observerOutput(firstSummarizableId(place)) });
@@ -679,7 +617,7 @@ scenario('lease-lost-after-3036', async (t: TestContext) => {
   let child: ObserveChild | undefined;
   try {
     writeObserverConfig(place, 'workers-ai');
-    seedCatalog(place);
+    seedWorkersAiCatalog(place, CF.OBOETE_CF_ACCOUNT_ID ?? 'fault-worker-account');
     seedEndedSession(place);
     const memoriesBefore = memorySnapshot(place);
     server = await startProvider({

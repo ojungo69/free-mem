@@ -21,13 +21,13 @@ import {
   rows,
   runHook,
   scenario,
+  SELECTOR,
   spawnEngine,
   spoolFiles,
   type Place,
   type SpawnResult,
 } from './helpers/fault.js';
 
-const SELECTOR = 'claude-or-grok';
 const EVENT = 'PostToolUse';
 const TOOL_OUTPUT = 'oboete probe repository\nsecond line\n';
 // The harness bound on a recovery run. observe must exit on its own once the spool is replayed

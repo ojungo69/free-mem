@@ -13,11 +13,10 @@ import { openDatabase } from '../src/db/open.js';
 import { resolveRepoIdentity } from '../src/repo-identity.js';
 import { claimLease } from '../src/worker/lease.js';
 import { purgeExpiredEvents } from '../src/worker/purge.js';
-import { fixture, rows, scenario, spawnEngine, type Place } from './helpers/fault.js';
+import { fixture, rows, scenario, SELECTOR, spawnEngine, type Place } from './helpers/fault.js';
 
 type Json = Record<string, unknown>;
 
-const SELECTOR = 'claude-or-grok';
 // Grok reports no model, so every Grok pack is budgeted on the smallest verified window and
 // carries window_unknown (contracts/agents.md "budget"); an omitted pack keeps that pack-time
 // reason over not_delivered / no_tool_call (FR-028), which then show on the items instead.
