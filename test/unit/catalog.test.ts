@@ -106,13 +106,11 @@ test('Workers AI catalog is parsed, cached for 24 hours, and then refreshed', as
   });
 });
 
-test('Workers AI catalog aggregates every page before reporting catalog facts', async () => {
+test('Workers AI catalog aggregates short pages until an empty page', async () => {
   await withOpened(async (db) => {
     const now = 1_757_000_000_000;
     const pages = [
-      {
-        result: [{ name: '@cf/example/first-page-model', properties: [] }],
-      },
+      { result: [{ name: '@cf/example/first-page-model', properties: [] }] },
       {
         result: [
           { name: PRESET_CATALOG['workers-ai'].defaultModel, properties: [] },
@@ -123,12 +121,15 @@ test('Workers AI catalog aggregates every page before reporting catalog facts', 
         ],
       },
       { result: [] },
+      { result: null },
     ];
     const requestedPages: number[] = [];
-    const fetchImpl: typeof fetch = async (input) => {
+    const signals: unknown[] = [];
+    const fetchImpl: typeof fetch = async (input, init) => {
       const url = new URL(String(input));
       const page = requestedPage(url);
       requestedPages.push(page);
+      signals.push(init?.signal);
       return new Response(
         JSON.stringify({ success: true, ...pages[page - 1], errors: [], messages: [] }),
         { status: 200, headers: { 'content-type': 'application/json' } },
@@ -138,6 +139,9 @@ test('Workers AI catalog aggregates every page before reporting catalog facts', 
     const result = await refreshWorkersAiCatalog(db, { env: ENV, now, fetchImpl });
 
     assert.deepEqual(requestedPages, [1, 2, 3]);
+    // Each request carries its own AbortSignal.timeout rather than one shared budget.
+    assert.equal(new Set(signals).size, 3);
+    assert.ok(signals.every((signal) => signal instanceof AbortSignal));
     assert.deepEqual(result, {
       models: [
         '@cf/example/first-page-model',
@@ -151,6 +155,40 @@ test('Workers AI catalog aggregates every page before reporting catalog facts', 
     });
   });
 });
+
+for (const hasCache of [false, true]) {
+  test(`an endless Workers AI catalog stops at 20 requests and returns ${hasCache ? 'the stale cache' : 'null'}`, async () => {
+    await withOpened(async (db) => {
+      const cached = hasCache
+        ? await refreshWorkersAiCatalog(db, {
+            env: ENV,
+            now: 1,
+            fetchImpl: async (input) => catalogResponse(requestedPage(input)),
+          })
+        : null;
+      const stored = runtimeStateGet(db, 'workers_ai_catalog');
+      const fullPage = Array.from({ length: 100 }, (_, index) => ({
+        name: `@cf/example/model-${index}`,
+        properties: [],
+      }));
+      let calls = 0;
+      const result = await refreshWorkersAiCatalog(db, {
+        env: ENV,
+        now: DAY + 2,
+        fetchImpl: async () => {
+          calls += 1;
+          // Fail an extra request so a missing bound cannot hang this test.
+          assert.ok(calls <= 20, 'catalog exceeded the page limit');
+          return new Response(JSON.stringify({ success: true, result: fullPage }));
+        },
+      });
+
+      assert.equal(calls, 20);
+      assert.deepEqual(result, cached === null ? null : { ...cached, fromCache: true });
+      assert.equal(runtimeStateGet(db, 'workers_ai_catalog'), stored);
+    });
+  });
+}
 
 test('changing the Workers AI account bypasses the shared cache entry', async () => {
   await withOpened(async (db) => {

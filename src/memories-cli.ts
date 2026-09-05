@@ -206,7 +206,7 @@ export async function runSearch(
           body: row.body,
           sensitivity: memory.sensitivity,
           created_at: memory.created_at,
-          score: row.score_mmr,
+          score: row.score_bm25,
           reasons: searchReasons(row),
         },
       ];

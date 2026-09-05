@@ -772,8 +772,8 @@ async function write(
   rows: RowDraft[],
   diagnostics: Diagnostic[],
   capturedAt: number,
-  injection?: InjectionSeed,
-  deadlineMs = CAPTURE_DEADLINE_MS,
+  injection: InjectionSeed | undefined,
+  deadlineMs: number,
 ): Promise<CaptureOutcome> {
   const remaining = (): number => deadlineMs - deps.elapsedMs();
   if (rows.length === 0 && diagnostics.length === 0) return { outcome: 'dropped', rows: 0 };
@@ -1111,7 +1111,7 @@ function readSettings(paths: OboetePaths, repoRoot: string): CaptureSettings | n
 async function runDetector(
   deps: CaptureDeps,
   input: { fields: string[]; paths: string[]; identity: RepoIdentity; secretPaths: string[] },
-  deadlineMs = CAPTURE_DEADLINE_MS,
+  deadlineMs: number,
 ): Promise<DetectorResult> {
   const cutoff = Math.floor(
     deadlineMs - deps.elapsedMs() - SPOOL_RESERVE_MS - ROW_BUILD_MARGIN_MS,

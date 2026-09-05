@@ -381,3 +381,4 @@ Task: "T023 src/repo-identity.ts + tests"
 - The isolated user runs pi-coding-agent 0.84.4 and this machine's developer account 0.85.0; the
   `ToolDefinition.execute(toolCallId, params, signal, onUpdate, ctx)` declaration is identical in
   both, so the T051 signature fix covers the two versions the project has seen.
+- Databases created before cefeee86 must be removed (including the isolated dogfood account's `~/.oboete/memory.db`); this is the last in-place migration edit before the first published build.

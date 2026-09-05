@@ -4,6 +4,11 @@ import { runtimeStateGet, runtimeStateSet } from '../worker/purge.js';
 
 const CACHE_KEY = 'workers_ai_catalog';
 const CACHE_MS = 24 * 60 * 60 * 1000;
+const PAGE_SIZE = 100;
+const MAX_PAGES = 20;
+const REQUEST_TIMEOUT_MS = 10_000;
+// The whole walk shares one budget so a slow endpoint cannot hold the worker for MAX_PAGES x 10 s.
+const WALK_BUDGET_MS = 30_000;
 type CatalogValue = {
   models: string[];
   defaultModelPresent: boolean;
@@ -62,11 +67,17 @@ export async function refreshWorkersAiCatalog(
   }
   try {
     const rows: unknown[] = [];
-    const signal = AbortSignal.timeout(10_000);
+    const walkDeadline = Date.now() + WALK_BUDGET_MS;
     for (let page = 1; ; page += 1) {
+      if (page > MAX_PAGES) throw new Error('catalog page limit exceeded');
+      const remaining = walkDeadline - Date.now();
+      if (remaining <= 0) throw new Error('catalog walk budget exceeded');
       const response = await fetchImpl(
-        `https://api.cloudflare.com/client/v4/accounts/${encodeURIComponent(accountId)}/ai/models/search?per_page=100&page=${page}`,
-        { headers: { Authorization: `Bearer ${token}` }, signal },
+        `https://api.cloudflare.com/client/v4/accounts/${encodeURIComponent(accountId)}/ai/models/search?per_page=${PAGE_SIZE}&page=${page}`,
+        {
+          headers: { Authorization: `Bearer ${token}` },
+          signal: AbortSignal.timeout(Math.min(REQUEST_TIMEOUT_MS, remaining)),
+        },
       );
       if (!response.ok) throw new Error(`catalog HTTP ${response.status}`);
       const body: unknown = await response.json();
@@ -76,6 +87,7 @@ export async function refreshWorkersAiCatalog(
       const pageRows = (body as { result?: unknown }).result;
       if (!Array.isArray(pageRows)) throw new Error('catalog result missing');
       rows.push(...pageRows);
+      // Live models/search probe (2026-09-05): short pages and total_count do not imply exhaustion.
       if (pageRows.length === 0) break;
     }
     const models = rows.flatMap((model) => typeof model === 'object' && model !== null
