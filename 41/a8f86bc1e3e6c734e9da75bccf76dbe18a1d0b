@@ -1,0 +1,51 @@
+test/unit/cli.test.ts
+  s_6f331b8f009710::t_7627b26df2f11c 51,53
+  s_6f331b8f009710::t_bb9f35a368c563 49-50,52,54,64
+  s_6f331b8f009710::t_4bc78b1620359f 3,6-9,41-48,55-63,65-70,73,77-88
+  s_9216550c8111e1::t_0f7af2808cea5a 71-72,74-76
+src/cli.ts
+  s_6f331b8f009710::t_ed9fdd41f4be41 5-6,113-118,121-122
+  s_9216550c8111e1::t_9bf7094218f313 4,119-120,123-130
+test/unit/observe.test.ts
+  s_6f331b8f009710::t_75b6adcd2fdc84 440,450,452
+  s_6f331b8f009710::t_c1595b651f3004 412-417,451
+  s_6f331b8f009710::t_1066b6727280bc 418-439,441-449
+test/fault-storage.test.ts
+  s_6f331b8f009710::t_0e81a5fc207088 21,23,35-37,85-87,95-120
+src/worker/observe.ts
+  s_6f331b8f009710::t_06902e4ee1ba9b 96-101
+  s_6f331b8f009710::t_d39e7af4e67d26 484
+  s_9216550c8111e1::t_86dcecaaf15188 25,90-95,102-109,113,482-483,485,890
+specs/007-oboete-m1-alpha/tasks.md
+  s_9216550c8111e1::t_21c2a8c68f8cc1 154,159
+src/capture.ts
+  s_9216550c8111e1::t_6510b4c209d1cc 42,763,1228
+src/injection/inject.ts
+  s_9216550c8111e1::t_d5ff28f5dd8caa 15,440,634
+src/log.ts
+  s_9216550c8111e1::t_b3aba22151c66d 40-47
+---
+{
+  "schema_version": "authorship/3.0.0",
+  "git_ai_version": "1.6.16",
+  "base_commit_sha": "41a8f86bc1e3e6c734e9da75bccf76dbe18a1d0b",
+  "prompts": {},
+  "sessions": {
+    "s_6f331b8f009710": {
+      "agent_id": {
+        "tool": "codex",
+        "id": "01a07262-28d3-7ef3-b52f-a7baabfa4e6e",
+        "model": "gpt-6-astra"
+      },
+      "human_author": "ojungo69 <210335670+ojungo69@users.noreply.github.com>"
+    },
+    "s_9216550c8111e1": {
+      "agent_id": {
+        "tool": "claude",
+        "id": "8fec18e5-07c4-4cab-bf95-7479b7081947",
+        "model": "claude-fable-5-1"
+      },
+      "human_author": "ojungo69 <210335670+ojungo69@users.noreply.github.com>"
+    }
+  }
+}
