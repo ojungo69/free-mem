@@ -177,7 +177,7 @@ export function buildFactSeedingPrompt(facts) {
   if (!Array.isArray(facts) || facts.length !== 3 || facts.some((fact) => typeof fact !== "string" || fact === "")) {
     throw new TypeError("fact seeding requires exactly three non-empty strings");
   }
-  const command = `printf '%s\\n' ${facts.map(shellQuote).join(" ")} >> NOTES.md`;
+  const command = `printf '%s\\n' ${facts.map((fact) => shellQuote(fact)).join(" ")} >> NOTES.md`;
   return [
     "These three exact strings are durable facts about this repository. Preserve them verbatim:",
     ...facts,
@@ -1182,7 +1182,7 @@ export function startLifecycleTui({
   try {
     session = dependencies.tuiSession({
       name,
-      command: argv.map(shellQuote).join(" "),
+      command: argv.map((arg) => shellQuote(arg)).join(" "),
       cwd: repo,
       env,
     });
@@ -1835,7 +1835,7 @@ function markdownSection(report) {
 }
 
 function markdownCell(value) {
-  return String(value).replace(/\|/g, "\\|").replace(/\r?\n/g, " ");
+  return String(value).replace(/\\/g, "\\\\").replace(/\|/g, "\\|").replace(/\r?\n/g, " ");
 }
 
 function evidenceReason(reason) {

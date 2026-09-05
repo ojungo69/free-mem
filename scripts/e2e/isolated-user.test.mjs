@@ -1484,6 +1484,7 @@ test("daily lifecycle evidence bounds and scrubs reasons while report.json keeps
     ["startup: OBOETE_CF_API_TOKEN=demo-token more text", "startup: [redacted]"],
     ["startup: OBOETE_CF_ACCOUNT_ID demo-account", "startup: [redacted]"],
     ["HTTP 401: Bearer demo.jwt-token+/= denied", "HTTP 401: Bearer [redacted] denied"],
+    ["pane C:\\tmp\\a | b", "pane C:\\\\tmp\\\\a \\| b"],
   ]) {
     const fixture = lifecycleRun(t, "codex", { daily: true });
     const reason = `${firstLine}\nprivate pane at ${fixture.runDir}\nsecond private pane line`;

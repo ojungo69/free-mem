@@ -124,11 +124,15 @@ export function blockAgentApiFailure(dir, result) {
     if (!entry.isFile() || !/^(?:stdout|stderr).*\.txt$/i.test(entry.name)) continue;
     const file = path.join(entry.parentPath || entry.path || dir, entry.name);
     let text;
+    let fd;
     try {
-      if (fs.statSync(file).size > 5 * 1024 * 1024) continue;
-      text = fs.readFileSync(file, "utf8");
+      fd = fs.openSync(file, "r");
+      if (fs.fstatSync(fd).size > 5 * 1024 * 1024) continue;
+      text = fs.readFileSync(fd, "utf8");
     } catch {
       continue;
+    } finally {
+      if (fd !== undefined) fs.closeSync(fd);
     }
     const line = text.split(/\r?\n/).find((value) => agents.AGENT_OUTAGE_RE.test(value));
     if (!line) continue;
