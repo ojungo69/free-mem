@@ -130,7 +130,9 @@ memories counted for the conversation.
 5. At `Stop` (`end_turn`) a record still `pending` or `attempted` becomes `omitted` with reason
    `no_tool_call` when oboete observed no tool hook of any kind in the turn, otherwise
    `not_delivered` (a deny by an earlier handler stops the chain before oboete runs, so "all
-   denied" is not distinguishable and is not claimed); its items become `omitted` /
+   denied" is not distinguishable and is not claimed); a degraded reason the pack was built with
+   (`window_unknown` for Grok, which reports no model) is the more specific one and stays on the
+   record (FR-028), so the omission cause is then read from the items; its items become `omitted` /
    `not_delivered`, so the memories remain injectable in the next turn. Tests count the packs the
    model received in the success, execution-failure, oboete-deny, other-handler-deny, parallel
    batch, and no-tool cases.

@@ -233,7 +233,7 @@ pause flag is the file `~/.oboete/paused`. The context-window table is the versi
 | id | TEXT PK | |
 | kind, severity, agent, message_code | TEXT | no secret values |
 | details_json | TEXT | |
-| count | INTEGER | |
+| count | INTEGER | sightings: one per report or worker sweep; distinct subjects (a hung Pi invocation) are de-duplicated in `details_json` |
 | first_seen_at, last_seen_at, cleared_at | INTEGER | |
 
 Pi: the extension performs no file or network write; it generates an `invocation_id` per spawn,
