@@ -1,0 +1,19 @@
+test/fault-worker.test.ts
+  s_35f52140a178f4::t_219c79b9ad8b3f 1-888
+---
+{
+  "schema_version": "authorship/3.0.0",
+  "git_ai_version": "1.6.16",
+  "base_commit_sha": "7e572608578383a72a389249869c73a14abb7342",
+  "prompts": {},
+  "sessions": {
+    "s_35f52140a178f4": {
+      "agent_id": {
+        "tool": "claude",
+        "id": "agent-a619ea5eeed122e1f",
+        "model": "unknown"
+      },
+      "human_author": "ojungo69 <210335670+ojungo69@users.noreply.github.com>"
+    }
+  }
+}
