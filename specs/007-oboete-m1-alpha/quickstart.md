@@ -81,8 +81,8 @@ re-created on either path, a remote preset never yields the same observation fro
 batch, a lost lease stops the old worker's writes but the 3036 signal persists,
 attempt 150 is allowed and attempt 151 is refused across presets, a detector failure stores metadata only, the mixed-sensitivity outbound
 body contains only eligible content and an opaque repository id, Grok cases deliver exactly the
-expected number of packs, an oversized payload leaves only a metadata `failed` row and
-no content anywhere, and doctor names the degraded component with `reason`,
+expected number of packs, an oversized payload leaves one partial row that holds only the
+redacted prefix inside the read bound (A7, A14), and doctor names the degraded component with `reason`,
 `consequence`, and `recovery`.
 
 ## Setup and doctor on the isolated account (User Story 4, SC-008)

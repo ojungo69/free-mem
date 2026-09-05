@@ -46,6 +46,7 @@ import { resolveRepoIdentity, type GitSpawn, type RepoIdentity } from './repo-id
 import { writeSpoolEntry, type SpoolEntry } from './spool.js';
 import { isLeaseFree, transactionImmediate } from './worker/lease.js';
 import type { HookContext } from './injection/inject.js';
+import { testFault } from './testing/faults.js';
 
 /** The absolute budget of a capture hook, measured from process start (contracts/agents.md). */
 export const CAPTURE_DEADLINE_MS = 300;
@@ -1269,6 +1270,8 @@ export async function runCapture(
   argv: string[],
   runtime: Partial<CaptureRuntime> = {},
 ): Promise<number> {
+  // FR-002: an unanticipated bug in the Pi capture child must still leave the agent unblocked.
+  if (testFault('pi-throw')) throw new Error('OBOETE_TEST_FAULT: pi-throw');
   const { values } = parseArgs({
     args: argv,
     strict: false,

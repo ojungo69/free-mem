@@ -15,6 +15,7 @@ import {
   providerRequestOptions,
   runAgentCli,
 } from './providers.js';
+import { faultFetch, testFault } from '../testing/faults.js';
 
 const REQUEST_TIMEOUT_MS = 60_000;
 const MAX_RESPONSE_BYTES = 1024 * 1024;
@@ -325,7 +326,7 @@ async function summarizeWithAgentCli(
     }
     attempts += 1;
     const result = await runAgentCli(ctx.agentCli ?? 'claude', childPrompt, {
-      timeoutMs: ctx.timeoutMs ?? REQUEST_TIMEOUT_MS,
+      timeoutMs: ctx.timeoutMs ?? (testFault('provider-hang') ? 500 : REQUEST_TIMEOUT_MS),
       ...(ctx.spawn === undefined ? {} : { spawn: ctx.spawn }),
     });
     if ('error' in result) {
@@ -373,7 +374,7 @@ export async function summarizeWithProvider(
     input,
     requestOptions.structured === 'text-json' ? 'text-json' : 'schema',
   );
-  const transportFetch = ctx.fetch ?? globalThis.fetch;
+  const transportFetch = faultFetch(ctx.fetch ?? globalThis.fetch);
   let capturedHeaders: Record<string, string> | undefined;
   const captureFetch: typeof globalThis.fetch = async (request, init) => {
     const response = await transportFetch(request, init);
@@ -429,7 +430,9 @@ export async function summarizeWithProvider(
         system: prompt.system,
         prompt: prompt.user,
         maxRetries: 0,
-        abortSignal: AbortSignal.timeout(ctx.timeoutMs ?? REQUEST_TIMEOUT_MS),
+        abortSignal: AbortSignal.timeout(
+          ctx.timeoutMs ?? (testFault('provider-hang') ? 500 : REQUEST_TIMEOUT_MS),
+        ),
         ...(requestOptions.providerOptions === undefined
           ? {}
           : {
@@ -462,6 +465,9 @@ export async function summarizeWithProvider(
         if (attempts < 2) continue;
         return failure('unusable_output', attempts, parsed.detail);
       }
+      // A11: the crash window between a parsed response and its fenced apply, as a real kill -9
+      // (a throw would reach releaseForExit and release the lease, which the fault must skip).
+      if (testFault('worker-kill-after-response')) process.kill(process.pid, 'SIGKILL');
       return {
         ok: true,
         output: parsed.output,

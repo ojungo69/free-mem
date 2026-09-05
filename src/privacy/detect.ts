@@ -4,6 +4,7 @@ import { isAbsolute, relative, resolve } from 'node:path';
 import { lintSource } from '@secretlint/core';
 import { rules as recommendedRules } from '@secretlint/secretlint-rule-preset-recommend';
 import type { SecretLintCoreConfig } from '@secretlint/types';
+import { testFault } from '../testing/faults.js';
 
 const FILTER_COMMENTS_RULE = '@secretlint/secretlint-rule-filter-comments';
 const AWS_RULE = '@secretlint/secretlint-rule-aws';
@@ -456,6 +457,13 @@ export function detectInWorker(
 
 /** The entry the engine bundle runs when it is started as the detector Worker (see src/cli.ts). */
 export async function detectorWorkerMain(): Promise<void> {
+  if (testFault('detector-never-returns')) {
+    // Stay alive and silent so detectInWorker's cutoff terminates the thread. An idle timer, not an
+    // unresolved promise: with an empty event loop the Worker would exit and the 'exit' listener
+    // would answer `detector_error` instead of `deadline`.
+    setInterval(() => {}, 1_000);
+    return;
+  }
   const { input } = workerData as { input: DetectorInput };
   parentPort?.postMessage(await detectSync(input));
 }
