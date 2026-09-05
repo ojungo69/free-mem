@@ -1,10 +1,10 @@
 import fs from "node:fs";
 import os from "node:os";
 import path from "node:path";
-import { setTimeout as sleep } from "node:timers/promises";
 import { fileURLToPath } from "node:url";
 import {
   CODEX_EVENTS,
+  PreconditionError,
   agentPath,
   binVersion,
   childEnv,
@@ -26,7 +26,7 @@ import {
   writeFixture,
 } from "../probe-lib/agents.mjs";
 import { readMcpFrames } from "../probe-lib/mcp-frames.mjs";
-import { tmux, tmuxSession } from "../probe-lib/tmux.mjs";
+import { TRUST_PANE_RE, readyTui, tmux, tmuxSession, tuiCmd, tuiQuit, tuiSubmit } from "../probe-lib/tmux.mjs";
 
 const HERE = path.dirname(fileURLToPath(import.meta.url));
 const MCP_DUMMY = path.join(HERE, "../probe-lib/mcp-dummy.mjs");
@@ -54,7 +54,6 @@ const RESUME_PROMPT = "Reply with exactly the word DONE followed by every marker
 const TUI_PROMPT = "Use the shell to run: echo tui-ok ; then reply with exactly the word DONE";
 const MCP_PROMPT =
   "Call the MCP tool oboete_probe/search with query hello and reply DONE followed by the tool result";
-const TRUST_PANE_RE = /hook needs review|review required|Trust to trust|New hook|untrusted hook/i;
 
 function cmdOf(ev) {
   const input = toolInputOf(ev) || {};
@@ -186,35 +185,15 @@ async function waitEvents(home, pred, ms) {
   );
 }
 
-function tuiCmd(home, extra) {
-  return [
-    "env",
-    `CODEX_HOME=${shellQuote(home)}`,
-    `PATH=${shellQuote(agentPath())}`,
-    `HOME=${shellQuote(os.homedir())}`,
-    "TERM=xterm-256color",
-    "codex",
-    "--sandbox",
-    "danger-full-access",
-    "--ask-for-approval",
-    "never",
-    "-c",
-    "tui.animations=false",
-    "-c",
-    "tui.disable_paste_burst=true",
-    "-c",
-    "mcp_servers={}",
-    ...extra,
-  ].join(" ");
-}
-
 async function withTui(dir, { home, repo, extra = [], run }) {
   const name = "obc-" + Date.now().toString(36) + "-" + Math.random().toString(36).slice(2, 6);
   let tui;
   try {
-    // tuiCmd already sets CODEX_HOME, PATH, HOME and TERM on the command itself, so the session
-    // needs no variables of its own; see the note in probes/claude.mjs.
-    tui = tmuxSession({ name, command: tuiCmd(home, extra), cwd: repo });
+    // Only pane overrides go into tmux's world-readable argv; HOME comes from the server.
+    tui = tmuxSession({
+      name, command: tuiCmd(extra).map(shellQuote).join(" "), cwd: repo,
+      env: { CODEX_HOME: home, PATH: agentPath(), TERM: "xterm-256color" },
+    });
     return await run(tui, name);
   } finally {
     try {
@@ -226,25 +205,6 @@ async function withTui(dir, { home, repo, extra = [], run }) {
   }
 }
 
-function tuiKeys(name, ...keys) {
-  tmux(["send-keys", "-t", name, ...keys]);
-}
-
-async function tuiSubmit(name, tui, text) {
-  tuiKeys(name, "Escape");
-  await sleep(80);
-  tmux(["send-keys", "-t", name, "-l", text]);
-  await sleep(250);
-  tuiKeys(name, "C-m");
-  await sleep(400);
-  const pane = tui.capture();
-  if (pane.includes(text) && /›/.test(pane)) {
-    tuiKeys(name, "C-m");
-    await sleep(400);
-  }
-  return tui.capture();
-}
-
 async function waitPane(tui, re, ms) {
   let p = "";
   await waitUntil(() => {
@@ -254,29 +214,15 @@ async function waitPane(tui, re, ms) {
   return p || tui.capture();
 }
 
-async function tuiQuit(tui, name) {
-  try {
-    await tuiSubmit(name, tui, "/quit");
-    await sleep(400);
-  } catch {
-    /* ignore */
-  }
-  tuiKeys(name, "C-c");
-  await sleep(200);
-  tuiKeys(name, "C-c");
-}
-
 async function tuiComposerTurn(tui, name, home, dir) {
-  const startPane = await waitPane(tui, /›/, 25_000);
-  saveText(dir, "pane-start.txt", startPane);
-  if (!/›/.test(startPane)) {
-    await tuiQuit(tui, name);
-    return { blocked: "TUI composer never appeared; pane=" + startPane.slice(-400) };
+  try {
+    await readyTui("codex", tui, { timeoutMs: 25_000 });
+  } finally {
+    saveText(dir, "pane-start.txt", tui.capture());
   }
-  await tuiSubmit(name, tui, TUI_PROMPT);
+  await tuiSubmit(name, tui, TUI_PROMPT, { timeoutMs: 25_000 });
   await waitEvents(home, (ev) => ev.some((e) => e.event === "Stop" || e.event === "UserPromptSubmit"), 45_000);
   saveText(dir, "pane-turn.txt", tui.capture());
-  return { blocked: null };
 }
 
 const TUI_MANUAL =
@@ -426,12 +372,8 @@ export const probes = [
           repo: seed.repo,
           extra: ["--dangerously-bypass-hook-trust"],
           async run(tui, name) {
-            const ready = await tuiComposerTurn(tui, name, seed.tree, dirD);
-            if (ready.blocked) {
-              tuiBlocked = ready.blocked;
-              return;
-            }
-            await tuiSubmit(name, tui, "/compact");
+            await tuiComposerTurn(tui, name, seed.tree, dirD);
+            await tuiSubmit(name, tui, "/compact", { timeoutMs: 45_000 });
             await waitEvents(
               seed.tree,
               (ev) => ev.some((e) => e.event === "PostCompact" || (e.event === "SessionStart" && e.stdin?.source === "compact")),
@@ -440,7 +382,7 @@ export const probes = [
             saveText(dirD, "pane-compact.txt", tui.capture());
             await waitPane(tui, /› Ask Codex/, 20_000);
             const beforeNew = parseEvents(eventsFile(seed.tree)).filter((e) => e.event === "SessionStart").length;
-            await tuiSubmit(name, tui, "/new");
+            await tuiSubmit(name, tui, "/new", { timeoutMs: 45_000 });
             await waitEvents(seed.tree, (ev) => ev.filter((e) => e.event === "SessionStart").length > beforeNew, 25_000);
             saveText(dirD, "pane-new.txt", tui.capture());
             const after = parseEvents(eventsFile(seed.tree));
@@ -452,11 +394,12 @@ export const probes = [
                 "]); pane=" +
                 tui.capture().slice(-400);
             }
-            await tuiQuit(tui, name);
+            await tuiQuit(tui, name, { timeoutMs: 45_000 });
           },
         });
       } catch (e) {
-        tuiBlocked = String(e && e.stack ? e.stack : e);
+        if (!(e instanceof PreconditionError)) throw e;
+        tuiBlocked = e.message;
       }
       const dEvents = parseEvents(eventsFile(seed.tree));
       const srcD = sessionSources(dEvents);
@@ -515,25 +458,22 @@ export const probes = [
           repo: seed.repo,
           extra: ["--dangerously-bypass-hook-trust"],
           async run(tui, name) {
-            const ready = await tuiComposerTurn(tui, name, seed.tree, dirD);
-            if (ready.blocked) {
-              tuiBlocked = ready.blocked;
-              return;
-            }
-            await tuiSubmit(name, tui, "/compact");
+            await tuiComposerTurn(tui, name, seed.tree, dirD);
+            await tuiSubmit(name, tui, "/compact", { timeoutMs: 45_000 });
             await waitEvents(seed.tree, (ev) => ev.filter((e) => e.event === "PostCompact").length >= 1, 45_000);
             saveText(dirD, "pane-compact1.txt", tui.capture());
-            await tuiSubmit(name, tui, "/compact");
+            await tuiSubmit(name, tui, "/compact", { timeoutMs: 45_000 });
             await waitEvents(seed.tree, (ev) => ev.filter((e) => e.event === "PostCompact").length >= 2, 45_000);
             saveText(dirD, "pane-compact2.txt", tui.capture());
             if (parseEvents(eventsFile(seed.tree)).filter((e) => e.event === "PostCompact").length < 2) {
               tuiBlocked = "TUI two-/compact produced <2 PostCompact; pane=" + tui.capture().slice(-400);
             }
-            await tuiQuit(tui, name);
+            await tuiQuit(tui, name, { timeoutMs: 45_000 });
           },
         });
       } catch (e) {
-        tuiBlocked = String(e && e.stack ? e.stack : e);
+        if (!(e instanceof PreconditionError)) throw e;
+        tuiBlocked = e.message;
       }
       dEvents = parseEvents(eventsFile(seed.tree));
       const postD = dEvents.filter((e) => e.event === "PostCompact");
@@ -645,23 +585,20 @@ export const probes = [
             pane = await waitPane(tui, /›|review required|Trust to trust|New hook/, 25_000);
             saveText(ctx.dir, "pane-start.txt", pane);
             if (TRUST_PANE_RE.test(pane)) {
-              await tuiQuit(tui, name);
+              await tuiQuit(tui, name, { timeoutMs: 25_000 });
               return;
             }
-            if (!/›/.test(pane)) {
-              tuiBlocked = "TUI composer never appeared; pane=" + pane.slice(-400);
-              await tuiQuit(tui, name);
-              return;
-            }
-            pane = await tuiSubmit(name, tui, TUI_PROMPT);
+            await readyTui("codex", tui, { timeoutMs: 25_000 });
+            pane = await tuiSubmit(name, tui, TUI_PROMPT, { timeoutMs: 25_000 });
             await waitEvents(seed.tree, (ev) => ev.some((e) => e.event === "Stop" || e.event === "PreToolUse" || e.event === "PostToolUse"), 45_000);
             pane = tui.capture();
             saveText(ctx.dir, "pane-turn.txt", pane);
-            await tuiQuit(tui, name);
+            await tuiQuit(tui, name, { timeoutMs: 25_000 });
           },
         });
       } catch (e) {
-        tuiBlocked = String(e && e.stack ? e.stack : e);
+        if (!(e instanceof PreconditionError)) throw e;
+        tuiBlocked = e.message;
       }
       const events = parseEvents(eventsFile(seed.tree));
       const labels = events.map((e) => e.event);

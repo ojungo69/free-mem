@@ -114,7 +114,6 @@ export function blockAgentApiFailure(dir, result) {
   } catch {
     return result;
   }
-  const signature = /API Error|529 Overloaded|overloaded_error|rate.?limit|stream (?:disconnected|error)|ECONNRESET|ETIMEDOUT|fetch failed/i;
   for (const entry of entries) {
     if (!entry.isFile() || !/^(?:stdout|stderr).*\.txt$/i.test(entry.name)) continue;
     const file = path.join(entry.parentPath || entry.path || dir, entry.name);
@@ -125,7 +124,7 @@ export function blockAgentApiFailure(dir, result) {
     } catch {
       continue;
     }
-    const line = text.split(/\r?\n/).find((value) => signature.test(value));
+    const line = text.split(/\r?\n/).find((value) => agents.AGENT_OUTAGE_RE.test(value));
     if (!line) continue;
     result.status = "blocked";
     result.evidence = [...(result.evidence || []), `agent API error: ${line.trim().slice(0, 200)} (${path.relative(dir, file)})`];

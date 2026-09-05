@@ -1,8 +1,8 @@
-import { spawnSync } from "node:child_process";
 import fs from "node:fs";
 import path from "node:path";
 import { setTimeout as sleep } from "node:timers/promises";
 import {
+  CLAUDE_COMPACT_PROMPT,
   CLAUDE_EVENTS,
   binVersion,
   compactionIdentity,
@@ -19,9 +19,10 @@ import {
   toolUsePrompt,
   waitUntil,
   writeClaudeSettings,
+  writeCompactFixture,
   writeFixture,
 } from "../probe-lib/agents.mjs";
-import { tmuxSession } from "../probe-lib/tmux.mjs";
+import { readyTui, tmuxSession, tuiQuit, tuiSubmit } from "../probe-lib/tmux.mjs";
 
 const ROW_SHAPES = "Native tool payload shapes for read/write/edit/bash on all four agents";
 const ROW_OVER = "Hook runner behaviour when the hook exits with unread stdin above 1 MB";
@@ -140,14 +141,6 @@ function usageOf(r) {
   }
 }
 
-function writeBigTxt(file) {
-  const r = spawnSync("head", ["-c", "600000", "/dev/urandom"], { maxBuffer: 800000 });
-  if (r.status !== 0) throw new Error("head /dev/urandom failed: " + (r.stderr || r.status));
-  const b64 = Buffer.from(r.stdout).toString("base64").replace(/(.{76})/g, "$1\n");
-  fs.writeFileSync(file, b64.endsWith("\n") ? b64 : b64 + "\n");
-  return fs.statSync(file).size;
-}
-
 async function waitPostCompact(eventsPath, n, ms) {
   return (
     (await waitUntil(() => {
@@ -155,40 +148,6 @@ async function waitPostCompact(eventsPath, n, ms) {
       return named(ev, "PostCompact").length >= n ? ev : null;
     }, ms, 400)) || parseEvents(eventsPath)
   );
-}
-
-function paneLoginWall(pane) {
-  return /Select login method|Paste code here if prompted|Browser didn't open|oauth\/authorize/i.test(pane);
-}
-
-function paneOnboarding(pane) {
-  return /Choose the text style|Let's get started|looks best with your terminal|Press enter to continue|Do you trust|Yes, I trust/i.test(
-    pane,
-  );
-}
-
-function paneReady(pane) {
-  if (paneLoginWall(pane) || paneOnboarding(pane)) return false;
-  return /\/help|\/compact|\/exit|Ask Claude|Write a message|Type a (task|message)|shift\+tab/i.test(pane);
-}
-
-async function dismissOnboarding(tmux, eventsPath) {
-  const start = Date.now();
-  let enters = 0;
-  while (Date.now() - start < 90_000 && enters < 14) {
-    const pane = tmux.capture();
-    if (paneLoginWall(pane)) throw new Error("tui login wall (not sending keys)");
-    if (paneReady(pane) && parseEvents(eventsPath).some((e) => e.event === "SessionStart")) return pane;
-    if (paneOnboarding(pane)) {
-      tmux.send("");
-      enters++;
-      await sleep(1500);
-      continue;
-    }
-    if (paneReady(pane)) return pane;
-    await sleep(600);
-  }
-  return tmux.capture();
 }
 
 async function tuiTwoCompacts(dir, repo) {
@@ -221,16 +180,13 @@ async function tuiTwoCompacts(dir, repo) {
   };
   try {
     await sleep(2000);
-    const afterOnboard = await dismissOnboarding(tmux, eventsPath);
+    await readyTui("claude", tmux);
     dump("after-onboard");
-    if (!paneReady(afterOnboard) && !parseEvents(eventsPath).some((e) => e.event === "SessionStart")) {
-      throw new Error("tui still on onboarding pane=" + afterOnboard.slice(-300));
-    }
-    tmux.send("Reply with exactly the word DONE. Do not use tools.");
+    await tuiSubmit(name, tmux, "Reply with exactly the word DONE. Do not use tools.", { timeoutMs: 120_000 });
     await tmux.waitFor(/\bDONE\b/, 120_000);
     dump("after-done");
     await sleep(2000);
-    tmux.send("/compact");
+    await tuiSubmit(name, tmux, "/compact", { timeoutMs: 120_000 });
     await sleep(1500);
     if (/compact this conversation|Are you sure|Yes/i.test(tmux.capture())) tmux.send("");
     let events = await waitPostCompact(eventsPath, 1, 120_000);
@@ -239,14 +195,13 @@ async function tuiTwoCompacts(dir, repo) {
       tmux.send("");
       events = await waitPostCompact(eventsPath, 1, 60_000);
     }
-    tmux.send("/compact");
+    await tuiSubmit(name, tmux, "/compact", { timeoutMs: 120_000 });
     await sleep(1500);
     if (/compact this conversation|Are you sure|Yes/i.test(tmux.capture())) tmux.send("");
     events = await waitPostCompact(eventsPath, 2, 120_000);
     dump("after-compact-2");
     const pane = tmux.capture();
-    tmux.send("/exit");
-    await sleep(1500);
+    await tuiQuit(tmux, name, { timeoutMs: 120_000 });
     return { events: parseEvents(eventsPath), pane, eventsPath };
   } catch (e) {
     let pane = "";
@@ -451,17 +406,10 @@ export const probes = [
       const autoDir = path.join(ctx.dir, "auto");
       const repo = gitInit(path.join(autoDir, "repo"));
       const big = path.join(repo, "big.txt");
-      const bytes = writeBigTxt(big);
+      const bytes = writeCompactFixture(big);
       evidence.push(`big.txt_bytes=${bytes}`);
       const autoEnv = { CLAUDE_CODE_AUTO_COMPACT_WINDOW: "100000" };
-      const autoPrompt = [
-        "Use the Read tool on big.txt, then Use the Read tool on big.txt again, then reply with exactly the word DONE.",
-        "Do not substitute the Bash tool for Read.",
-        "A whole-file Read exceeds the 256KB / 25000-token cap; you MUST pass offset and limit.",
-        "Use limit 200. Do Reads at offsets 0, 200, 400, 600, 800, 1000, 1200, then the same seven offsets again (14 Reads).",
-        "Do not stop after a few chunks.",
-      ].join(" ");
-      let auto = await ctx.claude(autoDir, { repo, prompt: autoPrompt, env: autoEnv });
+      let auto = await ctx.claude(autoDir, { repo, prompt: CLAUDE_COMPACT_PROMPT, env: autoEnv });
       if (!named(auto.events, "PostCompact").length && auto.sessionId) {
         const auto2 = await ctx.claude(path.join(ctx.dir, "auto2"), {
           repo,

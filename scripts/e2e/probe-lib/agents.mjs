@@ -1,4 +1,5 @@
 import { spawn, spawnSync } from "node:child_process";
+import { randomBytes } from "node:crypto";
 import fs from "node:fs";
 import os from "node:os";
 import path from "node:path";
@@ -100,6 +101,30 @@ const COMPACTION_EXCLUDE = new Set([
 ]);
 
 const grokSeeds = new Map();
+
+export class PreconditionError extends Error {
+  constructor(message) {
+    super(message);
+    this.name = "PreconditionError";
+  }
+}
+
+// An API error alone may be a bad request; only availability/auth signatures block a run.
+export const AGENT_OUTAGE_RE = /529 Overloaded|overloaded_error|rate.?limit|quota (?:exhausted|exceeded)|HTTP (?:402|429)\b|stream (?:disconnected|error)|ECONNRESET|ETIMEDOUT|fetch failed|authentication required|please .*login/i;
+
+export const CLAUDE_COMPACT_PROMPT = [
+  "Use the Read tool on big.txt, then Use the Read tool on big.txt again, then reply with exactly the word DONE.",
+  "Do not substitute the Bash tool for Read.",
+  "A whole-file Read exceeds the 256KB / 25000-token cap; you MUST pass offset and limit.",
+  "Use limit 200. Do Reads at offsets 0, 200, 400, 600, 800, 1000, 1200, then the same seven offsets again (14 Reads).",
+  "Do not stop after a few chunks.",
+].join(" ");
+
+export function writeCompactFixture(file) {
+  const text = randomBytes(600_000).toString("base64").replace(/(.{76})/g, "$1\n");
+  fs.writeFileSync(file, `${text}\n`);
+  return fs.statSync(file).size;
+}
 
 export function agentPath(env = process.env) {
   return [
@@ -709,13 +734,14 @@ export function named(events, name) {
   return (events || []).filter((e) => e.event === name);
 }
 
-export async function waitUntil(fn, ms, stepMs = 250) {
-  const start = Date.now();
+export async function waitUntil(fn, ms, stepMs = 250, { now = Date.now, sleep: pause = sleep } = {}) {
+  const deadline = now() + ms;
   let last;
-  while (Date.now() - start < ms) {
+  while (now() < deadline) {
     last = await fn();
     if (last) return last;
-    await sleep(stepMs);
+    const remaining = deadline - now();
+    if (remaining > 0) await pause(Math.min(stepMs, remaining));
   }
   return last;
 }
