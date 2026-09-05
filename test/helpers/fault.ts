@@ -98,6 +98,9 @@ function childEnv(opts: SpawnEngineOptions): NodeJS.ProcessEnv {
   delete env.OBOETE_TEST_FAULT_URL;
   delete env.GROK_HOOK_EVENT;
   delete env.GROK_SESSION_ID;
+  // faultFetch stays off when Node's env proxy is on (envProxyEnabled).
+  delete env.NODE_USE_ENV_PROXY;
+  delete env.NODE_OPTIONS;
   env.NODE_ENV = 'test';
   env.OBOETE_HOME = opts.home;
   if (opts.extraEnv !== undefined) Object.assign(env, opts.extraEnv);
