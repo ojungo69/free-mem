@@ -80,3 +80,30 @@ so the fix matches both versions.
 | codex | fork | pass | 18431 | The fork is a separate conversation whose ledger includes repository memory without changing the parent ledger. | none |
 | codex | clear | pass | 29511 | Claude clear injects at SessionStart; Codex /new creates and injects a new root at the first turn's lazy SessionStart source=startup, before UserPromptSubmit, leaving the parent injections unchanged; the parent stays active because /new fires no SessionEnd (run 2026-09-05T07-03-44-495Z). | none |
 
+
+## 2026-09-05 run 2026-09-05T11-10-21-871Z
+
+- 12 of 12 pairs pass
+- No provider credentials: no
+- Report: <run>/report.json
+
+| seed | receive | status | elapsed ms | missing facts |
+|---|---|---:|---:|---|
+| claude | codex | pass | 52696 | none |
+| claude | grok | pass | 93212 | none |
+| claude | pi | pass | 70134 | none |
+| codex | claude | pass | 94900 | none |
+| codex | grok | pass | 98841 | none |
+| codex | pi | pass | 95302 | none |
+| grok | claude | pass | 66937 | none |
+| grok | codex | pass | 92370 | none |
+| grok | pi | pass | 81882 | none |
+| pi | claude | pass | 90009 | none |
+| pi | codex | pass | 80994 | none |
+| pi | grok | pass | 97761 | none |
+
+This run closes SC-001: the six Grok Build pairs that failed on 2026-09-04 with HTTP 402 pass once
+the account has balance again (grok 1.0.17 alpha, both as sender with its deferred delivery and as
+receiver), and the six Claude Code, Codex and Pi pairs pass as before. Nothing in oboete changed
+between the two runs for those legs; the harness itself gained the round-9 simplification pass
+and the CodeQL fixes (1f11d087).
