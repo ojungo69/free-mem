@@ -22,7 +22,7 @@ import {
   type AncestorCache,
   updateCitationState,
 } from '../injection/staleness.js';
-import { appendLog } from '../log.js';
+import { appendLog, appendLogQuietly } from '../log.js';
 import { refreshWorkersAiCatalog } from '../observer/catalog.js';
 import {
   applyObservations,
@@ -723,7 +723,7 @@ export async function runObserve(argv: string[], overrides: Partial<ObserveDeps>
     try {
       if (!heartbeat(db as DatabaseSync, token as string, deps.now())) leaseLost = true;
     } catch (error) {
-      appendLog(paths.observeLog, 'warn', 'heartbeat failed', { code: errorCode(error) });
+      appendLogQuietly(paths.observeLog, 'warn', 'heartbeat failed', { code: errorCode(error) });
     }
   }, Math.max(1, deps.heartbeatMs));
   heartbeatTimer.unref();

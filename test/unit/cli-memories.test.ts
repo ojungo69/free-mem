@@ -117,7 +117,7 @@ async function run(
   return { status, stdout, stderr };
 }
 
-test('search returns a ranked repository hit and explains an empty lexical result', async () => {
+test('search reports normalized lexical relevance and explains an empty result', async () => {
   await withFixture(async ({ home, repo, identity, otherIdentity }) => {
     const opened = openDatabase({ path: oboetePaths(home).db, timeoutMs: 1000 });
     insertRepo(opened.db, identity);
@@ -127,6 +127,11 @@ test('search returns a ranked repository hit and explains an empty lexical resul
       title: 'SQLite busy timeout',
       body: 'Set the SQLite busy timeout to 150 milliseconds.',
       type: 'decision',
+    });
+    const bodyOnly = insertMemory(opened.db, {
+      repoId: identity.id,
+      title: 'Retry configuration',
+      body: 'SQLite busy timeout controls waiting on a locked database.',
     });
     insertMemory(opened.db, {
       repoId: otherIdentity.id,
@@ -145,8 +150,16 @@ test('search returns a ranked repository hit and explains an empty lexical resul
     assert.equal(parsed.memories[0].id, hit);
     assert.equal(parsed.memories[0].type, 'decision');
     assert.match(parsed.memories[0].body, /150 milliseconds/);
-    assert.equal(typeof parsed.memories[0].score, 'number');
+    assert.equal(parsed.memories[0].score, 1, 'the strongest lexical match has normalized relevance 1');
     assert.ok(parsed.memories[0].reasons.length > 0);
+
+    const compared = await run(runSearch, ['sqlite busy timeout', '--limit', '2', '--json'], repo);
+    assert.equal(compared.status, 0);
+    const matches = (JSON.parse(compared.stdout) as typeof parsed).memories;
+    const titleMatch = matches.find((memory) => memory.id === hit);
+    const bodyMatch = matches.find((memory) => memory.id === bodyOnly);
+    assert.ok(titleMatch && bodyMatch);
+    assert.ok(titleMatch.score > bodyMatch.score, 'a full-title match outranks a body-only match in relevance');
 
     const empty = await run(runSearch, ['meteor zebra quartz'], repo);
     assert.equal(empty.status, 0);
@@ -186,9 +199,39 @@ test('get includes provenance but exits 1 outside the repository and for a tombs
 
     const visible = await run(runGet, [active, '--json'], repo);
     assert.equal(visible.status, 0);
-    const record = JSON.parse(visible.stdout) as { id: string; sources: { citation_value: string }[] };
+    const record = JSON.parse(visible.stdout) as Record<string, unknown> & {
+      id: string;
+      sources: { citation_value: string }[];
+    };
     assert.equal(record.id, active);
     assert.deepEqual(record.sources.map((source) => source.citation_value), ['src/example.ts']);
+    assert.deepEqual(Object.keys(record).sort(), [
+      'body',
+      'citations_head',
+      'citations_ok',
+      'cjk_bigrams',
+      'concepts',
+      'content_hash',
+      'created_at',
+      'degraded_reason',
+      'deleted_at',
+      'id',
+      'last_injected_at',
+      'material_hash',
+      'pin_order',
+      'pinned_at',
+      'repo_id',
+      'review_state',
+      'sensitivity',
+      'source_batch_id',
+      'source_session_id',
+      'sources',
+      'superseded_by',
+      'title',
+      'type',
+      'valid_from',
+      'valid_to',
+    ]);
 
     for (const id of [outside, deleted]) {
       const hidden = await run(runGet, [id, '--json'], repo);

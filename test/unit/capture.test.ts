@@ -677,6 +677,32 @@ test('a payload above the read bound becomes one partial row (A7, A14)', async (
   });
 });
 
+test('an unparsed injection event uses the injection deadline', async () => {
+  await withCapture(async (context) => {
+    let cutoff = 0;
+    const elapsed = CAPTURE_DEADLINE_MS + 10;
+    const outcome = await context.capture('claude', 'UserPromptSubmit', {}, {
+      text: `{"session_id":"session-unparsed-deadline","prompt":"${'a'.repeat(200)}`,
+      truncated: true,
+      deps: {
+        elapsedMs: () => elapsed,
+        detect: (input, cutoffMs) => {
+          cutoff = cutoffMs;
+          return detectSync(input);
+        },
+      },
+    });
+
+    assert.ok(cutoff > CAPTURE_DEADLINE_MS, `the detector received only ${cutoff} ms`);
+    assert.equal(outcome.outcome, 'stored');
+    assert.equal(listSpool(context.paths).length, 0);
+    const rows = context.all('SELECT classification_state, truncated FROM raw_events');
+    assert.equal(rows.length, 1);
+    assert.equal(rows[0]?.classification_state, 'partial');
+    assert.equal(rows[0]?.truncated, 1);
+  });
+});
+
 test('a cut payload without a session id increments a diagnostics counter only', async () => {
   await withCapture(async (context) => {
     const outcome = await context.capture('claude', 'PreToolUse', {}, {

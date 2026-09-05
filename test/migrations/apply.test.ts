@@ -145,6 +145,32 @@ test('previous version upgrades to 3 and keeps version-1 applied_at', (t) => {
   assert.equal(hits[0]?.title, 'pterodactyl memory title');
 });
 
+test('memories declares an INTEGER PRIMARY KEY rid and a NOT NULL TEXT id', (t) => {
+  const dir = fs.mkdtempSync(path.join(os.tmpdir(), 'oboete-mig-'));
+  t.after(() => {
+    fs.rmSync(dir, { recursive: true, force: true });
+  });
+
+  const opened = openDatabase({ path: path.join(dir, 'memory.db'), timeoutMs: 1000 });
+  t.after(() => closeQuietly(opened.db));
+  const db = opened.db;
+  // SQLite rowid-table documentation (https://www.sqlite.org/rowidtable.html): a persistent rowid
+  // is guaranteed only for an explicit INTEGER PRIMARY KEY.
+  const columns = db.prepare('PRAGMA table_info(memories)').all();
+  assert.deepEqual(
+    columns.slice(0, 2).map((row) => ({
+      name: row.name,
+      type: row.type,
+      notnull: row.notnull,
+      pk: row.pk,
+    })),
+    [
+      { name: 'rid', type: 'INTEGER', notnull: 0, pk: 1 },
+      { name: 'id', type: 'TEXT', notnull: 1, pk: 0 },
+    ],
+  );
+});
+
 test('hook role does not migrate and does not create a missing file', (t) => {
   const dir = fs.mkdtempSync(path.join(os.tmpdir(), 'oboete-mig-'));
   const dbPath = path.join(dir, 'memory.db');

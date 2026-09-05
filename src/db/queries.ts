@@ -7,7 +7,7 @@ import { normalizeBm25, rrfFuse } from '../retrieval/rank.js';
 export type ReviewState = 'unreviewed' | 'reviewed' | 'imported';
 export type SummaryState = 'pending' | 'done' | 'no_content';
 
-/** The `memories` columns as stored (0002_memory_search.sql). */
+/** The public `memories` columns (0002_memory_search.sql), excluding the internal FTS rid. */
 export type MemoryRow = {
   id: string;
   repo_id: string;
@@ -376,8 +376,8 @@ export function markInjected(db: DatabaseSync, ids: string[], now: number): void
   }
 }
 
-// The columns are the ones the migration defines; SQLite gives them back untyped.
 function asMemoryRows(rows: Record<string, SQLOutputValue>[]): MemoryRow[] {
+  for (const row of rows) delete row.rid;
   return rows as unknown as MemoryRow[];
 }
 

@@ -241,20 +241,20 @@ function failures(events: FallbackEvent[]): { bugfixes: Observation[]; discoveri
 
 function decisions(events: FallbackEvent[]): Observation[] {
   return [...events]
-    .map((event, index) => ({ event, index }))
+    .map((event, index) => ({ event, index, text: (event.text ?? '').trim() }))
     .filter(
-      ({ event }) =>
+      ({ event, text }) =>
         (event.kind === 'last_assistant_message' || event.kind === 'compaction_summary') &&
         event.classification_state === 'done' &&
-        (event.text ?? '').trim() !== '',
+        text !== '',
     )
     .sort((left, right) => left.event.turn_index - right.event.turn_index || left.index - right.index)
-    .map(({ event }) =>
+    .map(({ event, text }) =>
       observation(
         'decision',
         'decision',
-        firstSentence(event.text ?? ''),
-        firstParagraph(event.text ?? '').slice(0, MAX_BODY),
+        firstSentence(text),
+        firstParagraph(text).slice(0, MAX_BODY),
         ['why-it-exists'],
         [event],
       ),

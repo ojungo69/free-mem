@@ -99,7 +99,8 @@ and `state = applied` commit in one fenced transaction.
 
 | column | type | notes |
 |---|---|---|
-| id | TEXT PK | |
+| rid | INTEGER PRIMARY KEY | stable alias of `rowid`, the FTS `content_rowid` |
+| id | TEXT NOT NULL UNIQUE | public memory identifier and foreign-key target |
 | repo_id | TEXT FK | |
 | type | TEXT | `bugfix`, `feature`, `refactor`, `change`, `discovery`, `decision`, `security_alert`, `security_note`, `session_summary` |
 | title, body | TEXT | <= 120 / <= 2,000 characters |
@@ -134,7 +135,8 @@ Indexes: (repo_id, deleted_at, pinned_at), (repo_id, valid_to), (repo_id, review
 
 ## memories_fts, memories_fts_cjk
 
-External-content FTS5 tables over `memories` (`content = 'memories'`, `content_rowid = rowid`):
+External-content FTS5 tables over `memories` (`content = 'memories'`, `content_rowid = 'rowid'`,
+the stable `rid INTEGER PRIMARY KEY` alias):
 `memories_fts (title, body)` with `tokenize = 'trigram'`; `memories_fts_cjk (cjk_bigrams)` with
 `tokenize = 'unicode61'`. Maintained by triggers on insert, update, delete. Queries join back to
 `memories` for scope, tombstone, sensitivity, review state, and validity.
