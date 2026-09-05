@@ -222,6 +222,26 @@ export function sessionStartEmitted(
   return row !== undefined;
 }
 
+/**
+ * Whether any session-start pack, omitted ones included, was built for this conversation and epoch.
+ * Codex fires no SessionStart on `/new` (A18), and its `SessionStart(compact)` follows PostCompact by
+ * seconds and can be lost (A21), so the first prompt of an epoch that has no pack yet carries the
+ * pack; an omitted pack counts, so a repository with nothing to inject is not retried on every prompt.
+ */
+export function sessionStartAttempted(
+  db: DatabaseSync,
+  conversationId: string,
+  epoch: number,
+): boolean {
+  const row = db
+    .prepare(
+      `SELECT 1 AS found FROM injections
+       WHERE conversation_id = ? AND context_epoch = ? AND kind = 'session_start' LIMIT 1`,
+    )
+    .get(conversationId, epoch);
+  return row !== undefined;
+}
+
 export type WhyAttempt = {
   tool_call_id: string;
   execution: 'pending' | 'ran' | 'failed' | 'denied';

@@ -186,6 +186,7 @@ function context(
     conversationId?: string;
     event?: NormalizedEvent;
     sessionCreated?: boolean;
+    epoch?: number;
     remainingBudget?: () => number;
     sleep?: (milliseconds: number) => void;
     db?: DatabaseSync;
@@ -200,7 +201,7 @@ function context(
     sessionId: input.sessionId,
     conversationId: input.conversationId ?? input.sessionId,
     turnId: null,
-    epoch: 0,
+    epoch: input.epoch ?? 0,
     repoId: fixture.identity.id,
     repoIdentityDisplay: fixture.identity.normalizedIdentity,
     repoRoot: fixture.identity.root,
@@ -347,6 +348,68 @@ test('Codex uses JSON transport and A18 joins the session-start and prompt packs
     assert.ok(firstPrompt.hookSpecificOutput.additionalContext.startsWith('oboete memory context'));
     assert.ok(firstPrompt.hookSpecificOutput.additionalContext.includes('previous database migration'));
     assert.ok(firstPrompt.hookSpecificOutput.additionalContext.includes('SQLite busy timeout'));
+  });
+});
+
+test('Codex carries the new epoch session-start pack on the first prompt after a manual /compact (A21)', async () => {
+  await withFixture(async (fixture) => {
+    seedSummary(fixture);
+    insertSession(fixture, { id: 's-codex-compact', agent: 'codex' });
+    const started = envelope(
+      await injectForHook(
+        context(fixture, { agent: 'codex', eventName: 'SessionStart', sessionId: 's-codex-compact' }),
+      ),
+    );
+    assert.ok(started.hookSpecificOutput.additionalContext.includes('previous database migration'));
+    const startPacks = (): { epoch: number; channel: string; state: string }[] =>
+      fixture.db
+        .prepare(
+          `SELECT context_epoch, channel, state FROM injections
+           WHERE conversation_id = ? AND kind = 'session_start' ORDER BY context_epoch`,
+        )
+        .all('s-codex-compact')
+        .map((row) => ({
+          epoch: Number(row.context_epoch),
+          channel: String(row.channel),
+          state: String(row.state),
+        }));
+
+    // Epoch 0 has its pack, so a prompt of that epoch adds none.
+    await injectForHook(
+      context(fixture, { agent: 'codex', eventName: 'UserPromptSubmit', sessionId: 's-codex-compact' }),
+    );
+    assert.equal(startPacks().length, 1);
+
+    // PostCompact moved the conversation to epoch 1 and the SessionStart(compact) that follows it
+    // never arrived (spooled, or the session was cut off): the next prompt carries the epoch's pack.
+    fixture.db.prepare('UPDATE sessions SET context_epoch = 1 WHERE id = ?').run('s-codex-compact');
+    const afterCompact = envelope(
+      await injectForHook(
+        context(fixture, {
+          agent: 'codex',
+          eventName: 'UserPromptSubmit',
+          sessionId: 's-codex-compact',
+          epoch: 1,
+        }),
+      ),
+    );
+    assert.equal(afterCompact.hookSpecificOutput.hookEventName, 'UserPromptSubmit');
+    assert.ok(afterCompact.hookSpecificOutput.additionalContext.includes('previous database migration'));
+    assert.deepEqual(startPacks(), [
+      { epoch: 0, channel: 'codex:SessionStart', state: 'emitted' },
+      { epoch: 1, channel: 'codex:UserPromptSubmit', state: 'emitted' },
+    ]);
+
+    // A second prompt of the new epoch does not repeat it (FR-026).
+    await injectForHook(
+      context(fixture, {
+        agent: 'codex',
+        eventName: 'UserPromptSubmit',
+        sessionId: 's-codex-compact',
+        epoch: 1,
+      }),
+    );
+    assert.equal(startPacks().length, 2);
   });
 });
 

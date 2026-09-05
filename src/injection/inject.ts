@@ -27,7 +27,7 @@ import {
   storePending,
   type PackValidation,
 } from './deferred.js';
-import { confirmDelivery } from './ledger.js';
+import { confirmDelivery, sessionStartAttempted } from './ledger.js';
 import {
   buildPromptPack,
   buildSessionStartPack,
@@ -240,18 +240,6 @@ function envelope(eventName: string, pack: string): string {
   });
 }
 
-function hasSessionStart(db: DatabaseSync, conversationId: string): boolean {
-  return (
-    db
-      .prepare(
-        `SELECT 1 AS found FROM raw_events e
-         JOIN sessions s ON s.id = e.session_id
-         WHERE s.conversation_id = ? AND e.kind = 'session_start' LIMIT 1`,
-      )
-      .get(conversationId) !== undefined
-  );
-}
-
 function sawToolHook(context: HookContext): boolean {
   const db = context.db;
   if (db === undefined) return false;
@@ -326,8 +314,9 @@ async function injectCodex(context: HookContext, validation: PackValidation): Pr
 
   const db = context.db;
   const packs: BuiltPack[] = [];
-  // A18: /new has no SessionStart. Capture identifies it by inserting a new native session here.
-  if (db !== undefined && context.sessionCreated && !hasSessionStart(db, context.conversationId)) {
+  // A18 (`/new` fires no SessionStart) and A21 (a SessionStart that spooled or was cut off after
+  // PostCompact): the first prompt of an epoch that has no session-start pack in the ledger carries it.
+  if (db !== undefined && !sessionStartAttempted(db, context.conversationId, context.epoch)) {
     const start = await startPack(context, 'codex:UserPromptSubmit', validation);
     // Delivery is immediate; confirming before prompt retrieval keeps a matching pinned or summary
     // memory from appearing twice in the one additionalContext value (FR-026).
