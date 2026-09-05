@@ -1,0 +1,35 @@
+package.json
+  s_9216550c8111e1::t_d12f89cbf31bfe 24
+specs/007-oboete-m1-alpha/contracts/cli.md
+  s_9216550c8111e1::t_738fb7faac6b46 31
+specs/007-oboete-m1-alpha/quickstart.md
+  s_9216550c8111e1::t_fd5723e8a17d87 84-85
+specs/007-oboete-m1-alpha/tasks.md
+  s_9216550c8111e1::t_0a2a6b7755c0f5 153
+src/capture.ts
+  s_9216550c8111e1::t_cc3dfca9541afb 49,1273-1274
+src/observer/llm.ts
+  s_9216550c8111e1::t_a70818f475b786 18,329,377,433-435,468-470
+src/privacy/detect.ts
+  s_9216550c8111e1::t_4f6d46ae3655cd 7,460-466
+src/testing/faults.ts
+  s_9216550c8111e1::t_854a7c1afcb0a2 1-58
+test/unit/faults.test.ts
+  s_9216550c8111e1::t_921ea272fd9eb8 1-98
+---
+{
+  "schema_version": "authorship/3.0.0",
+  "git_ai_version": "1.6.16",
+  "base_commit_sha": "f4d2bfc4029d4107c5b2715f55a16f8a971d27ad",
+  "prompts": {},
+  "sessions": {
+    "s_9216550c8111e1": {
+      "agent_id": {
+        "tool": "claude",
+        "id": "8fec18e5-07c4-4cab-bf95-7479b7081947",
+        "model": "claude-fable-5-1"
+      },
+      "human_author": "ojungo69 <210335670+ojungo69@users.noreply.github.com>"
+    }
+  }
+}
