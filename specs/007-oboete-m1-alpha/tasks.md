@@ -333,9 +333,6 @@ Task: "T023 src/repo-identity.ts + tests"
 - catalog.ts refreshWorkersAiCatalog writes runtime_state outside the lease fence; observe.ts should
   store the returned result inside a fenced transaction.
 - deferred.ts control-character branch (omit planned, close with index_unavailable) has no test.
-- inject.ts hasSessionStart() reads session_start raw events, which now expire after 7 days (FR-008
-  purge), so a conversation resumed later can emit one extra Codex session-start pack; key it on
-  sessions or injections instead.
 - Injection trusts memories.citations_head/citations_ok, refreshed only for the memories of a batch
   the worker just applied; after HEAD moves, older memories render stale until touched. The worker
   needs a HEAD-change re-check.
