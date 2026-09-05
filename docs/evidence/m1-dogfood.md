@@ -62,3 +62,21 @@ this check covers.
 The isolated user runs pi-coding-agent 0.84.4 and this machine's developer account runs 0.85.0; the
 `ToolDefinition.execute(toolCallId, params, signal, onUpdate, ctx)` declaration is identical in both,
 so the fix matches both versions.
+
+## 2026-09-05 run 2026-09-05T08-01-06-892Z
+
+- 8 of 8 lifecycle checks pass.
+- No provider credentials: no
+- Report: <run>/report.json
+
+| agent | check | status | elapsed ms | asserts | reason |
+|---|---|---:|---:|---|---|
+| claude | resume | pass | 4440 | The resumed prompt stays in its oboete conversation and context_epoch without repeating its session-start pack. | none |
+| claude | compact | pass | 71926 | One compaction advances context_epoch once, re-injects repository memory via SessionStart source=compact, and loses no earlier event. | none |
+| claude | fork | pass | 13804 | The fork is a separate conversation whose ledger includes repository memory without changing the parent ledger. | none |
+| claude | clear | pass | 11888 | Claude clear injects at SessionStart; Codex /new creates and injects a new root at the first turn's lazy SessionStart source=startup, before UserPromptSubmit, leaving the parent injections unchanged; the parent stays active because /new fires no SessionEnd (run 2026-09-05T07-03-44-495Z). | none |
+| codex | resume | pass | 6460 | The resumed prompt stays in its oboete conversation and context_epoch without repeating its session-start pack. | none |
+| codex | compact | pass | 31597 | One compaction advances context_epoch once, re-injects repository memory via SessionStart source=compact, and loses no earlier event. | none |
+| codex | fork | pass | 18431 | The fork is a separate conversation whose ledger includes repository memory without changing the parent ledger. | none |
+| codex | clear | pass | 29511 | Claude clear injects at SessionStart; Codex /new creates and injects a new root at the first turn's lazy SessionStart source=startup, before UserPromptSubmit, leaving the parent injections unchanged; the parent stays active because /new fires no SessionEnd (run 2026-09-05T07-03-44-495Z). | none |
+
